@@ -1,3 +1,5 @@
+// Disable TLS certificate verification to work behind corporate SSL inspection
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
