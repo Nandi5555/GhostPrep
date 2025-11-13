@@ -242,7 +242,6 @@ export class CheatingDaddyApp extends LitElement {
             }
             this.sessionActive = false;
             this.currentView = 'main';
-            console.log('Session closed');
         } else {
             // Quit the entire application
             if (window.require) {

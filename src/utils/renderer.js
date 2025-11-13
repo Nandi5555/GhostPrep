@@ -97,9 +97,6 @@ let tokenTracker = {
 
         const currentTokens = this.getTokensInLastMinute();
         const throttleThreshold = Math.floor((maxTokensPerMin * throttleAtPercent) / 100);
-
-        console.log(`Token check: ${currentTokens}/${maxTokensPerMin} (throttle at ${throttleThreshold})`);
-
         return currentTokens >= throttleThreshold;
     },
 
@@ -153,7 +150,6 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
 
 // Listen for status updates
 ipcRenderer.on('update-status', (event, status) => {
-    console.log('Status update:', status);
     cheddar.e().setStatus(status);
 });
 
@@ -170,12 +166,10 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
     // Reset token tracker when starting new capture session
     tokenTracker.reset();
-    console.log('🎯 Token tracker reset for new capture session');
 
     try {
         if (isMacOS) {
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
-            console.log('Starting macOS capture with SystemAudioDump...');
 
             // Start macOS audio capture
             const audioResult = await ipcRenderer.invoke('start-macos-audio');
@@ -193,7 +187,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 audio: false, // Don't use browser audio on macOS
             });
 
-            console.log('macOS screen capture started - audio handled by SystemAudioDump');
+            // macOS screen capture started - audio handled by SystemAudioDump
         } else if (isLinux) {
             // Linux - use display media for screen capture and getUserMedia for microphone
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -219,7 +213,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     video: false,
                 });
 
-                console.log('Linux microphone capture started');
+                // Linux microphone capture started
 
                 // Setup audio processing for microphone on Linux
                 setupLinuxMicProcessing(micStream);
@@ -228,7 +222,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 // Continue without microphone if permission denied
             }
 
-            console.log('Linux screen capture started');
+            // Linux screen capture started
         } else {
             // Windows - use display media with loopback for system audio
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -246,21 +240,16 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 },
             });
 
-            console.log('Windows capture started with loopback audio');
+            // Windows capture started with loopback audio
 
             // Setup audio processing for Windows loopback audio only
             setupWindowsLoopbackProcessing();
         }
 
-        console.log('MediaStream obtained:', {
-            hasVideo: mediaStream.getVideoTracks().length > 0,
-            hasAudio: mediaStream.getAudioTracks().length > 0,
-            videoTrack: mediaStream.getVideoTracks()[0]?.getSettings(),
-        });
+        // MediaStream obtained
 
         // Start capturing screenshots - check if manual mode
         if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
-            console.log('Manual mode enabled - screenshots will be captured on demand only');
             // Don't start automatic capture in manual mode
         } else {
             const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
@@ -345,12 +334,11 @@ function setupWindowsLoopbackProcessing() {
 }
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
-    console.log(`Capturing ${isManual ? 'manual' : 'automated'} screenshot...`);
+    // Capturing screenshot
     if (!mediaStream) return;
 
     // Check rate limiting for automated screenshots only
     if (!isManual && tokenTracker.shouldThrottle()) {
-        console.log('⚠️ Automated screenshot skipped due to rate limiting');
         return;
     }
 
@@ -433,7 +421,6 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                     // Track image tokens after successful send
                     const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
                     tokenTracker.addTokens(imageTokens, 'image');
-                    console.log(`📊 Image sent successfully - ${imageTokens} tokens used (${offscreenCanvas.width}x${offscreenCanvas.height})`);
                 } else {
                     console.error('Failed to send image:', result.error);
                 }
@@ -446,7 +433,6 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 }
 
 async function captureManualScreenshot(imageQuality = null) {
-    console.log('Manual screenshot triggered');
     const quality = imageQuality || currentImageQuality;
     await captureScreenshot(quality, true); // Pass true for isManual
     await new Promise(resolve => setTimeout(resolve, 2000)); // TODO shitty hack
@@ -507,9 +493,7 @@ async function sendTextMessage(text) {
 
     try {
         const result = await ipcRenderer.invoke('send-text-message', text);
-        if (result.success) {
-            console.log('Text message sent successfully');
-        } else {
+        if (!result.success) {
             console.error('Failed to send text message:', result.error);
         }
         return result;
@@ -605,7 +589,6 @@ async function getAllConversationSessions() {
 ipcRenderer.on('save-conversation-turn', async (event, data) => {
     try {
         await saveConversationSession(data.sessionId, data.fullHistory);
-        console.log('Conversation session saved:', data.sessionId);
     } catch (error) {
         console.error('Error saving conversation session:', error);
     }
@@ -616,16 +599,14 @@ initConversationStorage().catch(console.error);
 
 // Handle shortcuts based on current view
 function handleShortcut(shortcutKey) {
-    console.log('Handling shortcut:', shortcutKey);
+    // Handling shortcut
 
     // Get current view from the app
     const currentView = window.cheddar.getCurrentView ? window.cheddar.getCurrentView() : null;
-    console.log('Current view:', currentView);
 
     if (shortcutKey === 'ctrl+enter' || shortcutKey === 'cmd+enter') {
         if (currentView === 'main') {
             // Trigger the start session from main view
-            console.log('Triggering start session from main view');
 
             // First try to get the app component and call handleStart directly
             const appElement = document.querySelector('cheating-daddy-app');
@@ -647,12 +628,11 @@ function handleShortcut(shortcutKey) {
             }
         } else {
             // In other views, take manual screenshot
-            console.log('Taking manual screenshot from current view');
             captureManualScreenshot();
         }
     } else if (shortcutKey === 'ctrl+shift+enter' || shortcutKey === 'cmd+shift+enter') {
-        console.log('Sending current transcription');
-        audioPauseUntil = Date.now() + 3;
+        // Sending current transcription
+        audioPauseUntil = Date.now() + 1;
         ipcRenderer
             .invoke('send-current-transcription')
             .then(result => {

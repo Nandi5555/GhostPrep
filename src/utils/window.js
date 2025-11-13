@@ -107,7 +107,6 @@ function createWindow(sendToRenderer, geminiSessionRef) {
                             'window.cheddar ? window.cheddar.getContentProtection() : true'
                         );
                         mainWindow.setContentProtection(contentProtection);
-                        console.log('Content protection loaded from settings:', contentProtection);
                     } catch (error) {
                         console.error('Error loading content protection:', error);
                         mainWindow.setContentProtection(true);
@@ -147,7 +146,6 @@ function getDefaultKeybinds() {
 }
 
 function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef) {
-    console.log('Updating global shortcuts with:', keybinds);
 
     // Unregister all existing shortcuts
     globalShortcut.unregisterAll();
@@ -186,7 +184,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
         if (keybind) {
             try {
                 globalShortcut.register(keybind, movementActions[action]);
-                console.log(`Registered ${action}: ${keybind}`);
             } catch (error) {
                 console.error(`Failed to register ${action} (${keybind}):`, error);
             }
@@ -203,7 +200,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                     mainWindow.showInactive();
                 }
             });
-            console.log(`Registered toggleVisibility: ${keybinds.toggleVisibility}`);
         } catch (error) {
             console.error(`Failed to register toggleVisibility (${keybinds.toggleVisibility}):`, error);
         }
@@ -216,14 +212,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                 mouseEventsIgnored = !mouseEventsIgnored;
                 if (mouseEventsIgnored) {
                     mainWindow.setIgnoreMouseEvents(true, { forward: true });
-                    console.log('Mouse events ignored');
                 } else {
                     mainWindow.setIgnoreMouseEvents(false);
-                    console.log('Mouse events enabled');
                 }
                 mainWindow.webContents.send('click-through-toggled', mouseEventsIgnored);
             });
-            console.log(`Registered toggleClickThrough: ${keybinds.toggleClickThrough}`);
+            // Registered toggleClickThrough
         } catch (error) {
             console.error(`Failed to register toggleClickThrough (${keybinds.toggleClickThrough}):`, error);
         }
@@ -233,7 +227,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.nextStep) {
         try {
             globalShortcut.register(keybinds.nextStep, async () => {
-                console.log('Next step shortcut triggered');
                 try {
                     // Determine the shortcut key format
                     const isMac = process.platform === 'darwin';
@@ -241,7 +234,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
 
                     // Ensure behavior respects hidden state: don't unhide on nextStep
                     if (!mainWindow.isVisible()) {
-                        console.log('Window hidden; ignoring nextStep autofocus');
                         return;
                     }
 
@@ -261,7 +253,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                                 if (window.cheddar && window.cheddar.handleShortcut) {
                                     window.cheddar.handleShortcut('${shortcutKey}');
                                 } else {
-                                    console.log('handleShortcut function not available');
+                                    /* no-op */
                                 }
                             `);
                         } catch (e) {
@@ -272,7 +264,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                     console.error('Error handling next step shortcut:', error);
                 }
             });
-            console.log(`Registered nextStep: ${keybinds.nextStep}`);
+            // Registered nextStep
         } catch (error) {
             console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
         }
@@ -282,7 +274,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.sendTranscription) {
         try {
             globalShortcut.register(keybinds.sendTranscription, async () => {
-                console.log('Send transcription shortcut triggered');
                 try {
                     const isMac = process.platform === 'darwin';
                     const shortcutKey = isMac ? 'cmd+shift+enter' : 'ctrl+shift+enter';
@@ -291,14 +282,14 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                         if (window.cheddar && window.cheddar.handleShortcut) {
                             window.cheddar.handleShortcut('${shortcutKey}');
                         } else {
-                            console.log('handleShortcut function not available');
+                            /* no-op */
                         }
                     `);
                 } catch (error) {
                     console.error('Error handling send transcription shortcut:', error);
                 }
             });
-            console.log(`Registered sendTranscription: ${keybinds.sendTranscription}`);
+            // Registered sendTranscription
         } catch (error) {
             console.error(`Failed to register sendTranscription (${keybinds.sendTranscription}):`, error);
         }
@@ -308,10 +299,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.previousResponse) {
         try {
             globalShortcut.register(keybinds.previousResponse, () => {
-                console.log('Previous response shortcut triggered');
                 sendToRenderer('navigate-previous-response');
             });
-            console.log(`Registered previousResponse: ${keybinds.previousResponse}`);
+            // Registered previousResponse
         } catch (error) {
             console.error(`Failed to register previousResponse (${keybinds.previousResponse}):`, error);
         }
@@ -321,10 +311,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.nextResponse) {
         try {
             globalShortcut.register(keybinds.nextResponse, () => {
-                console.log('Next response shortcut triggered');
                 sendToRenderer('navigate-next-response');
             });
-            console.log(`Registered nextResponse: ${keybinds.nextResponse}`);
+            // Registered nextResponse
         } catch (error) {
             console.error(`Failed to register nextResponse (${keybinds.nextResponse}):`, error);
         }
@@ -334,10 +323,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.scrollUp) {
         try {
             globalShortcut.register(keybinds.scrollUp, () => {
-                console.log('Scroll up shortcut triggered');
                 sendToRenderer('scroll-response-up');
             });
-            console.log(`Registered scrollUp: ${keybinds.scrollUp}`);
+            // Registered scrollUp
         } catch (error) {
             console.error(`Failed to register scrollUp (${keybinds.scrollUp}):`, error);
         }
@@ -347,10 +335,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.scrollDown) {
         try {
             globalShortcut.register(keybinds.scrollDown, () => {
-                console.log('Scroll down shortcut triggered');
                 sendToRenderer('scroll-response-down');
             });
-            console.log(`Registered scrollDown: ${keybinds.scrollDown}`);
+            // Registered scrollDown
         } catch (error) {
             console.error(`Failed to register scrollDown (${keybinds.scrollDown}):`, error);
         }
@@ -469,7 +456,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         return new Promise(resolve => {
             // Check if window is destroyed before starting animation
             if (mainWindow.isDestroyed()) {
-                console.log('Cannot animate resize: window has been destroyed');
+                console.warn('Cannot animate resize: window has been destroyed');
                 resolve();
                 return;
             }
@@ -484,13 +471,11 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
             // If already at target size, no need to animate
             if (startWidth === targetWidth && startHeight === targetHeight) {
-                console.log(`Window already at target size for ${layoutMode} mode`);
                 resolve();
                 return;
             }
 
-            console.log(`Starting animated resize from ${startWidth}x${startHeight} to ${targetWidth}x${targetHeight}`);
-
+            
             windowResizing = true;
             mainWindow.setResizable(true);
 
@@ -542,7 +527,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                         mainWindow.setPosition(finalX, 0);
                     }
 
-                    console.log(`Animation complete: ${targetWidth}x${targetHeight}`);
                     resolve();
                 }
             }, 1000 / frameRate);
@@ -571,7 +555,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 layoutMode = 'normal';
             }
 
-            console.log('Size update requested for view:', viewName, 'layout:', layoutMode);
 
             let targetWidth, targetHeight;
 
@@ -608,11 +591,9 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
             }
 
             const [currentWidth, currentHeight] = mainWindow.getSize();
-            console.log('Current window size:', currentWidth, 'x', currentHeight);
 
             // If currently resizing, the animation will start from current position
             if (windowResizing) {
-                console.log('Interrupting current resize animation');
             }
 
             await animateWindowResize(mainWindow, targetWidth, targetHeight, `${viewName} view (${layoutMode})`, viewName === 'assistant');

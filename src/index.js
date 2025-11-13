@@ -75,7 +75,6 @@ function setupGeneralIpcHandlers() {
                     'window.cheddar ? window.cheddar.getContentProtection() : true'
                 );
                 mainWindow.setContentProtection(contentProtection);
-                console.log('Content protection updated:', contentProtection);
             }
             return { success: true };
         } catch (error) {

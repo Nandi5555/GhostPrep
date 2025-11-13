@@ -457,14 +457,13 @@ export class AssistantView extends LitElement {
                 window.marked.use({ renderer });
 
                 const rendered = window.marked.parse(content);
-                console.log('Markdown rendered successfully');
                 return rendered;
             } catch (error) {
                 console.warn('Error parsing markdown:', error);
                 return content; // Fallback to plain text
             }
         }
-        console.log('Marked not available, using plain text');
+        console.warn('Marked not available, using plain text');
         return content; // Fallback if marked is not available
     }
 
@@ -541,22 +540,18 @@ export class AssistantView extends LitElement {
             const { ipcRenderer } = window.require('electron');
 
             this.handlePreviousResponse = () => {
-                console.log('Received navigate-previous-response message');
                 this.navigateToPreviousResponse();
             };
 
             this.handleNextResponse = () => {
-                console.log('Received navigate-next-response message');
                 this.navigateToNextResponse();
             };
 
             this.handleScrollUp = () => {
-                console.log('Received scroll-response-up message');
                 this.scrollResponseUp();
             };
 
             this.handleScrollDown = () => {
-                console.log('Received scroll-response-down message');
                 this.scrollResponseDown();
             };
 
@@ -716,13 +711,10 @@ export class AssistantView extends LitElement {
     }
 
     updateResponseContent() {
-        console.log('updateResponseContent called');
         const container = this.shadowRoot.querySelector('#responseContainer');
         if (container) {
             const currentResponse = this.getCurrentResponse();
-            console.log('Current response:', currentResponse);
             const renderedResponse = this.renderMarkdown(currentResponse, this.isStreaming);
-            console.log('Rendered response:', renderedResponse);
             container.innerHTML = renderedResponse + (this.isStreaming ? '<span class="stream-caret"></span>' : '');
 
             // Highlight code blocks only after stream completes (skip during streaming)
@@ -739,7 +731,7 @@ export class AssistantView extends LitElement {
             // Keep the latest content visible during streaming
             if (this.autoScrollEnabled) this.scrollToBottom();
         } else {
-            console.log('Response container not found');
+        console.warn('Response container not found');
         }
     }
 
