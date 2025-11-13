@@ -10,6 +10,7 @@ let audioBuffer = [];
 const SAMPLE_RATE = 24000;
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
 const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
+let audioPauseUntil = 0;
 
 let hiddenVideo = null;
 let offscreenCanvas = null;
@@ -284,6 +285,9 @@ function setupLinuxMicProcessing(micStream) {
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
     micProcessor.onaudioprocess = async e => {
+        if (audioPauseUntil && Date.now() < audioPauseUntil) {
+            return;
+        }
         const inputData = e.inputBuffer.getChannelData(0);
         audioBuffer.push(...inputData);
 
@@ -317,6 +321,9 @@ function setupWindowsLoopbackProcessing() {
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
     audioProcessor.onaudioprocess = async e => {
+        if (audioPauseUntil && Date.now() < audioPauseUntil) {
+            return;
+        }
         const inputData = e.inputBuffer.getChannelData(0);
         audioBuffer.push(...inputData);
 
@@ -643,6 +650,19 @@ function handleShortcut(shortcutKey) {
             console.log('Taking manual screenshot from current view');
             captureManualScreenshot();
         }
+    } else if (shortcutKey === 'ctrl+shift+enter' || shortcutKey === 'cmd+shift+enter') {
+        console.log('Sending current transcription');
+        audioPauseUntil = Date.now() + 3;
+        ipcRenderer
+            .invoke('send-current-transcription')
+            .then(result => {
+                if (!result.success) {
+                    console.error('Failed to send current transcription:', result.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error sending current transcription:', error);
+            });
     }
 }
 

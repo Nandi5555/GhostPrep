@@ -539,6 +539,24 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
+    ipcMain.handle('send-current-transcription', async event => {
+        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
+        try {
+            const text = (currentTranscription || '').trim();
+            if (!text) {
+                return { success: false, error: 'No transcription available' };
+            }
+            console.log('Sending current transcription:', text);
+            await geminiSessionRef.current.sendRealtimeInput({ text });
+            currentTranscription = '';
+            sendToRenderer('update-status', 'Transcription sent');
+            return { success: true };
+        } catch (error) {
+            console.error('Error sending current transcription:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('send-text-message', async (event, text) => {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
 

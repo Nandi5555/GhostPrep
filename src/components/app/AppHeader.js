@@ -86,6 +86,88 @@ export class AppHeader extends LitElement {
             font-size: 12px;
             margin: 0px;
         }
+ /* Slider styles */
+        .slider-container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slider-value {
+            font-size: 11px;
+            color: var(--success-color, #34d399);
+            background: var(--success-background, rgba(52, 211, 153, 0.1));
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 500;
+            border: 1px solid var(--success-border, rgba(52, 211, 153, 0.2));
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+        }
+
+        .slider-input {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--input-background, rgba(0, 0, 0, 0.3));
+            outline: none;
+            border: 1px solid var(--input-border, rgba(255, 255, 255, 0.15));
+            cursor: default;
+        }
+
+        .slider-input::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--focus-border-color, #007aff);
+            cursor: default !important;
+            border: 2px solid var(--text-color, white);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .slider-input::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--focus-border-color, #007aff);
+            cursor: default !important;
+            border: 2px solid var(--text-color, white);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .slider-input:hover::-webkit-slider-thumb {
+            background: var(--text-input-button-hover, #0056b3);
+        }
+
+        .slider-input:hover::-moz-range-thumb {
+            background: var(--text-input-button-hover, #0056b3);
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 4px;
+            font-size: 10px;
+            color: var(--description-color, rgba(255, 255, 255, 0.5));
+        }
+          .slider-input {
+            cursor: default !important;
+        }
+
+        .slider-input::-webkit-slider-thumb,
+        .slider-input::-moz-range-thumb {
+            cursor: default !important;
+        }
     `;
 
     static properties = {
@@ -101,6 +183,7 @@ export class AppHeader extends LitElement {
         isClickThrough: { type: Boolean, reflect: true },
         advancedMode: { type: Boolean },
         onAdvancedClick: { type: Function },
+        backgroundTransparency: { type: Number },
     };
 
     constructor() {
@@ -118,11 +201,13 @@ export class AppHeader extends LitElement {
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
         this._timerInterval = null;
+        this.backgroundTransparency = 0.8;
     }
 
     connectedCallback() {
         super.connectedCallback();
         this._startTimer();
+        this.loadBackgroundTransparency();
     }
 
     disconnectedCallback() {
@@ -174,15 +259,15 @@ export class AppHeader extends LitElement {
 
     getViewTitle() {
         const titles = {
-            onboarding: 'Welcome to Cheating Daddy',
-            main: 'Cheating Daddy',
+            onboarding: 'Welcome to GhostPrep',
+            main: 'GhostPrep',
             customize: 'Customize',
             help: 'Help & Shortcuts',
             history: 'Conversation History',
             advanced: 'Advanced Tools',
-            assistant: 'Cheating Daddy',
+            assistant: 'GhostPrep',
         };
-        return titles[this.currentView] || 'Cheating Daddy';
+        return titles[this.currentView] || 'GhostPrep';
     }
 
     getElapsedTime() {
@@ -198,6 +283,35 @@ export class AppHeader extends LitElement {
         return navigationViews.includes(this.currentView);
     }
 
+    loadBackgroundTransparency() {
+        const backgroundTransparency = localStorage.getItem('backgroundTransparency');
+        if (backgroundTransparency !== null) {
+            this.backgroundTransparency = parseFloat(backgroundTransparency) || 0.8;
+        }
+        this.updateBackgroundTransparency();
+    }
+
+    handleBackgroundTransparencyChange(e) {
+        this.backgroundTransparency = parseFloat(e.target.value);
+        localStorage.setItem('backgroundTransparency', this.backgroundTransparency.toString());
+        this.updateBackgroundTransparency();
+        this.requestUpdate();
+    }
+
+    updateBackgroundTransparency() {
+        const root = document.documentElement;
+        root.style.setProperty('--header-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
+        root.style.setProperty('--main-content-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
+        root.style.setProperty('--card-background', `rgba(255, 255, 255, ${this.backgroundTransparency * 0.05})`);
+        root.style.setProperty('--input-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.375})`);
+        root.style.setProperty('--input-focus-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
+        root.style.setProperty('--button-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
+        root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 1.125})`);
+        root.style.setProperty('--screen-option-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
+        root.style.setProperty('--screen-option-hover-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.75})`);
+        root.style.setProperty('--scrollbar-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
+    }
+
     render() {
         const elapsedTime = this.getElapsedTime();
 
@@ -207,6 +321,20 @@ export class AppHeader extends LitElement {
                 <div class="header-actions">
                     ${this.currentView === 'assistant'
                         ? html`
+                        <div class="form-group full-width">
+                            <div class="slider-container">
+                                <input
+                                    type="range"
+                                    class="slider-input"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    .value=${this.backgroundTransparency}
+                                    @input=${this.handleBackgroundTransparencyChange}
+                                />
+                                <span class="slider-value">${Math.round(this.backgroundTransparency * 100)}%</span>
+                            </div>
+                        </div>
                               <span>${elapsedTime}</span>
                               <span>${this.statusText}</span>
                           `

@@ -138,6 +138,7 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
+        sendTranscription: isMac ? 'Cmd+Shift+Enter' : 'Ctrl+Shift+Enter',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -238,7 +239,54 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                     const isMac = process.platform === 'darwin';
                     const shortcutKey = isMac ? 'cmd+enter' : 'ctrl+enter';
 
-                    // Use the new handleShortcut function
+                    // Ensure behavior respects hidden state: don't unhide on nextStep
+                    if (!mainWindow.isVisible()) {
+                        console.log('Window hidden; ignoring nextStep autofocus');
+                        return;
+                    }
+
+                    // If minimized but visible, restore, then focus
+                    if (mainWindow.isMinimized()) {
+                        mainWindow.restore();
+                    }
+
+                    // Focus both the window and its webContents for reliability
+                    mainWindow.focus();
+                    try { mainWindow.webContents.focus(); } catch (_) {}
+
+                    // Execute shortcut handling in renderer after focusing the window
+                    setTimeout(() => {
+                        try {
+                            mainWindow.webContents.executeJavaScript(`
+                                if (window.cheddar && window.cheddar.handleShortcut) {
+                                    window.cheddar.handleShortcut('${shortcutKey}');
+                                } else {
+                                    console.log('handleShortcut function not available');
+                                }
+                            `);
+                        } catch (e) {
+                            console.error('Error executing handleShortcut after focus:', e);
+                        }
+                    }, 0);
+                } catch (error) {
+                    console.error('Error handling next step shortcut:', error);
+                }
+            });
+            console.log(`Registered nextStep: ${keybinds.nextStep}`);
+        } catch (error) {
+            console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
+        }
+    }
+
+    // Register send transcription shortcut
+    if (keybinds.sendTranscription) {
+        try {
+            globalShortcut.register(keybinds.sendTranscription, async () => {
+                console.log('Send transcription shortcut triggered');
+                try {
+                    const isMac = process.platform === 'darwin';
+                    const shortcutKey = isMac ? 'cmd+shift+enter' : 'ctrl+shift+enter';
+
                     mainWindow.webContents.executeJavaScript(`
                         if (window.cheddar && window.cheddar.handleShortcut) {
                             window.cheddar.handleShortcut('${shortcutKey}');
@@ -247,12 +295,12 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                         }
                     `);
                 } catch (error) {
-                    console.error('Error handling next step shortcut:', error);
+                    console.error('Error handling send transcription shortcut:', error);
                 }
             });
-            console.log(`Registered nextStep: ${keybinds.nextStep}`);
+            console.log(`Registered sendTranscription: ${keybinds.sendTranscription}`);
         } catch (error) {
-            console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
+            console.error(`Failed to register sendTranscription (${keybinds.sendTranscription}):`, error);
         }
     }
 
@@ -311,7 +359,14 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
 
 function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
     ipcMain.on('view-changed', (event, view) => {
-        if (view !== 'assistant' && !mainWindow.isDestroyed()) {
+        if (mainWindow.isDestroyed()) return;
+        // Enable full-window resizing when Assistant view is active
+        if (view === 'assistant') {
+            mainWindow.setResizable(true);
+        } else {
+            mainWindow.setResizable(false);
+        }
+        if (view !== 'assistant') {
             mainWindow.setIgnoreMouseEvents(false);
         }
     });
@@ -346,7 +401,71 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         }
     });
 
-    function animateWindowResize(mainWindow, targetWidth, targetHeight, layoutMode) {
+    // New: IPC helpers for resizing from the renderer
+    ipcMain.handle('get-window-size', () => {
+        if (mainWindow.isDestroyed()) return { width: 0, height: 0 };
+        const [width, height] = mainWindow.getSize();
+        return { width, height };
+    });
+
+    ipcMain.handle('get-max-window-size', () => {
+        const { workAreaSize } = screen.getPrimaryDisplay();
+        return { width: workAreaSize.width, height: workAreaSize.height };
+    });
+
+    // New: full bounds getter and setter for left/top edge drags
+    ipcMain.handle('get-window-bounds', () => {
+        if (mainWindow.isDestroyed()) return { x: 0, y: 0, width: 0, height: 0 };
+        const [width, height] = mainWindow.getSize();
+        const [x, y] = mainWindow.getPosition();
+        return { x, y, width, height };
+    });
+
+    ipcMain.handle('set-window-bounds', (event, bounds) => {
+        try {
+            if (mainWindow.isDestroyed()) {
+                return { success: false, error: 'Window has been destroyed' };
+            }
+            const { workArea } = screen.getPrimaryDisplay();
+            let x = Math.floor(Number(bounds.x));
+            let y = Math.floor(Number(bounds.y));
+            let width = Math.floor(Number(bounds.width));
+            let height = Math.floor(Number(bounds.height));
+
+            const minW = 200;
+            const minH = 200;
+
+            width = Math.max(minW, Math.min(workArea.width, width));
+            height = Math.max(minH, Math.min(workArea.height, height));
+
+            x = Math.max(workArea.x, Math.min(workArea.x + workArea.width - width, x));
+            y = Math.max(workArea.y, Math.min(workArea.y + workArea.height - height, y));
+
+            mainWindow.setBounds({ x, y, width, height });
+            return { success: true, x, y, width, height };
+        } catch (error) {
+            console.error('Error setting window bounds:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('resize-window-to', (event, { width, height }) => {
+        try {
+            if (mainWindow.isDestroyed()) {
+                return { success: false, error: 'Window has been destroyed' };
+            }
+            const { workAreaSize } = screen.getPrimaryDisplay();
+            const clampedWidth = Math.max(200, Math.min(workAreaSize.width, Math.floor(Number(width)) || 0));
+            const clampedHeight = Math.max(200, Math.min(workAreaSize.height, Math.floor(Number(height)) || 0));
+            mainWindow.setSize(clampedWidth, clampedHeight);
+            return { success: true, width: clampedWidth, height: clampedHeight };
+        } catch (error) {
+            console.error('Error resizing window:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    function animateWindowResize(mainWindow, targetWidth, targetHeight, layoutMode, keepResizable) {
         return new Promise(resolve => {
             // Check if window is destroyed before starting animation
             if (mainWindow.isDestroyed()) {
@@ -414,7 +533,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
                     // Check if window is still valid before final operations
                     if (!mainWindow.isDestroyed()) {
-                        mainWindow.setResizable(false);
+                        // Keep window resizable only when Assistant view is active
+                        mainWindow.setResizable(!!keepResizable);
 
                         // Ensure final size is exact
                         mainWindow.setSize(targetWidth, targetHeight);
@@ -495,7 +615,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 console.log('Interrupting current resize animation');
             }
 
-            await animateWindowResize(mainWindow, targetWidth, targetHeight, `${viewName} view (${layoutMode})`);
+            await animateWindowResize(mainWindow, targetWidth, targetHeight, `${viewName} view (${layoutMode})`, viewName === 'assistant');
 
             return { success: true };
         } catch (error) {
