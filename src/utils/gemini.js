@@ -5,14 +5,18 @@ const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
 
 // Conversation tracking variables
-let currentSessionId = null;
-let currentTranscription = '';
-let conversationHistory = [];
-let isInitializingSession = false;
+ let currentSessionId = null;
+ let currentTranscription = '';
+ let conversationHistory = [];
+ let isInitializingSession = false;
 
 // Audio capture variables
-let systemAudioProc = null;
-let messageBuffer = '';
+ let systemAudioProc = null;
+ let messageBuffer = '';
+
+ // Transcription mode gating
+ let transcriptionMode = 'auto';
+ let manualResponseArmed = false;
 
 // Reconnection tracking variables
 let reconnectionAttempts = 0;
@@ -198,6 +202,16 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     isInitializingSession = true;
     sendToRenderer('session-initializing', true);
 
+    // Initialize transcription mode from renderer storage
+    try {
+        const storedMode = await getStoredSetting('selectedTranscriptionMode', 'auto');
+        transcriptionMode = storedMode === 'manual' ? 'manual' : 'auto';
+        console.log('Transcription mode initialized:', transcriptionMode);
+    } catch (e) {
+        console.log('Failed to read transcription mode. Defaulting to auto.');
+        transcriptionMode = 'auto';
+    }
+
     // Store session parameters for reconnection (only if not already reconnecting)
     if (!isReconnection) {
         lastSessionParams = {
@@ -251,14 +265,22 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     }
 
                     if (message.serverContent?.generationComplete) {
-                        sendToRenderer('update-response', messageBuffer);
+                        // In manual mode, suppress auto responses unless explicitly armed
+                        const shouldSuppress = transcriptionMode === 'manual' && !manualResponseArmed;
+                        if (!shouldSuppress) {
+                            sendToRenderer('update-response', messageBuffer);
 
-                        // Save conversation turn when we have both transcription and AI response
-                        if (currentTranscription && messageBuffer) {
-                            saveConversationTurn(currentTranscription, messageBuffer);
-                            currentTranscription = ''; // Reset for next turn
+                            // Save conversation turn when we have both transcription and AI response
+                            if (currentTranscription && messageBuffer) {
+                                saveConversationTurn(currentTranscription, messageBuffer);
+                                currentTranscription = ''; // Reset for next turn
+                            }
+                        } else {
+                            console.log('Manual mode active: suppressed auto response');
                         }
 
+                        // Reset for next turn
+                        manualResponseArmed = false;
                         messageBuffer = '';
                     }
 
@@ -547,6 +569,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: 'No transcription available' };
             }
             console.log('Sending current transcription:', text);
+            // Arm manual response for the next generationComplete
+            manualResponseArmed = true;
             await geminiSessionRef.current.sendRealtimeInput({ text });
             currentTranscription = '';
             sendToRenderer('update-status', 'Transcription sent');
@@ -649,6 +673,18 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: true };
         } catch (error) {
             console.error('Error updating Google Search setting:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Update transcription mode at runtime
+    ipcMain.handle('update-transcription-mode', async (event, mode) => {
+        try {
+            transcriptionMode = mode === 'manual' ? 'manual' : 'auto';
+            console.log('Transcription mode updated to:', transcriptionMode);
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating transcription mode:', error);
             return { success: false, error: error.message };
         }
     });

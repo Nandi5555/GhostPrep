@@ -349,6 +349,18 @@ export class CheatingDaddyApp extends LitElement {
         this.currentView = 'main';
     }
 
+    async handleTranscriptionModeChange(mode) {
+        try {
+            // Persist is handled by CustomizeView; notify main for runtime gating
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                await ipcRenderer.invoke('update-transcription-mode', mode);
+            }
+        } catch (error) {
+            console.error('Failed to update transcription mode:', error);
+        }
+    }
+
     updated(changedProperties) {
         super.updated(changedProperties);
 
@@ -418,6 +430,7 @@ export class CheatingDaddyApp extends LitElement {
                         .advancedMode=${this.advancedMode}
                         .onProfileChange=${profile => this.handleProfileChange(profile)}
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
+                        .onTranscriptionModeChange=${mode => this.handleTranscriptionModeChange(mode)}
                         .onScreenshotIntervalChange=${interval => this.handleScreenshotIntervalChange(interval)}
                         .onImageQualityChange=${quality => this.handleImageQualityChange(quality)}
                         .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}
