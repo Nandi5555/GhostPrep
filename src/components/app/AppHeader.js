@@ -259,15 +259,15 @@ export class AppHeader extends LitElement {
 
     getViewTitle() {
         const titles = {
-            onboarding: 'Welcome to GhostPrep',
-            main: 'GhostPrep',
+            onboarding: 'Welcome to Firefox',
+            main: 'Firefox',
             customize: 'Customize',
             help: 'Help & Shortcuts',
             history: 'Conversation History',
             advanced: 'Advanced Tools',
-            assistant: 'GhostPrep',
+            assistant: 'Firefox',
         };
-        return titles[this.currentView] || 'GhostPrep';
+        return titles[this.currentView] || 'Firefox';
     }
 
     getElapsedTime() {
