@@ -145,7 +145,6 @@ export class MainView extends LitElement {
 
     static properties = {
         onStart: { type: Function },
-        onAPIKeyHelp: { type: Function },
         isInitializing: { type: Boolean },
         onLayoutModeChange: { type: Function },
         showApiKeyError: { type: Boolean },
@@ -154,7 +153,6 @@ export class MainView extends LitElement {
     constructor() {
         super();
         this.onStart = () => {};
-        this.onAPIKeyHelp = () => {};
         this.isInitializing = false;
         this.onLayoutModeChange = () => {};
         this.showApiKeyError = false;
@@ -208,9 +206,6 @@ export class MainView extends LitElement {
         this.onStart();
     }
 
-    handleAPIKeyHelpClick() {
-        this.onAPIKeyHelp();
-    }
 
     handleResetOnboarding() {
         localStorage.removeItem('onboardingCompleted');
@@ -297,10 +292,6 @@ export class MainView extends LitElement {
                     ${this.getStartButtonText()}
                 </button>
             </div>
-            <p class="description">
-                dont have an api key?
-                <span @click=${this.handleAPIKeyHelpClick} class="link">get one here</span>
-            </p>
         `;
     }
 }
