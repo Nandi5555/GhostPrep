@@ -631,8 +631,10 @@ function handleShortcut(shortcutKey) {
             captureManualScreenshot();
         }
     } else if (shortcutKey === 'ctrl+shift+enter' || shortcutKey === 'cmd+shift+enter') {
-        // Sending current transcription
-        audioPauseUntil = Date.now() + 1;
+        // Briefly pause audio streaming to help the model finalize the current utterance
+        audioPauseUntil = Date.now() + 1200; // ~1.2s pause to trigger turn closure
+
+        // Request to send the current transcription (handler will also wait briefly if empty)
         ipcRenderer
             .invoke('send-current-transcription')
             .then(result => {

@@ -13,6 +13,7 @@ const { getSystemPrompt } = require('./prompts');
 // Audio capture variables
  let systemAudioProc = null;
  let messageBuffer = '';
+ let lastStreamLength = 0; // Track streamed length to avoid redundant emits
 
  // Transcription mode gating
  let transcriptionMode = 'auto';
@@ -242,6 +243,15 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                                 messageBuffer += part.text;
                             }
                         }
+
+                        // Stream partial updates as the buffer grows
+                        const shouldSuppressStream = transcriptionMode === 'manual' && !manualResponseArmed;
+                        if (!shouldSuppressStream && messageBuffer.length > lastStreamLength) {
+                            lastStreamLength = messageBuffer.length;
+                            try {
+                                sendToRenderer('update-response-stream', messageBuffer);
+                            } catch (_) {}
+                        }
                     }
 
                     if (message.serverContent?.generationComplete) {
@@ -260,6 +270,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         // Reset for next turn
                         manualResponseArmed = false;
                         messageBuffer = '';
+                        lastStreamLength = 0;
                     }
 
                     if (message.serverContent?.turnComplete) {
@@ -522,10 +533,20 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('send-current-transcription', async event => {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
-            const text = (currentTranscription || '').trim();
+            // Try to use whatever we have; if empty, wait briefly for interim transcription
+            let text = (currentTranscription || '').trim();
+            if (!text) {
+                const deadline = Date.now() + 900; // wait up to ~0.9s for partial transcript
+                while (!text && Date.now() < deadline) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    text = (currentTranscription || '').trim();
+                }
+            }
+
             if (!text) {
                 return { success: false, error: 'No transcription available' };
             }
+
             // Arm manual response for the next generationComplete
             manualResponseArmed = true;
             await geminiSessionRef.current.sendRealtimeInput({ text });
