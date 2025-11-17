@@ -150,8 +150,13 @@ export class CheatingDaddyApp extends LitElement {
         // Set up IPC listeners if needed
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
+            // Final responses
             ipcRenderer.on('update-response', (_, response) => {
-                this.setResponse(response);
+                this.handleResponseFinal(response);
+            });
+            // Streaming partial updates
+            ipcRenderer.on('update-response-stream', (_, partial) => {
+                this.handleResponseStream(partial);
             });
             ipcRenderer.on('update-status', (_, status) => {
                 this.setStatus(status);
@@ -170,6 +175,7 @@ export class CheatingDaddyApp extends LitElement {
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.removeAllListeners('update-response');
+            ipcRenderer.removeAllListeners('update-response-stream');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
         }
@@ -204,6 +210,80 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         this.requestUpdate();
+    }
+
+    // --- Streaming support ---
+    _isStreaming = false;
+    _streamTargetText = '';
+    _typingInterval = null;
+    _typingCharsPerTick = 3; // smooth and fast typing illusion
+
+    handleResponseStream(partial) {
+        try {
+            if (!partial || typeof partial !== 'string') return;
+
+            // Start streaming on first chunk by creating a new response entry
+            if (!this._isStreaming) {
+                this._isStreaming = true;
+                this._streamTargetText = partial;
+                this.responses.push('');
+                this.currentResponseIndex = this.responses.length - 1;
+                // Start typewriter loop
+                if (this._typingInterval) clearInterval(this._typingInterval);
+                this._typingInterval = setInterval(() => this._applyTyping(), 25);
+            } else {
+                // Update target to latest buffered text
+                this._streamTargetText = partial;
+            }
+            this.requestUpdate();
+        } catch (e) {
+            console.warn('handleResponseStream error:', e);
+        }
+    }
+
+    handleResponseFinal(finalText) {
+        try {
+            if (typeof finalText !== 'string') return;
+            // Ensure any remaining text is flushed
+            if (this.responses.length > 0) {
+                const idx = this.responses.length - 1;
+                this.responses[idx] = finalText;
+                this.currentResponseIndex = idx;
+            } else {
+                // Fallback in case streaming wasn't active
+                this.responses.push(finalText);
+                this.currentResponseIndex = this.responses.length - 1;
+            }
+        } finally {
+            // Stop streaming state
+            this._isStreaming = false;
+            if (this._typingInterval) {
+                clearInterval(this._typingInterval);
+                this._typingInterval = null;
+            }
+            this.requestUpdate();
+        }
+    }
+
+    _applyTyping() {
+        try {
+            if (!this._isStreaming || this.responses.length === 0) return;
+            const idx = this.responses.length - 1;
+            const current = this.responses[idx] || '';
+            const target = this._streamTargetText || '';
+
+            if (current.length >= target.length) {
+                return; // wait for more target text
+            }
+
+            const nextLen = Math.min(current.length + this._typingCharsPerTick, target.length);
+            const next = target.slice(0, nextLen);
+            this.responses[idx] = next;
+            this.currentResponseIndex = idx;
+            this.requestUpdate();
+        } catch (e) {
+            console.warn('applyTyping error:', e);
+        }
     }
 
     // Header event handlers
@@ -452,6 +532,7 @@ export class CheatingDaddyApp extends LitElement {
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
                         .selectedProfile=${this.selectedProfile}
+                        .isStreaming=${this._isStreaming}
                         .onSendText=${message => this.handleSendText(message)}
                         @response-index-changed=${this.handleResponseIndexChanged}
                     ></assistant-view>
