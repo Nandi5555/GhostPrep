@@ -82,19 +82,23 @@ export class CheatingDaddyApp extends LitElement {
             transform: translateY(10px);
         }
 
+        /* Global custom scrollbars (5px track, visually 3px thumb) */
         ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
         }
 
         ::-webkit-scrollbar-track {
             background: var(--scrollbar-background);
-            border-radius: 3px;
+            border-radius: 6px;
         }
 
         ::-webkit-scrollbar-thumb {
             background: var(--scrollbar-thumb);
-            border-radius: 3px;
+            border-radius: 6px;
+            border: 1px solid transparent; /* create 3px-like visual in 5px track */
+            background-clip: padding-box;
+            transition: background-color 0.2s ease;
         }
 
         ::-webkit-scrollbar-thumb:hover {
@@ -118,6 +122,8 @@ export class CheatingDaddyApp extends LitElement {
         advancedMode: { type: Boolean },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
+        // New: prompt configuration panel open state
+        promptPanelOpen: { type: Boolean },
     };
 
     constructor() {
@@ -139,6 +145,7 @@ export class CheatingDaddyApp extends LitElement {
         this.currentResponseIndex = -1;
         this._viewInstances = new Map();
         this._isClickThrough = false;
+        this.promptPanelOpen = false;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -195,6 +202,45 @@ export class CheatingDaddyApp extends LitElement {
         window.cheddar.getLayoutMode = () => {
             return this.layoutMode;
         };
+
+        // Provide browser-preview stubs for Electron renderer functions when unavailable
+        const isMac = navigator.platform.includes('Mac');
+        const isLinux = navigator.platform.includes('Linux');
+
+        if (typeof window.cheddar.initializeGemini !== 'function') {
+            window.cheddar.initializeGemini = async () => true;
+        }
+        if (typeof window.cheddar.startCapture !== 'function') {
+            window.cheddar.startCapture = () => {};
+        }
+        if (typeof window.cheddar.stopCapture !== 'function') {
+            window.cheddar.stopCapture = () => {};
+        }
+        if (typeof window.cheddar.sendTextMessage !== 'function') {
+            window.cheddar.sendTextMessage = async () => ({ success: true });
+        }
+        if (typeof window.cheddar.getAllConversationSessions !== 'function') {
+            window.cheddar.getAllConversationSessions = async () => [];
+        }
+        if (typeof window.cheddar.getConversationSession !== 'function') {
+            window.cheddar.getConversationSession = async () => null;
+        }
+        if (typeof window.cheddar.initConversationStorage !== 'function') {
+            window.cheddar.initConversationStorage = async () => {};
+        }
+        if (typeof window.cheddar.getContentProtection !== 'function') {
+            // Default to true so preview behaves like protected content
+            window.cheddar.getContentProtection = () => true;
+        }
+        if (typeof window.cheddar.e !== 'function') {
+            window.cheddar.e = () => document.getElementById('cheddar');
+        }
+        if (typeof window.cheddar.isMacOS === 'undefined') {
+            window.cheddar.isMacOS = isMac;
+        }
+        if (typeof window.cheddar.isLinux === 'undefined') {
+            window.cheddar.isLinux = isLinux;
+        }
     }
 
     setStatus(text) {
@@ -214,9 +260,12 @@ export class CheatingDaddyApp extends LitElement {
 
     // --- Streaming support ---
     _isStreaming = false;
-    _streamTargetText = '';
-    _typingInterval = null;
-    _typingCharsPerTick = 3; // smooth and fast typing illusion
+    _streamCumulativeTarget = '';
+    _typingInterval = null; // no longer used; streaming handled in AssistantView
+    _typingCharsPerTick = 1; // legacy; not used
+    _streamSession = 0;
+    _lastStreamDelta = '';
+    _streamIsFinal = false;
 
     handleResponseStream(partial) {
         try {
@@ -225,15 +274,17 @@ export class CheatingDaddyApp extends LitElement {
             // Start streaming on first chunk by creating a new response entry
             if (!this._isStreaming) {
                 this._isStreaming = true;
-                this._streamTargetText = partial;
+                this._streamCumulativeTarget = partial;
                 this.responses.push('');
                 this.currentResponseIndex = this.responses.length - 1;
-                // Start typewriter loop
-                if (this._typingInterval) clearInterval(this._typingInterval);
-                this._typingInterval = setInterval(() => this._applyTyping(), 25);
+                // Signal new stream session to AssistantView
+                this._streamSession++;
+                this._lastStreamDelta = partial;
+                this._streamIsFinal = false;
             } else {
-                // Update target to latest buffered text
-                this._streamTargetText = partial;
+                // Append new delta chunk to cumulative target and forward delta
+                this._streamCumulativeTarget += partial;
+                this._lastStreamDelta = partial;
             }
             this.requestUpdate();
         } catch (e) {
@@ -254,14 +305,12 @@ export class CheatingDaddyApp extends LitElement {
                 this.responses.push(finalText);
                 this.currentResponseIndex = this.responses.length - 1;
             }
-        } finally {
-            // Stop streaming state
-            this._isStreaming = false;
-            if (this._typingInterval) {
-                clearInterval(this._typingInterval);
-                this._typingInterval = null;
-            }
+            // Do NOT end streaming immediately; allow AssistantView to type to completion
+            this._streamIsFinal = true;
+            this._isStreaming = true;
             this.requestUpdate();
+        } finally {
+            // no-op
         }
     }
 
@@ -270,7 +319,7 @@ export class CheatingDaddyApp extends LitElement {
             if (!this._isStreaming || this.responses.length === 0) return;
             const idx = this.responses.length - 1;
             const current = this.responses[idx] || '';
-            const target = this._streamTargetText || '';
+            const target = this._streamCumulativeTarget || '';
 
             if (current.length >= target.length) {
                 return; // wait for more target text
@@ -284,6 +333,19 @@ export class CheatingDaddyApp extends LitElement {
         } catch (e) {
             console.warn('applyTyping error:', e);
         }
+    }
+
+    handleStreamFinished() {
+        // End the streaming state after AssistantView typed all characters
+        this._isStreaming = false;
+        this._streamIsFinal = false;
+        this._lastStreamDelta = '';
+        this._streamCumulativeTarget = '';
+        if (this._typingInterval) {
+            clearInterval(this._typingInterval);
+            this._typingInterval = null;
+        }
+        this.requestUpdate();
     }
 
     // Header event handlers
@@ -533,7 +595,13 @@ export class CheatingDaddyApp extends LitElement {
                         .currentResponseIndex=${this.currentResponseIndex}
                         .selectedProfile=${this.selectedProfile}
                         .isStreaming=${this._isStreaming}
+                        .streamDelta=${this._lastStreamDelta}
+                        .streamSession=${this._streamSession}
+                        .streamIsFinal=${this._streamIsFinal}
                         .onSendText=${message => this.handleSendText(message)}
+                        .promptPanelOpen=${this.promptPanelOpen}
+                        @close-prompt-panel=${() => this.handleClosePromptPanel()}
+                        @stream-finished=${() => this.handleStreamFinished()}
                         @response-index-changed=${this.handleResponseIndexChanged}
                     ></assistant-view>
                 `;
@@ -563,6 +631,7 @@ export class CheatingDaddyApp extends LitElement {
                         .onCloseClick=${() => this.handleClose()}
                         .onBackClick=${() => this.handleBackClick()}
                         .onHideToggleClick=${() => this.handleHideToggle()}
+                        .onDocumentClick=${() => this.handlePromptConfigOpen()}
                         ?isClickThrough=${this._isClickThrough}
                     ></app-header>
                     <div class="${mainContentClass}">
@@ -597,6 +666,17 @@ export class CheatingDaddyApp extends LitElement {
             }
         }
 
+        this.requestUpdate();
+    }
+
+    // Prompt configuration panel controls (must be inside class)
+    handlePromptConfigOpen() {
+        this.promptPanelOpen = true;
+        this.requestUpdate();
+    }
+
+    handleClosePromptPanel() {
+        this.promptPanelOpen = false;
         this.requestUpdate();
     }
 }

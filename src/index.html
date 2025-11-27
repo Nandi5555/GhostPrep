@@ -104,6 +104,15 @@
         <script type="module" src="components/app/CheatingDaddyApp.js"></script>
 
         <cheating-daddy-app id="cheddar"></cheating-daddy-app>
-        <script src="utils/renderer.js"></script>
+        <script>
+            (function () {
+                var isElectron = !!(window.process && window.process.versions && window.process.versions.electron);
+                if (isElectron) {
+                    var s = document.createElement('script');
+                    s.src = 'utils/renderer.js';
+                    document.head.appendChild(s);
+                }
+            })();
+        </script>
     </body>
 </html>

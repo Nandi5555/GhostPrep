@@ -98,7 +98,7 @@ async function getEnabledTools() {
     const tools = [];
 
     // Check if Google Search is enabled (default: true)
-    const googleSearchEnabled = await getStoredSetting('googleSearchEnabled', 'true');
+    const googleSearchEnabled = await getStoredSetting('googleSearchEnabled', 'false');
 
     if (googleSearchEnabled === 'true') {
         tools.push({ googleSearch: {} });
@@ -112,7 +112,7 @@ async function getStoredSetting(key, defaultValue) {
         const windows = BrowserWindow.getAllWindows();
         if (windows.length > 0) {
             // Wait a bit for the renderer to be ready
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 20));
 
             // Try to get setting from renderer process localStorage
             const value = await windows[0].webContents.executeJavaScript(`
@@ -246,11 +246,16 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                         // Stream partial updates as the buffer grows
                         const shouldSuppressStream = transcriptionMode === 'manual' && !manualResponseArmed;
-                        if (!shouldSuppressStream && messageBuffer.length > lastStreamLength) {
-                            lastStreamLength = messageBuffer.length;
-                            try {
-                                sendToRenderer('update-response-stream', messageBuffer);
-                            } catch (_) {}
+                        if (!shouldSuppressStream) {
+                            const prevLen = lastStreamLength;
+                            const nextLen = messageBuffer.length;
+                            if (nextLen > prevLen) {
+                                const delta = messageBuffer.slice(prevLen, nextLen);
+                                try {
+                                    sendToRenderer('update-response-stream', delta);
+                                } catch (_) {}
+                                lastStreamLength = nextLen;
+                            }
                         }
                     }
 
@@ -536,7 +541,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             // Try to use whatever we have; if empty, wait briefly for interim transcription
             let text = (currentTranscription || '').trim();
             if (!text) {
-                const deadline = Date.now() + 900; // wait up to ~0.9s for partial transcript
+                const deadline = Date.now() + 250; // tighter wait for lower latency
                 while (!text && Date.now() < deadline) {
                     await new Promise(resolve => setTimeout(resolve, 50));
                     text = (currentTranscription || '').trim();
