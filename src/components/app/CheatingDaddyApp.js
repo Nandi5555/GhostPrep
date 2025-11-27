@@ -51,16 +51,15 @@ export class CheatingDaddyApp extends LitElement {
             border-radius: var(--content-border-radius);
             transition: all 0.15s ease-out;
             background: var(--main-content-background);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
         }
 
         .main-content.with-border {
             border: 1px solid var(--border-color);
         }
 
-        .main-content.assistant-view {
-            padding: 10px;
-            border: none;
-        }
+        .main-content.assistant-view { padding: 10px; border: 1px solid var(--border-color); }
 
         .main-content.onboarding-view {
             padding: 0;
@@ -124,6 +123,8 @@ export class CheatingDaddyApp extends LitElement {
         _isClickThrough: { state: true },
         // New: prompt configuration panel open state
         promptPanelOpen: { type: Boolean },
+        transcriptText: { type: String },
+        activeAssistantTab: { type: String },
     };
 
     constructor() {
@@ -146,6 +147,8 @@ export class CheatingDaddyApp extends LitElement {
         this._viewInstances = new Map();
         this._isClickThrough = false;
         this.promptPanelOpen = false;
+        this.transcriptText = '';
+        this.activeAssistantTab = 'chat';
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -170,6 +173,16 @@ export class CheatingDaddyApp extends LitElement {
             });
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
+            });
+            ipcRenderer.on('update-transcript-stream', (_, delta) => {
+                if (typeof delta === 'string' && delta.length) {
+                    this.transcriptText += delta;
+                    this.requestUpdate();
+                }
+            });
+            ipcRenderer.on('transcript-turn-complete', () => {
+                this.transcriptText += '\n';
+                this.requestUpdate();
             });
         }
 
@@ -420,6 +433,7 @@ export class CheatingDaddyApp extends LitElement {
         }
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.transcriptText = '';
         this.startTime = Date.now();
         this.currentView = 'assistant';
     }
@@ -597,12 +611,17 @@ export class CheatingDaddyApp extends LitElement {
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
                         .selectedProfile=${this.selectedProfile}
+                        .selectedLanguage=${this.selectedLanguage}
+                        .statusText=${this.statusText}
                         .isStreaming=${this._isStreaming}
                         .streamDelta=${this._lastStreamDelta}
                         .streamSession=${this._streamSession}
                         .streamIsFinal=${this._streamIsFinal}
+                        .activeTab=${this.activeAssistantTab}
+                        .transcriptText=${this.transcriptText}
                         .onSendText=${message => this.handleSendText(message)}
                         .promptPanelOpen=${this.promptPanelOpen}
+                        .onTabChange=${tab => this.handleAssistantTabChange(tab)}
                         @close-prompt-panel=${() => this.handleClosePromptPanel()}
                         @stream-finished=${() => this.handleStreamFinished()}
                         @response-index-changed=${this.handleResponseIndexChanged}
@@ -680,6 +699,11 @@ export class CheatingDaddyApp extends LitElement {
 
     handleClosePromptPanel() {
         this.promptPanelOpen = false;
+        this.requestUpdate();
+    }
+
+    handleAssistantTabChange(tab) {
+        this.activeAssistantTab = tab === 'transcript' ? 'transcript' : 'chat';
         this.requestUpdate();
     }
 }

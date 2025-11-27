@@ -22,6 +22,8 @@ export class AssistantView extends LitElement {
             background: var(--main-content-background);
             padding: 16px;
             scroll-behavior: smooth;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-color);
         }
 
         /* Markdown styling */
@@ -236,6 +238,10 @@ export class AssistantView extends LitElement {
             gap: 10px;
             margin-top: 10px;
             align-items: center;
+            background: var(--input-background);
+            border: 1px solid var(--button-border);
+            border-radius: 12px;
+            padding: 8px;
         }
 
         .text-input-container input {
@@ -324,11 +330,11 @@ export class AssistantView extends LitElement {
         }
 
         .nav-button {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.06);
             color: white;
-            border: none;
+            border: 1px solid var(--button-border);
             padding: 4px;
-            border-radius: 50%;
+            border-radius: 10px;
             font-size: 12px;
             display: flex;
             align-items: center;
@@ -337,9 +343,9 @@ export class AssistantView extends LitElement {
             justify-content: center;
         }
 
-        .nav-button:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
+        .nav-button:hover { background: var(--glass-hover-bg); }
+        .nav-button { backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease; }
+        .nav-button:active { transform: translateY(1px); }
 
         .nav-button:disabled {
             opacity: 0.3;
@@ -356,6 +362,24 @@ export class AssistantView extends LitElement {
             min-width: 60px;
             text-align: center;
         }
+
+        .tabbar { display: flex; gap: 8px; align-items: center; margin: 0 0 8px 0; }
+        .tab-btn {
+            background: var(--glass-bg);
+            color: var(--text-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+            box-shadow: var(--glass-shadow);
+            transition: background-color 0.2s ease, transform 0.12s ease;
+        }
+        .tab-btn:hover { background: var(--glass-hover-bg); }
+        .tab-btn:active { transform: translateY(1px); }
+        .tab-btn.active { box-shadow: 0 0 0 2px var(--focus-border-color, #007aff); }
+        
+        .send-primary { background: var(--text-input-button-hover); color: #fff; border: 1px solid var(--button-border); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
 
         /* Syntax highlighting (highlight.js inspired) */
         pre code.hljs {
@@ -419,21 +443,9 @@ export class AssistantView extends LitElement {
             margin-left: 10px;
             flex-wrap: wrap;
         }
-        .prompt-button {
-            background: transparent;
-            color: var(--text-color);
-            border: 1px solid var(--button-border);
-            box-shadow: 0 0 0 2px white; /* white outline */
-            border-radius: 999px; /* max round */
-            padding: 6px 10px;
-            font-size: 12px;
-            line-height: 1;
-            cursor: default;
-            transition: box-shadow 0.15s ease, background-color 0.15s ease;
-        }
-        .prompt-button:hover {
-            background: rgba(255, 255, 255, 0.06);
-        }
+        .prompt-button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); border-radius: 999px; padding: 6px 10px; font-size: 12px; line-height: 1; cursor: default; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease, box-shadow 0.2s ease; }
+        .prompt-button:hover { background: var(--glass-hover-bg); }
+        .prompt-button:active { transform: translateY(1px); }
         .prompt-button.pulse {
             box-shadow: 0 0 0 2px var(--focus-border-color, #007aff); /* blue outline on click */
         }
@@ -574,6 +586,8 @@ export class AssistantView extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         selectedProfile: { type: String },
+        selectedLanguage: { type: String },
+        statusText: { type: String },
         onSendText: { type: Function },
         isStreaming: { type: Boolean },
         autoScrollEnabled: { type: Boolean },
@@ -582,6 +596,9 @@ export class AssistantView extends LitElement {
         streamDelta: { type: String },
         streamSession: { type: Number },
         streamIsFinal: { type: Boolean },
+        activeTab: { type: String },
+        transcriptText: { type: String },
+        onTabChange: { type: Function },
     };
 
     constructor() {
@@ -589,6 +606,8 @@ export class AssistantView extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.selectedProfile = 'interview';
+        this.selectedLanguage = 'en-US';
+        this.statusText = '';
         this.onSendText = () => {};
         this.isStreaming = false;
         this.streamDelta = '';
@@ -603,6 +622,9 @@ export class AssistantView extends LitElement {
         this.promptButtons = [];
         this.editablePrompts = [];
         this._lastPromptClickTs = 0;
+        this.activeTab = 'chat';
+        this.transcriptText = '';
+        this.onTabChange = () => {};
 
         // Internal streaming state (typewriter engine)
         this._streamTypedText = '';
@@ -903,9 +925,9 @@ export class AssistantView extends LitElement {
         el.style.height = `${newHeight}px`;
     }
 
-    scrollToBottom() {
+    scrollToBottom(containerId) {
         setTimeout(() => {
-            const container = this.shadowRoot.querySelector('.response-container');
+            const container = this.shadowRoot.querySelector(`#${containerId}`);
             if (container) {
                 container.scrollTop = container.scrollHeight;
             }
@@ -915,6 +937,7 @@ export class AssistantView extends LitElement {
     firstUpdated() {
         super.firstUpdated();
         this.updateResponseContent();
+        this.updateTranscriptContent();
         // Do not auto-resize on first render; keep compact initial height.
     }
 
@@ -940,6 +963,13 @@ export class AssistantView extends LitElement {
         if (changedProperties.has('promptPanelOpen') && this.promptPanelOpen) {
             this.openPromptPanel();
         }
+        if (changedProperties.has('transcriptText')) {
+            this.updateTranscriptContent();
+        }
+        if (changedProperties.has('activeTab')) {
+            if (this.activeTab === 'transcript') this.updateTranscriptContent();
+            else this.updateResponseContent();
+        }
     }
 
     updateResponseContent() {
@@ -962,10 +992,17 @@ export class AssistantView extends LitElement {
             }
 
             // Keep the latest content visible during streaming
-            if (this.autoScrollEnabled) this.scrollToBottom();
+            if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
         } else {
         console.warn('Response container not found');
         }
+    }
+
+    updateTranscriptContent() {
+        const container = this.shadowRoot?.querySelector('#transcriptContainer');
+        if (!container) return;
+        container.textContent = this.transcriptText || '';
+        if (this.autoScrollEnabled) this.scrollToBottom('transcriptContainer');
     }
 
     // --- Streaming engine (typewriter) ---
@@ -1045,7 +1082,7 @@ export class AssistantView extends LitElement {
             localStorage.setItem('assistantAutoScroll', checked ? 'true' : 'false');
         } catch (_) {}
         if (checked) {
-            this.scrollToBottom();
+            this.scrollToBottom(this.activeTab==='transcript'?'transcriptContainer':'responseContainer');
         }
     }
 
@@ -1142,7 +1179,12 @@ export class AssistantView extends LitElement {
         }
 
         return html`
-            <div class="response-container" id="responseContainer"></div>
+            <div class="tabbar">
+                <button class="tab-btn ${this.activeTab==='chat'?'active':''}" @click=${() => { this.activeTab='chat'; this.onTabChange('chat'); this.requestUpdate(); }}>Chat</button>
+                <button class="tab-btn ${this.activeTab==='transcript'?'active':''}" @click=${() => { this.activeTab='transcript'; this.onTabChange('transcript'); this.requestUpdate(); }}>Transcript</button>
+            </div>
+            <div class="response-container" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
+            <div class="response-container" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
 
             <div class="text-input-container">
                 <button class="nav-button" @click=${this.navigateToPreviousResponse} ?disabled=${this.currentResponseIndex <= 0}>
@@ -1176,6 +1218,7 @@ export class AssistantView extends LitElement {
                         <path d="M9 6L15 12L9 18" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
                     </svg>
                 </button>
+                <button class="send-primary" @click=${() => this.handleSendText()}>Send</button>
             </div>
             <div class="assistant-toggles">
                 <label class="assistant-toggle-label">

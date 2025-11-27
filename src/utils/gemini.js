@@ -232,10 +232,10 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                 onmessage: function (message) {
                     console.log('----------------', message);
 
-                    // Handle transcription input
                     if (message.serverContent?.inputTranscription?.text) {
-                        currentTranscription += message.serverContent.inputTranscription.text;
-                        console.log("✏✏✏✏>", currentTranscription);
+                        const t = message.serverContent.inputTranscription.text;
+                        currentTranscription += t;
+                        try { sendToRenderer('update-transcript-stream', t); } catch (_) {}
                     }
 
                     // Handle AI model response
@@ -283,6 +283,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                     if (message.serverContent?.turnComplete) {
                         sendToRenderer('update-status', 'Listening...');
+                        try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
                     }
                 },
                 onerror: function (e) {

@@ -16,6 +16,8 @@ export class AppHeader extends LitElement {
             border: 1px solid var(--border-color);
             background: var(--header-background);
             border-radius: var(--border-radius);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
         }
 
         .header-title {
@@ -37,38 +39,17 @@ export class AppHeader extends LitElement {
             color: var(--header-actions-color);
         }
 
-        .button {
-            background: var(--button-background);
-            color: var(--text-color);
-            border: 1px solid var(--button-border);
-            padding: var(--header-button-padding);
-            border-radius: 8px;
-            font-size: var(--header-font-size-small);
-            font-weight: 500;
-        }
+        .button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); padding: var(--header-button-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease; }
 
-        .icon-button {
-            background: none;
-            color: var(--icon-button-color);
-            border: none;
-            padding: var(--header-icon-padding);
-            border-radius: 8px;
-            font-size: var(--header-font-size-small);
-            font-weight: 500;
-            display: flex;
-            opacity: 0.6;
-            transition: opacity 0.2s ease;
-        }
+        .icon-button { background: var(--glass-bg); color: var(--icon-button-color); border: 1px solid var(--glass-border); padding: var(--header-icon-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; display: flex; opacity: 0.85; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.12s ease; }
 
         .icon-button svg {
             width: var(--icon-size);
             height: var(--icon-size);
         }
 
-        .icon-button:hover {
-            background: var(--hover-background);
-            opacity: 1;
-        }
+        .icon-button:hover { background: var(--glass-hover-bg); opacity: 1; }
+        .icon-button:active { transform: translateY(1px); }
 
         .button:hover {
             background: var(--hover-background);

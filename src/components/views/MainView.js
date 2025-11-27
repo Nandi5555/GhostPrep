@@ -71,24 +71,10 @@ export class MainView extends LitElement {
             }
         }
 
-        .start-button {
-            background: var(--start-button-background);
-            color: var(--start-button-color);
-            border: 1px solid var(--start-button-border);
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
+        .start-button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); padding: 8px 16px; border-radius: 12px; font-size: 13px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease; }
 
-        .start-button:hover {
-            background: var(--start-button-hover-background);
-            border-color: var(--start-button-hover-border);
-        }
+        .start-button:hover { background: var(--glass-hover-bg); }
+        .start-button:active { transform: translateY(1px); }
 
         .start-button.initializing {
             opacity: 0.5;
