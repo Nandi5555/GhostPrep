@@ -8,7 +8,7 @@ let audioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
   const AUDIO_CHUNK_DURATION = 0.05; // seconds
-  const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
+  const BUFFER_SIZE = 1024; // Smaller buffer for lower-latency callbacks
   let audioPauseUntil = 0;
   // Simple VAD config for auto end-of-speech detection
   let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '600', 10);
@@ -132,15 +132,7 @@ function convertFloat32ToInt16(float32Array) {
     return int16Array;
 }
 
-function arrayBufferToBase64(buffer) {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-}
+// Renderer-side base64 conversion removed to reduce main-thread CPU; raw PCM sent to main.
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     const apiKey = localStorage.getItem('apiKey')?.trim();
@@ -360,12 +352,13 @@ function setupLinuxMicProcessing(micStream) {
         // Auto end-of-speech detection (Linux mic)
         try {
             if (transcriptionModeCached === 'auto') {
-                // Compute RMS amplitude
+                // Compute RMS amplitude (stride 4 for lower CPU)
                 let sum = 0;
-                for (let i = 0; i < inputData.length; i++) {
-                    sum += inputData[i] * inputData[i];
+                for (let i = 0; i < inputData.length; i += 4) {
+                    const v = inputData[i];
+                    sum += v * v;
                 }
-                const rms = Math.sqrt(sum / inputData.length);
+                const rms = Math.sqrt(sum / (inputData.length / 4));
                 const now = Date.now();
 
                 // If below threshold for configured duration and cooldown passed, trigger transcription send
@@ -375,7 +368,7 @@ function setupLinuxMicProcessing(micStream) {
                     const silenceElapsed = now - silenceStart;
                     if (silenceElapsed >= vadSilenceMsToTrigger && now - vadLastTriggerAt >= vadCooldownMs) {
                         vadLastTriggerAt = now;
-                        audioPauseUntil = Date.now() + 300; // brief pause helps model finalize
+                        audioPauseUntil = Date.now() + 120; // brief pause helps model finalize
                         try {
                             const result = await ipcRenderer.invoke('send-current-transcription');
                             if (!result.success) {
@@ -398,10 +391,10 @@ function setupLinuxMicProcessing(micStream) {
         while (audioBuffer.length >= samplesPerChunk) {
             const chunk = audioBuffer.splice(0, samplesPerChunk);
             const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
+            const raw = new Uint8Array(pcmData16.buffer);
 
             await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
+                raw,
                 mimeType: 'audio/pcm;rate=24000',
             });
         }
@@ -432,12 +425,13 @@ function setupWindowsLoopbackProcessing() {
         // Auto end-of-speech detection (Windows loopback)
         try {
             if (transcriptionModeCached === 'auto') {
-                // Compute RMS amplitude
+                // Compute RMS amplitude (stride 4 for lower CPU)
                 let sum = 0;
-                for (let i = 0; i < inputData.length; i++) {
-                    sum += inputData[i] * inputData[i];
+                for (let i = 0; i < inputData.length; i += 4) {
+                    const v = inputData[i];
+                    sum += v * v;
                 }
-                const rms = Math.sqrt(sum / inputData.length);
+                const rms = Math.sqrt(sum / (inputData.length / 4));
                 const now = Date.now();
 
                 if (rms < vadAmplitudeThreshold) {
@@ -446,7 +440,7 @@ function setupWindowsLoopbackProcessing() {
                     const silenceElapsed = now - silenceStart;
                     if (silenceElapsed >= vadSilenceMsToTrigger && now - vadLastTriggerAt >= vadCooldownMs) {
                         vadLastTriggerAt = now;
-                        audioPauseUntil = Date.now() + 300; // brief pause helps model finalize
+                        audioPauseUntil = Date.now() + 120; // brief pause helps model finalize
                         try {
                             const result = await ipcRenderer.invoke('send-current-transcription');
                             if (!result.success) {
@@ -468,10 +462,10 @@ function setupWindowsLoopbackProcessing() {
         while (audioBuffer.length >= samplesPerChunk) {
             const chunk = audioBuffer.splice(0, samplesPerChunk);
             const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
+            const raw = new Uint8Array(pcmData16.buffer);
 
             await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
+                raw,
                 mimeType: 'audio/pcm;rate=24000',
             });
         }
@@ -583,7 +577,6 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 async function captureManualScreenshot(imageQuality = null) {
     const quality = imageQuality || currentImageQuality;
     await captureScreenshot(quality, true); // Pass true for isManual
-    await new Promise(resolve => setTimeout(resolve, 2000)); // TODO shitty hack
     await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
         So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
         If its a question about the website, give me the answer no bs, complete answer.

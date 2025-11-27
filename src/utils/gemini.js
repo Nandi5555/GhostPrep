@@ -406,7 +406,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
 
     // macOS audio capture started
 
-    const CHUNK_DURATION = 0.1;
+    const CHUNK_DURATION = 0.05;
     const SAMPLE_RATE = 24000;
     const BYTES_PER_SAMPLE = 2;
     const CHANNELS = 2;
@@ -501,16 +501,46 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         return false;
     });
     // this 
-    ipcMain.handle('send-audio-content', async (event, { data, mimeType }) => {
+    // Audio send queue to prevent overlapping sends and reduce IPC backpressure
+    let audioSendQueue = [];
+    let audioSending = false;
+
+    async function flushAudioQueue() {
+        if (audioSending) return;
+        audioSending = true;
+        try {
+            while (audioSendQueue.length > 0 && geminiSessionRef.current) {
+                const next = audioSendQueue.shift();
+                await geminiSessionRef.current.sendRealtimeInput({ audio: next });
+            }
+        } catch (error) {
+            console.error('Error sending queued audio:', error);
+        } finally {
+            audioSending = false;
+        }
+    }
+
+    ipcMain.handle('send-audio-content', async (event, payload) => {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
-            process.stdout.write('.');
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
+            process.stdout.write('.')
+            let audioPart;
+            if (payload && typeof payload.data === 'string') {
+                audioPart = { data: payload.data, mimeType: payload.mimeType };
+            } else if (payload && payload.raw) {
+                const buf = Buffer.isBuffer(payload.raw) ? payload.raw : Buffer.from(payload.raw);
+                const base64 = buf.toString('base64');
+                audioPart = { data: base64, mimeType: payload.mimeType };
+            } else {
+                return { success: false, error: 'Invalid audio payload' };
+            }
+
+            audioSendQueue.push(audioPart);
+            // Flush asynchronously; do not await per chunk to keep renderer responsive
+            setImmediate(flushAudioQueue);
             return { success: true };
         } catch (error) {
-            console.error('Error sending audio:', error);
+            console.error('Error queuing audio:', error);
             return { success: false, error: error.message };
         }
     });
@@ -550,9 +580,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             process.stdout.write('!');
             let text = (currentTranscription || '').trim();
             if (!text) {
-                const deadline = Date.now() + 250; // tighter wait for lower latency
+                const deadline = Date.now() + 100;
                 while (!text && Date.now() < deadline) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await new Promise(resolve => setTimeout(resolve, 25));
                     text = (currentTranscription || '').trim();
                 }
             }
