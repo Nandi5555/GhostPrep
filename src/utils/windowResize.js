@@ -24,16 +24,3 @@ export async function resizeLayout() {
  * @param {string} tagName - The tag name of the custom element (e.g., 'customize-view')
  * @returns {string} - The view name for resizing
  */
-export function getViewNameFromTag(tagName) {
-    const viewMap = {
-        'customize-view': 'customize',
-        'help-view': 'help',
-        'history-view': 'history',
-        'advanced-view': 'advanced',
-        'main-view': 'main',
-        'assistant-view': 'assistant',
-        'onboarding-view': 'onboarding',
-    };
-
-    return viewMap[tagName] || 'main';
-}

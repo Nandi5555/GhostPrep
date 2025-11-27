@@ -5,7 +5,6 @@ let mediaStream = null;
 let screenshotInterval = null;
 let audioContext = null;
 let audioProcessor = null;
-let micAudioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
   const AUDIO_CHUNK_DURATION = 0.05; // seconds
@@ -21,6 +20,8 @@ let hiddenVideo = null;
 let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
+
+let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode') || 'auto').toLowerCase();
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
@@ -358,8 +359,7 @@ function setupLinuxMicProcessing(micStream) {
 
         // Auto end-of-speech detection (Linux mic)
         try {
-            const mode = (localStorage.getItem('selectedTranscriptionMode') || 'auto').toLowerCase();
-            if (mode === 'auto') {
+            if (transcriptionModeCached === 'auto') {
                 // Compute RMS amplitude
                 let sum = 0;
                 for (let i = 0; i < inputData.length; i++) {
@@ -431,8 +431,7 @@ function setupWindowsLoopbackProcessing() {
 
         // Auto end-of-speech detection (Windows loopback)
         try {
-            const mode = (localStorage.getItem('selectedTranscriptionMode') || 'auto').toLowerCase();
-            if (mode === 'auto') {
+            if (transcriptionModeCached === 'auto') {
                 // Compute RMS amplitude
                 let sum = 0;
                 for (let i = 0; i < inputData.length; i++) {
@@ -802,6 +801,9 @@ window.cheddar = {
     startCapture,
     stopCapture,
     sendTextMessage,
+    setTranscriptionModeCached: mode => {
+        transcriptionModeCached = (mode || 'auto').toLowerCase();
+    },
     handleShortcut,
     // Conversation history functions
     getAllConversationSessions,

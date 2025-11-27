@@ -497,6 +497,9 @@ export class CheatingDaddyApp extends LitElement {
                 const { ipcRenderer } = window.require('electron');
                 await ipcRenderer.invoke('update-transcription-mode', mode);
             }
+            if (window.cheddar && typeof window.cheddar.setTranscriptionModeCached === 'function') {
+                window.cheddar.setTranscriptionModeCached(mode);
+            }
         } catch (error) {
             console.error('Failed to update transcription mode:', error);
         }

@@ -1,28 +1,10 @@
 const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
-const fs = require('node:fs');
-const os = require('os');
 
 let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
-
-function ensureDataDirectories() {
-    const homeDir = os.homedir();
-    const cheddarDir = path.join(homeDir, 'cheddar');
-    const dataDir = path.join(cheddarDir, 'data');
-    const imageDir = path.join(dataDir, 'image');
-    const audioDir = path.join(dataDir, 'audio');
-
-    [cheddarDir, dataDir, imageDir, audioDir].forEach(dir => {
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-    });
-
-    return { imageDir, audioDir };
-}
 
 function createWindow(sendToRenderer, geminiSessionRef) {
     // Get layout preference (default to 'normal')
@@ -666,7 +648,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 }
 
 module.exports = {
-    ensureDataDirectories,
     createWindow,
     getDefaultKeybinds,
     updateGlobalShortcuts,
