@@ -631,8 +631,8 @@ export class AssistantView extends LitElement {
         this._streamTargetText = '';
         this._currentStreamSession = 0;
         this._typingInterval = null;
-        this._typingCharsPerTick = 2; // slightly faster typing cadence
-        this._typingMs = 10; // ~80 chars/sec, comfortable pace
+        this._typingCharsPerTick = 6;
+        this._typingMs = 8;
         this._finalEventEmitted = false;
     }
 

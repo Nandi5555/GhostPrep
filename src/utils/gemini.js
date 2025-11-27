@@ -247,18 +247,17 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             }
                         }
 
-                        // Stream partial updates as the buffer grows
-                        const shouldSuppressStream = transcriptionMode === 'manual' && !manualResponseArmed;
-                        if (!shouldSuppressStream) {
-                            const prevLen = lastStreamLength;
-                            const nextLen = messageBuffer.length;
-                            if (nextLen > prevLen) {
-                                const delta = messageBuffer.slice(prevLen, nextLen);
+                        const prevLen = lastStreamLength;
+                        const nextLen = messageBuffer.length;
+                        if (nextLen > prevLen) {
+                            const delta = messageBuffer.slice(prevLen, nextLen);
+                            const shouldSuppressStream = transcriptionMode === 'manual' && !manualResponseArmed;
+                            if (!shouldSuppressStream) {
                                 try {
                                     sendToRenderer('update-response-stream', delta);
                                 } catch (_) {}
-                                lastStreamLength = nextLen;
                             }
+                            lastStreamLength = nextLen;
                         }
                     }
 

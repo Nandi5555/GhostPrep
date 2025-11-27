@@ -393,10 +393,10 @@ function setupLinuxMicProcessing(micStream) {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const raw = new Uint8Array(pcmData16.buffer);
 
-            await ipcRenderer.invoke('send-audio-content', {
+            ipcRenderer.invoke('send-audio-content', {
                 raw,
                 mimeType: 'audio/pcm;rate=24000',
-            });
+            }).catch(() => {});
         }
     };
 
@@ -464,10 +464,10 @@ function setupWindowsLoopbackProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const raw = new Uint8Array(pcmData16.buffer);
 
-            await ipcRenderer.invoke('send-audio-content', {
+            ipcRenderer.invoke('send-audio-content', {
                 raw,
                 mimeType: 'audio/pcm;rate=24000',
-            });
+            }).catch(() => {});
         }
     };
 
@@ -577,11 +577,14 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 async function captureManualScreenshot(imageQuality = null) {
     const quality = imageQuality || currentImageQuality;
     await captureScreenshot(quality, true); // Pass true for isManual
-    await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
-        So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
-        If its a question about the website, give me the answer no bs, complete answer.
-        If its a mcq question, give me the answer no bs, complete answer.
-        `);
+    // Respect transcription mode: do not auto-send any prompt in manual mode
+    if ((transcriptionModeCached || 'auto') === 'auto') {
+        await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
+            So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
+            If its a question about the website, give me the answer no bs, complete answer.
+            If its a mcq question, give me the answer no bs, complete answer.
+            `);
+    }
 }
 
 // Expose functions to global scope for external access
@@ -768,8 +771,19 @@ function handleShortcut(shortcutKey) {
                 }
             }
         } else {
-            // In other views, take manual screenshot
+            // In other views, take manual screenshot and send current transcription
             captureManualScreenshot();
+            audioPauseUntil = Date.now() + 120;
+            ipcRenderer
+                .invoke('send-current-transcription')
+                .then(result => {
+                    if (!result.success) {
+                        console.error('Failed to send current transcription:', result.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending current transcription:', error);
+                });
         }
     } else if (shortcutKey === 'ctrl+shift+enter' || shortcutKey === 'cmd+shift+enter') {
         // Briefly pause audio streaming to help the model finalize the current utterance
