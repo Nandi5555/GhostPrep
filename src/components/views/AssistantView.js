@@ -516,6 +516,16 @@ export class AssistantView extends LitElement {
             min-height: 64px;
             resize: vertical;
         }
+        /* Thin rounded scrollbars inside prompt editor textareas */
+        .prompt-row textarea {
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35)) var(--scrollbar-track, transparent);
+        }
+        .prompt-row textarea::-webkit-scrollbar { width: 6px; height: 6px; }
+        .prompt-row textarea::-webkit-scrollbar-track { background: var(--scrollbar-track, transparent); border-radius: 8px; }
+        .prompt-row textarea::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35)); border-radius: 8px; }
+        .prompt-row textarea::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.5)); }
+        .prompt-row textarea::-webkit-scrollbar-thumb:active { background: var(--scrollbar-thumb-active, rgba(255, 255, 255, 0.6)); }
         .prompt-panel-actions {
             padding: 10px;
             border-top: 1px solid var(--border-color);
@@ -1092,7 +1102,22 @@ export class AssistantView extends LitElement {
             const raw = localStorage.getItem('assistantPromptButtons');
             const arr = raw ? JSON.parse(raw) : [];
             if (Array.isArray(arr)) {
-                return arr.filter(p => p && typeof p.name === 'string' && typeof p.text === 'string');
+                const cleaned = arr.filter(p => p && typeof p.name === 'string' && typeof p.text === 'string');
+                if (cleaned.length === 0) {
+                    const defaults = [
+                        {
+                            name: 'Assist',
+                            text: 'Listen and check the screen to see what is being asked. Carefully review any code shown and analyze it thoroughly before giving an answer.\n\nIf the question is an output-prediction type, examine the code very closely and provide the exact output. Also include an explanation showing how you arrived at that answer and your reasoning steps.',
+                        },
+                        {
+                            name: 'Code Assistance',
+                            text: 'Carefully review the captured screen and the conversation.\n\nUnderstand the question clearly, then provide a precise and helpful answer.\n\nAlways follow the Custom AI Instructions/Context provided — they override everything else.',
+                        },
+                    ];
+                    this.savePromptButtons(defaults);
+                    return defaults;
+                }
+                return cleaned;
             }
         } catch (_) {}
         return [];
@@ -1117,6 +1142,15 @@ export class AssistantView extends LitElement {
         if ((this.editablePrompts || []).length >= 5) return;
         this.editablePrompts = [...(this.editablePrompts || []), { name: '', text: '' }];
         this.requestUpdate();
+    }
+
+    deletePromptRow(idx) {
+        const list = [...(this.editablePrompts || [])];
+        if (idx >= 0 && idx < list.length) {
+            list.splice(idx, 1);
+            this.editablePrompts = list;
+            this.requestUpdate();
+        }
     }
 
     updatePromptName(idx, e) {
@@ -1245,14 +1279,17 @@ export class AssistantView extends LitElement {
                                   <button class="prompt-action-button" @click=${() => this.closePromptPanel()}>Close</button>
                               </div>
                               <div class="prompt-panel-body">
-                                  ${(this.editablePrompts || []).map(
-                                      (p, idx) => html`
-                                          <div class="prompt-row">
-                                              <input type="text" placeholder="Name" .value=${p.name} @input=${e => this.updatePromptName(idx, e)} />
-                                              <textarea placeholder="Prompt text" .value=${p.text} @input=${e => this.updatePromptText(idx, e)}></textarea>
-                                          </div>
-                                      `
-                                  )}
+                                    ${(this.editablePrompts || []).map(
+                                        (p, idx) => html`
+                                            <div class="prompt-row">
+                                                <input type="text" placeholder="Name" .value=${p.name} @input=${e => this.updatePromptName(idx, e)} />
+                                                <textarea placeholder="Prompt text" .value=${p.text} @input=${e => this.updatePromptText(idx, e)}></textarea>
+                                                <div style="display:flex; justify-content:flex-end; gap:8px;">
+                                                    <button class="prompt-action-button" @click=${() => this.deletePromptRow(idx)}>Delete</button>
+                                                </div>
+                                            </div>
+                                        `
+                                    )}
                                   <button class="prompt-action-button add-prompt-button" @click=${() => this.addPromptRow()} ?disabled=${(this.editablePrompts || []).length >= 5}>
                                       Add prompt
                                   </button>
