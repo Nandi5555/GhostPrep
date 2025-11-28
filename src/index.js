@@ -66,20 +66,4 @@ function setupGeneralIpcHandlers() {
             updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
         }
     });
-
-    ipcMain.handle('update-content-protection', async event => {
-        try {
-            if (mainWindow) {
-                // Get content protection setting from localStorage via window.cheddar
-                const contentProtection = await mainWindow.webContents.executeJavaScript(
-                    'window.cheddar ? window.cheddar.getContentProtection() : true'
-                );
-                mainWindow.setContentProtection(contentProtection);
-            }
-            return { success: true };
-        } catch (error) {
-            console.error('Error updating content protection:', error);
-            return { success: false, error: error.message };
-        }
-    });
 }

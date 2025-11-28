@@ -1,3 +1,16 @@
+const clarityStyle = `**WRITING STYLE — CLARITY & SIMPLICITY**
+- Use plain, everyday language and common words
+- Keep technical accuracy but explain simply; avoid jargon unless required
+- If a term is necessary, give a brief, simple definition
+- Structure responses in a clear order: brief summary → key points → optional example
+- Include a short example or analogy when it helps understanding
+- Be concise yet complete: cover what matters, skip fluff`;
+
+const mainPointRules = `**MAIN POINT HIGHLIGHTING**
+- Begin every answer with: Main Point: **<short key sentence>**
+- Bold only the exact words the user should say first
+- Keep the main point under 12 words and place it on the first line`;
+
 const profilePrompts = {
     interview: {
         intro: `You are an AI-powered interview assistant, designed to act as a discreet on-screen teleprompter. Your mission is to help the user excel in their job interview by providing concise, impactful, and ready-to-speak answers or key talking points. Analyze the ongoing interview dialogue and, crucially, the 'User-provided context' below.`,
@@ -8,6 +21,7 @@ const profilePrompts = {
 - Use **bold** for key points and emphasis
 - Use bullet points (-) for lists when appropriate
 - Focus on the most essential information only`,
+        // appended clarityStyle via buildSystemPrompt
 
         searchUsage: `**SEARCH TOOL USAGE:**
 - If the interviewer mentions **recent events, news, or current trends** (anything from the last 6 months), **ALWAYS use Google search** to get up-to-date information
@@ -162,7 +176,7 @@ Provide only the exact words to say in **markdown format**. Focus on finding win
 };
 
 function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true) {
-    const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements];
+    const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements, '\n\n', clarityStyle, '\n\n', mainPointRules];
 
     // Only add search usage section if Google Search is enabled
     if (googleSearchEnabled) {

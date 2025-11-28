@@ -1,28 +1,10 @@
 const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
-const fs = require('node:fs');
-const os = require('os');
 
 let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
-
-function ensureDataDirectories() {
-    const homeDir = os.homedir();
-    const cheddarDir = path.join(homeDir, 'cheddar');
-    const dataDir = path.join(cheddarDir, 'data');
-    const imageDir = path.join(dataDir, 'image');
-    const audioDir = path.join(dataDir, 'audio');
-
-    [cheddarDir, dataDir, imageDir, audioDir].forEach(dir => {
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-    });
-
-    return { imageDir, audioDir };
-}
 
 function createWindow(sendToRenderer, geminiSessionRef) {
     // Get layout preference (default to 'normal')
@@ -38,6 +20,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         alwaysOnTop: true,
         skipTaskbar: true,
         hiddenInMissionControl: true,
+        show: false,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false, // TODO: change to true
@@ -60,7 +43,6 @@ function createWindow(sendToRenderer, geminiSessionRef) {
     );
 
     mainWindow.setResizable(false);
-    mainWindow.setContentProtection(true);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     // Center window at the top of the screen
@@ -76,11 +58,41 @@ function createWindow(sendToRenderer, geminiSessionRef) {
 
     mainWindow.loadFile(path.join(__dirname, '../index.html'));
 
-    // After window is created, check for layout preference and resize if needed
+    // Helper to read undetectable setting directly from localStorage inside the renderer
+    async function readUndetectableFromStorage() {
+        try {
+            const value = await mainWindow.webContents.executeJavaScript(`(() => {
+                try {
+                    const v = localStorage.getItem('undetectableEnabled');
+                    if (v !== null) return v === 'true';
+                    const legacyCP = localStorage.getItem('contentProtection');
+                    if (legacyCP !== null) return legacyCP === 'true';
+                    const legacyT = localStorage.getItem('undetectableTEnabled');
+                    if (legacyT !== null) return legacyT === 'true';
+                    return false;
+                } catch(e) { return false; }
+            })()`);
+            return !!value;
+        } catch (e) {
+            console.warn('Failed to read undetectable setting from storage:', e);
+            return false;
+        }
+    }
+
+    async function applyUndetectableSetting() {
+        if (mainWindow.isDestroyed()) return;
+        const contentProtection = await readUndetectableFromStorage();
+        try {
+            mainWindow.setContentProtection(!!contentProtection);
+        } catch (e) {
+            console.error('Failed to apply content protection:', e);
+        }
+    }
+
+    // After window is created, check for layout preference and apply content protection before showing
     mainWindow.webContents.once('dom-ready', () => {
-        setTimeout(() => {
-            const defaultKeybinds = getDefaultKeybinds();
-            let keybinds = defaultKeybinds;
+        const defaultKeybinds = getDefaultKeybinds();
+        let keybinds = defaultKeybinds;
 
             mainWindow.webContents
                 .executeJavaScript(
@@ -101,25 +113,27 @@ function createWindow(sendToRenderer, geminiSessionRef) {
                         keybinds = { ...defaultKeybinds, ...savedSettings.keybinds };
                     }
 
-                    // Apply content protection setting via IPC handler
-                    try {
-                        const contentProtection = await mainWindow.webContents.executeJavaScript(
-                            'window.cheddar ? window.cheddar.getContentProtection() : true'
-                        );
-                        mainWindow.setContentProtection(contentProtection);
-                    } catch (error) {
-                        console.error('Error loading content protection:', error);
-                        mainWindow.setContentProtection(true);
-                    }
+                    await applyUndetectableSetting();
 
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    // Show the window after content protection has been applied
+                    try {
+                        mainWindow.showInactive();
+                    } catch (_) {}
                 })
                 .catch(() => {
-                    // Default to content protection enabled
-                    mainWindow.setContentProtection(true);
+                    // Default to content protection OFF (visible)
+                    mainWindow.setContentProtection(false);
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    try {
+                        mainWindow.showInactive();
+                    } catch (_) {}
                 });
-        }, 150);
+    });
+
+    // Re-apply the setting once content fully finishes loading to guard against timing issues
+    mainWindow.webContents.once('did-finish-load', async () => {
+        await applyUndetectableSetting();
     });
 
     setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef);
@@ -388,6 +402,21 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         }
     });
 
+    // Undetectable mode: toggle content protection to hide from screen share
+    ipcMain.handle('set-undetectable-mode', (event, enabled) => {
+        try {
+            if (mainWindow.isDestroyed()) {
+                return { success: false, error: 'Window has been destroyed' };
+            }
+            const on = !!enabled;
+            mainWindow.setContentProtection(on);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting undetectable mode:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // New: IPC helpers for resizing from the renderer
     ipcMain.handle('get-window-size', () => {
         if (mainWindow.isDestroyed()) return { width: 0, height: 0 };
@@ -541,6 +570,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
             // Get current view and layout mode from renderer
             let viewName, layoutMode;
+            let isPromptLibraryOpen = false;
             try {
                 viewName = await event.sender.executeJavaScript(
                     'window.cheddar && window.cheddar.getCurrentView ? window.cheddar.getCurrentView() : "main"'
@@ -549,10 +579,15 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                     (await event.sender.executeJavaScript(
                         'window.cheddar && window.cheddar.getLayoutMode ? window.cheddar.getLayoutMode() : "normal"'
                     )) || 'normal';
+                // Check if the Prompt Library modal is open (boolean or function)
+                isPromptLibraryOpen = await event.sender.executeJavaScript(
+                    '(() => { try { const c = window.cheddar; const v = c && c.isPromptLibraryOpen; return typeof v === "function" ? !!v() : !!v; } catch(e) { return false; } })()'
+                );
             } catch (error) {
                 console.warn('Failed to get view/layout from renderer, using defaults:', error);
                 viewName = 'main';
                 layoutMode = 'normal';
+                isPromptLibraryOpen = false;
             }
 
 
@@ -596,7 +631,13 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
             if (windowResizing) {
             }
 
-            await animateWindowResize(mainWindow, targetWidth, targetHeight, `${viewName} view (${layoutMode})`, viewName === 'assistant');
+            await animateWindowResize(
+                mainWindow,
+                targetWidth,
+                targetHeight,
+                `${viewName} view (${layoutMode})`,
+                viewName === 'assistant' || !!isPromptLibraryOpen
+            );
 
             return { success: true };
         } catch (error) {
@@ -607,7 +648,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 }
 
 module.exports = {
-    ensureDataDirectories,
     createWindow,
     getDefaultKeybinds,
     updateGlobalShortcuts,

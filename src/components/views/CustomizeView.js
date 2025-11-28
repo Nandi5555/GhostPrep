@@ -1,4 +1,11 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import './PromptLibraryModal.js';
+import {
+    getActivePrompt,
+    updatePrompt as updateLibraryPrompt,
+    getActivePromptContentOrLegacy,
+    migrateFromLegacyKey,
+} from '../../utils/promptLibrary.js';
 import { resizeLayout } from '../../utils/windowResize.js';
 
 export class CustomizeView extends LitElement {
@@ -141,6 +148,33 @@ export class CustomizeView extends LitElement {
 
         textarea.form-control::placeholder {
             color: var(--placeholder-color, rgba(255, 255, 255, 0.4));
+        }
+
+        /* Custom thin, modern light-gray scrollbar for the read-only instructions textarea */
+        textarea.form-control {
+            /* Firefox */
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35))
+                var(--scrollbar-track, transparent);
+        }
+        /* WebKit-based browsers (Chromium/Electron/Edge) */
+        textarea.form-control::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        textarea.form-control::-webkit-scrollbar-track {
+            background: var(--scrollbar-track, transparent);
+            border-radius: 8px;
+        }
+        textarea.form-control::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35));
+            border-radius: 8px;
+        }
+        textarea.form-control::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.5));
+        }
+        textarea.form-control::-webkit-scrollbar-thumb:active {
+            background: var(--scrollbar-thumb-active, rgba(255, 255, 255, 0.6));
         }
 
         .profile-option {
@@ -309,6 +343,72 @@ export class CustomizeView extends LitElement {
             user-select: none;
         }
 
+        /* Toggle switch styles */
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: var(--checkbox-background, rgba(255, 255, 255, 0.02));
+            border-radius: 4px;
+            border: 1px solid var(--checkbox-border, rgba(255, 255, 255, 0.06));
+        }
+
+        .switch-input {
+            position: absolute;
+            opacity: 0;
+            width: 1px;
+            height: 1px;
+        }
+
+        .switch-label {
+            width: 42px;
+            height: 24px;
+            background: var(--input-background, rgba(0, 0, 0, 0.3));
+            border: 1px solid var(--input-border, rgba(255, 255, 255, 0.15));
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+        .switch-label::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--text-color, white);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+            transition: transform 0.15s ease;
+        }
+
+        .switch-input:focus + .switch-label {
+            outline: none;
+            border-color: var(--focus-border-color, #007aff);
+            box-shadow: 0 0 0 2px var(--focus-shadow, rgba(0, 122, 255, 0.1));
+        }
+
+        .switch-input:checked + .switch-label {
+            background: var(--focus-border-color, #007aff);
+            border-color: var(--focus-border-color, #007aff);
+        }
+
+        .switch-input:checked + .switch-label::after {
+            transform: translateX(18px);
+        }
+
+        .switch-text {
+            font-weight: 500;
+            font-size: 12px;
+            color: var(--label-color, rgba(255, 255, 255, 0.9));
+            cursor: pointer;
+            user-select: none;
+        }
+
         /* Better focus indicators */
         .form-control:focus-visible {
             outline: none;
@@ -402,21 +502,28 @@ export class CustomizeView extends LitElement {
         selectedProfile: { type: String },
         selectedLanguage: { type: String },
         selectedTranscriptionMode: { type: String },
+        selectedAudioMode: { type: String },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
+        undetectableEnabled: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
         onTranscriptionModeChange: { type: Function },
+        onAudioModeChange: { type: Function },
         onScreenshotIntervalChange: { type: Function },
         onImageQualityChange: { type: Function },
         onLayoutModeChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
+        // Prompt library modal state
+        promptLibraryOpen: { type: Boolean },
+        highlightColor: { type: String },
+        pendingHighlightColor: { type: String },
     };
 
     constructor() {
@@ -424,6 +531,7 @@ export class CustomizeView extends LitElement {
         this.selectedProfile = 'interview';
         this.selectedLanguage = 'en-US';
         this.selectedTranscriptionMode = localStorage.getItem('selectedTranscriptionMode') || 'auto';
+        this.selectedAudioMode = localStorage.getItem('selectedAudioMode') || 'speaker';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
         this.layoutMode = 'normal';
@@ -431,6 +539,7 @@ export class CustomizeView extends LitElement {
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
         this.onTranscriptionModeChange = () => {};
+        this.onAudioModeChange = () => {};
         this.onScreenshotIntervalChange = () => {};
         this.onImageQualityChange = () => {};
         this.onLayoutModeChange = () => {};
@@ -438,6 +547,9 @@ export class CustomizeView extends LitElement {
 
         // Google Search default
         this.googleSearchEnabled = true;
+
+        // Undetectable default OFF; loadUndetectableSettings may override from saved value
+        this.undetectableEnabled = false;
 
         // Advanced mode default
         this.advancedMode = false;
@@ -450,9 +562,17 @@ export class CustomizeView extends LitElement {
 
         this.loadKeybinds();
         this.loadGoogleSearchSettings();
+        this.loadUndetectableSettings();
         this.loadAdvancedModeSettings();
         this.loadBackgroundTransparency();
         this.loadFontSize();
+        this.promptLibraryOpen = false;
+
+        const cs = getComputedStyle(document.documentElement);
+        const defaultHighlight = cs.getPropertyValue('--highlight-color')?.trim() || '#fa6e4e';
+        this.highlightColor = localStorage.getItem('highlightColor') || defaultHighlight;
+        this.pendingHighlightColor = '';
+        this.applyHighlightColor(this.highlightColor);
     }
 
     connectedCallback() {
@@ -461,6 +581,10 @@ export class CustomizeView extends LitElement {
         this.loadLayoutMode();
         // Resize window for this view
         resizeLayout();
+        // Initialize multi-prompt library from legacy key if present
+        try {
+            migrateFromLegacyKey();
+        } catch (_) {}
     }
 
     getProfiles() {
@@ -556,6 +680,13 @@ export class CustomizeView extends LitElement {
         this.onTranscriptionModeChange(this.selectedTranscriptionMode);
     }
 
+    handleAudioModeSelect(e) {
+        this.selectedAudioMode = e.target.value;
+        localStorage.setItem('selectedAudioMode', this.selectedAudioMode);
+        this.onAudioModeChange(this.selectedAudioMode);
+        this.requestUpdate();
+    }
+
     handleScreenshotIntervalSelect(e) {
         this.selectedScreenshotInterval = e.target.value;
         localStorage.setItem('selectedScreenshotInterval', this.selectedScreenshotInterval);
@@ -574,7 +705,66 @@ export class CustomizeView extends LitElement {
     }
 
     handleCustomPromptInput(e) {
-        localStorage.setItem('customPrompt', e.target.value);
+        const active = getActivePrompt();
+        if (active) {
+            updateLibraryPrompt(active.id, { content: e.target.value });
+        } else {
+            localStorage.setItem('customPrompt', e.target.value);
+        }
+    }
+
+    openPromptLibrary() {
+        this.promptLibraryOpen = true;
+        // Mark modal open state for main process sizing logic
+        try {
+            if (!window.cheddar) window.cheddar = {};
+            window.cheddar.isPromptLibraryOpen = true;
+        } catch (_) {}
+
+        // Enable window expansion similar to Assistant view while modal is open
+        try {
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                ipcRenderer.send('view-changed', 'assistant');
+            }
+        } catch (_) {}
+
+        // Trigger size update to apply resizable state
+        try {
+            resizeLayout();
+        } catch (_) {}
+    }
+
+    closePromptLibrary() {
+        this.promptLibraryOpen = false;
+        // Clear modal open state
+        try {
+            if (!window.cheddar) window.cheddar = {};
+            window.cheddar.isPromptLibraryOpen = false;
+        } catch (_) {}
+
+        // Restore normal resizable behavior for Customize view
+        try {
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                ipcRenderer.send('view-changed', 'customize');
+            }
+        } catch (_) {}
+
+        // Update sizes back to view defaults
+        try {
+            resizeLayout();
+        } catch (_) {}
+        // Refresh textarea value after closing
+        this.requestUpdate();
+    }
+
+    getActivePromptText() {
+        try {
+            return getActivePromptContentOrLegacy() || '';
+        } catch (_) {
+            return localStorage.getItem('customPrompt') || '';
+        }
     }
 
     getDefaultKeybinds() {
@@ -779,6 +969,37 @@ export class CustomizeView extends LitElement {
         }
     }
 
+    loadUndetectableSettings() {
+        const undetectableEnabled = localStorage.getItem('undetectableEnabled');
+        if (undetectableEnabled !== null) {
+            this.undetectableEnabled = undetectableEnabled === 'true';
+            return;
+        }
+        // Migration: legacy contentProtection
+        const legacyCP = localStorage.getItem('contentProtection');
+        if (legacyCP !== null) {
+            this.undetectableEnabled = legacyCP === 'true';
+            try {
+                localStorage.setItem('undetectableEnabled', this.undetectableEnabled.toString());
+            } catch (_) {}
+            return;
+        }
+        // Migration: read legacy toggle key if present
+        const legacy = localStorage.getItem('undetectableTEnabled');
+        if (legacy !== null) {
+            this.undetectableEnabled = legacy === 'true';
+            try {
+                localStorage.setItem('undetectableEnabled', this.undetectableEnabled.toString());
+            } catch (_) {}
+            return;
+        }
+        // Default OFF if nothing saved
+        this.undetectableEnabled = false;
+        try {
+            localStorage.setItem('undetectableEnabled', 'false');
+        } catch (_) {}
+    }
+
     async handleGoogleSearchChange(e) {
         this.googleSearchEnabled = e.target.checked;
         localStorage.setItem('googleSearchEnabled', this.googleSearchEnabled.toString());
@@ -793,6 +1014,23 @@ export class CustomizeView extends LitElement {
             }
         }
 
+        this.requestUpdate();
+    }
+
+    async handleUndetectableChange(e) {
+        this.undetectableEnabled = e.target.checked;
+        try {
+            localStorage.setItem('undetectableEnabled', this.undetectableEnabled.toString());
+        } catch (_) {}
+        // Notify main process to apply content protection immediately
+        if (window.require) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                await ipcRenderer.invoke('set-undetectable-mode', this.undetectableEnabled);
+            } catch (error) {
+                console.error('Failed to set undetectable mode via IPC:', error);
+            }
+        }
         this.requestUpdate();
     }
 
@@ -866,6 +1104,34 @@ export class CustomizeView extends LitElement {
         root.style.setProperty('--response-font-size', `${this.fontSize}px`);
     }
 
+    hexToRgba(hex, alpha) {
+        const h = hex.replace('#', '');
+        const r = parseInt(h.substring(0, 2), 16);
+        const g = parseInt(h.substring(2, 4), 16);
+        const b = parseInt(h.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    applyHighlightColor(color) {
+        const root = document.documentElement;
+        root.style.setProperty('--highlight-color', color);
+        root.style.setProperty('--highlight-bg-color', this.hexToRgba(color, 0.16));
+    }
+
+    handleHighlightColorChange(e) {
+        this.pendingHighlightColor = e.target.value;
+        this.requestUpdate();
+    }
+
+    saveHighlightColor() {
+        if (!this.pendingHighlightColor) return;
+        this.highlightColor = this.pendingHighlightColor;
+        localStorage.setItem('highlightColor', this.highlightColor);
+        this.applyHighlightColor(this.highlightColor);
+        this.pendingHighlightColor = '';
+        this.requestUpdate();
+    }
+
     render() {
         const profiles = this.getProfiles();
         const languages = this.getLanguages();
@@ -875,6 +1141,29 @@ export class CustomizeView extends LitElement {
 
         return html`
             <div class="settings-container">
+                <!-- Undetectable Section (Primary) -->
+                <div class="settings-section">
+                    <div class="section-title">
+                        <span>Undetectable</span>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="toggle-group">
+                            <input
+                                type="checkbox"
+                                class="switch-input"
+                                id="undetectable-enabled"
+                                .checked=${this.undetectableEnabled}
+                                @change=${this.handleUndetectableChange}
+                            />
+                            <label for="undetectable-enabled" class="switch-label" aria-label="Enable Undetectable"></label>
+                            <span class="switch-text">Enable Undetectable</span>
+                        </div>
+                        <div class="form-description" style="margin-left: 52px; margin-top: -8px;">
+                            Toggle the main Undetectable feature. Detailed behavior configuration will follow.
+                        </div>
+                    </div>
+                </div>
                 <!-- Profile & Behavior Section -->
                 <div class="settings-section">
                     <div class="section-title">
@@ -901,23 +1190,37 @@ export class CustomizeView extends LitElement {
                         </div>
 
                         <div class="form-group full-width">
-                            <label class="form-label">Custom AI Instructions</label>
+                            <label class="form-label">Custom AI Instructions
+                                <button class="reset-keybinds-button" style="margin-left:8px" @click=${() => this.openPromptLibrary()}>
+                                    Manage Prompts
+                                </button>
+                            </label>
                             <textarea
                                 class="form-control"
                                 placeholder="Add specific instructions for how you want the AI to behave during ${
                                     profileNames[this.selectedProfile] || 'this interaction'
                                 }..."
-                                .value=${localStorage.getItem('customPrompt') || ''}
+                                .value=${this.getActivePromptText()}
                                 rows="4"
-                                @input=${this.handleCustomPromptInput}
+                                readonly
+                                title="Read-only. Use Manage Prompts to edit."
                             ></textarea>
                             <div class="form-description">
                                 Personalize the AI's behavior with specific instructions that will be added to the
-                                ${profileNames[this.selectedProfile] || 'selected profile'} base prompts
+                                ${profileNames[this.selectedProfile] || 'selected profile'} base prompts. This field is read-only — use
+                                "Manage Prompts" to edit.
                             </div>
                         </div>
                     </div>
                 </div>
+
+                ${this.promptLibraryOpen
+                    ? html`<prompt-library-modal
+                            open
+                            @close=${() => this.closePromptLibrary()}
+                            @prompt-saved=${() => this.requestUpdate()}
+                        ></prompt-library-modal>`
+                    : ''}
 
                 <!-- Language & Audio Section -->
                 <div class="settings-section">
@@ -942,6 +1245,20 @@ export class CustomizeView extends LitElement {
                                     )}
                                 </select>
                                 <div class="form-description">Language for speech recognition and AI responses</div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">
+                                    Audio Mode
+                                    <span class="current-selection">${this.selectedAudioMode === 'mic' ? 'Mic' : 'Speaker'}</span>
+                                </label>
+                                <select class="form-control" .value=${this.selectedAudioMode} @change=${this.handleAudioModeSelect}>
+                                    <option value="speaker" ?selected=${this.selectedAudioMode === 'speaker'}>Speaker (Interviewer voice only)</option>
+                                    <option value="mic" ?selected=${this.selectedAudioMode === 'mic'}>Mic (Your voice only)</option>
+                                </select>
+                                <div class="form-description">Choose whether to listen to interviewer (speaker) or your mic</div>
                             </div>
                         </div>
 
@@ -1039,6 +1356,33 @@ export class CustomizeView extends LitElement {
                         </div>
 
 
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="section-title">
+                        <span>Highlight Color</span>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Main Points Highlight</label>
+                                <input
+                                    type="color"
+                                    class="form-control"
+                                    .value=${this.pendingHighlightColor || this.highlightColor}
+                                    @input=${this.handleHighlightColorChange}
+                                />
+                                <div class="form-description">Select the color used to highlight important points.</div>
+                                ${this.pendingHighlightColor && this.pendingHighlightColor !== this.highlightColor
+                                    ? html`<button
+                                            class="reset-keybinds-button"
+                                            style="border-color: ${this.pendingHighlightColor};"
+                                            @click=${this.saveHighlightColor}
+                                        >Save</button>`
+                                    : ''}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1172,6 +1516,8 @@ export class CustomizeView extends LitElement {
                         </div>
                     </div>
                 </div>
+
+                
 
                 <div class="settings-note">
                     💡 Settings are automatically saved as you change them. Changes will take effect immediately or on the next session start.

@@ -98,7 +98,7 @@ async function getEnabledTools() {
     const tools = [];
 
     // Check if Google Search is enabled (default: true)
-    const googleSearchEnabled = await getStoredSetting('googleSearchEnabled', 'true');
+    const googleSearchEnabled = await getStoredSetting('googleSearchEnabled', 'false');
 
     if (googleSearchEnabled === 'true') {
         tools.push({ googleSearch: {} });
@@ -112,7 +112,7 @@ async function getStoredSetting(key, defaultValue) {
         const windows = BrowserWindow.getAllWindows();
         if (windows.length > 0) {
             // Wait a bit for the renderer to be ready
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 20));
 
             // Try to get setting from renderer process localStorage
             const value = await windows[0].webContents.executeJavaScript(`
@@ -223,17 +223,27 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     }
 
     try {
+        let opened = false;
+        let resolveReady;
+        const readyPromise = new Promise(resolve => {
+            resolveReady = resolve;
+        });
+
         const session = await client.live.connect({
             model: 'gemini-live-2.5-flash-preview',
             callbacks: {
                 onopen: function () {
+                    opened = true;
                     sendToRenderer('update-status', 'Live session connected');
+                    try { resolveReady({ ok: true }); } catch (_) {}
                 },
                 onmessage: function (message) {
+                    console.log('----------------', message);
 
-                    // Handle transcription input
                     if (message.serverContent?.inputTranscription?.text) {
-                        currentTranscription += message.serverContent.inputTranscription.text;
+                        const t = message.serverContent.inputTranscription.text;
+                        currentTranscription += t;
+                        try { sendToRenderer('update-transcript-stream', t); } catch (_) {}
                     }
 
                     // Handle AI model response
@@ -241,16 +251,21 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         for (const part of message.serverContent.modelTurn.parts) {
                             if (part.text) {
                                 messageBuffer += part.text;
+                                console.log("✏✏✏✏>", part.text);
                             }
                         }
 
-                        // Stream partial updates as the buffer grows
-                        const shouldSuppressStream = transcriptionMode === 'manual' && !manualResponseArmed;
-                        if (!shouldSuppressStream && messageBuffer.length > lastStreamLength) {
-                            lastStreamLength = messageBuffer.length;
-                            try {
-                                sendToRenderer('update-response-stream', messageBuffer);
-                            } catch (_) {}
+                        const prevLen = lastStreamLength;
+                        const nextLen = messageBuffer.length;
+                        if (nextLen > prevLen) {
+                            const delta = messageBuffer.slice(prevLen, nextLen);
+                            const shouldSuppressStream = transcriptionMode === 'manual' && !manualResponseArmed;
+                            if (!shouldSuppressStream) {
+                                try {
+                                    sendToRenderer('update-response-stream', delta);
+                                } catch (_) {}
+                            }
+                            lastStreamLength = nextLen;
                         }
                     }
 
@@ -275,6 +290,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                     if (message.serverContent?.turnComplete) {
                         sendToRenderer('update-status', 'Listening...');
+                        try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
                     }
                 },
                 onerror: function (e) {
@@ -287,12 +303,13 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             e.message.includes('invalid API key') ||
                             e.message.includes('authentication failed') ||
                             e.message.includes('unauthorized'));
-
+                    
                     if (isApiKeyError) {
                         console.error('Error due to invalid API key - stopping reconnection attempts');
                         lastSessionParams = null; // Clear session params to prevent reconnection
                         reconnectionAttempts = maxReconnectionAttempts; // Stop further attempts
                         sendToRenderer('update-status', 'Error: Invalid API key');
+                        try { resolveReady({ ok: false, reason: 'invalid_key' }); } catch (_) {}
                         return;
                     }
 
@@ -313,6 +330,10 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         lastSessionParams = null; // Clear session params to prevent reconnection
                         reconnectionAttempts = maxReconnectionAttempts; // Stop further attempts
                         sendToRenderer('update-status', 'Session closed: Invalid API key');
+                        // If we never opened, treat as failed initialization
+                        if (!opened) {
+                            try { resolveReady({ ok: false, reason: 'invalid_key' }); } catch (_) {}
+                        }
                         return;
                     }
 
@@ -335,10 +356,19 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                 },
             },
         });
+        // Wait for handshake success or invalid-key failure, with timeout
+        const result = await Promise.race([
+            readyPromise,
+            new Promise(resolve => setTimeout(() => resolve({ ok: false, reason: 'timeout' }), 5000)),
+        ]);
 
         isInitializingSession = false;
         sendToRenderer('session-initializing', false);
-        return session;
+
+        if (result && result.ok) {
+            return session;
+        }
+        return null;
     } catch (error) {
         console.error('Failed to initialize Gemini session:', error);
         isInitializingSession = false;
@@ -397,7 +427,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
 
     // macOS audio capture started
 
-    const CHUNK_DURATION = 0.1;
+    const CHUNK_DURATION = 0.05;
     const SAMPLE_RATE = 24000;
     const BYTES_PER_SAMPLE = 2;
     const CHANNELS = 2;
@@ -461,11 +491,12 @@ function stopMacOSAudioCapture() {
         systemAudioProc = null;
     }
 }
-
+// This will send audio to Gemini in real-time
 async function sendAudioToGemini(base64Data, geminiSessionRef) {
     if (!geminiSessionRef.current) return;
 
     try {
+        process.stdout.write('.');
         await geminiSessionRef.current.sendRealtimeInput({
             audio: {
                 data: base64Data,
@@ -484,21 +515,53 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
         const session = await initializeGeminiSession(apiKey, customPrompt, profile, language);
         if (session) {
+            process.stdout.write('\x1b[36minitialize-gemini\x1b[0m');
             geminiSessionRef.current = session;
             return true;
         }
         return false;
     });
+    // this 
+    // Audio send queue to prevent overlapping sends and reduce IPC backpressure
+    let audioSendQueue = [];
+    let audioSending = false;
 
-    ipcMain.handle('send-audio-content', async (event, { data, mimeType }) => {
+    async function flushAudioQueue() {
+        if (audioSending) return;
+        audioSending = true;
+        try {
+            while (audioSendQueue.length > 0 && geminiSessionRef.current) {
+                const next = audioSendQueue.shift();
+                await geminiSessionRef.current.sendRealtimeInput({ audio: next });
+            }
+        } catch (error) {
+            console.error('Error sending queued audio:', error);
+        } finally {
+            audioSending = false;
+        }
+    }
+
+    ipcMain.handle('send-audio-content', async (event, payload) => {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
+            process.stdout.write('.')
+            let audioPart;
+            if (payload && typeof payload.data === 'string') {
+                audioPart = { data: payload.data, mimeType: payload.mimeType };
+            } else if (payload && payload.raw) {
+                const buf = Buffer.isBuffer(payload.raw) ? payload.raw : Buffer.from(payload.raw);
+                const base64 = buf.toString('base64');
+                audioPart = { data: base64, mimeType: payload.mimeType };
+            } else {
+                return { success: false, error: 'Invalid audio payload' };
+            }
+
+            audioSendQueue.push(audioPart);
+            // Flush asynchronously; do not await per chunk to keep renderer responsive
+            setImmediate(flushAudioQueue);
             return { success: true };
         } catch (error) {
-            console.error('Error sending audio:', error);
+            console.error('Error queuing audio:', error);
             return { success: false, error: error.message };
         }
     });
@@ -507,6 +570,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
 
         try {
+            process.stdout.write('?');
             if (!data || typeof data !== 'string') {
                 console.error('Invalid image data received');
                 return { success: false, error: 'Invalid image data' };
@@ -534,11 +598,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
             // Try to use whatever we have; if empty, wait briefly for interim transcription
+            process.stdout.write('!');
             let text = (currentTranscription || '').trim();
             if (!text) {
-                const deadline = Date.now() + 900; // wait up to ~0.9s for partial transcript
+                const deadline = Date.now() + 100;
                 while (!text && Date.now() < deadline) {
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await new Promise(resolve => setTimeout(resolve, 25));
                     text = (currentTranscription || '').trim();
                 }
             }
@@ -563,6 +628,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
 
         try {
+            process.stdout.write('>');
             if (!text || typeof text !== 'string' || text.trim().length === 0) {
                 return { success: false, error: 'Invalid text message' };
             }
@@ -581,6 +647,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('start-macos-audio', async event => {
         if (process.platform !== 'darwin') {
+            process.stdout.write('x');
             return {
                 success: false,
                 error: 'macOS audio capture only available on macOS',
@@ -598,6 +665,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('stop-macos-audio', async event => {
         try {
+            process.stdout.write('sa');
             stopMacOSAudioCapture();
             return { success: true };
         } catch (error) {
@@ -608,6 +676,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('close-session', async event => {
         try {
+            process.stdout.write('cs');
             stopMacOSAudioCapture();
 
             // Clear session params to prevent reconnection when user closes session
@@ -629,6 +698,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     // Conversation history IPC handlers
     ipcMain.handle('get-current-session', async event => {
         try {
+            process.stdout.write('gcs');
             return { success: true, data: getCurrentSessionData() };
         } catch (error) {
             console.error('Error getting current session:', error);
@@ -638,6 +708,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('start-new-session', async event => {
         try {
+            process.stdout.write('sns');
             initializeNewSession();
             return { success: true, sessionId: currentSessionId };
         } catch (error) {
@@ -648,6 +719,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('update-google-search-setting', async (event, enabled) => {
         try {
+            process.stdout.write('ugss');
             // The setting is already saved in localStorage by the renderer
             // This is just for logging/confirmation
             return { success: true };
@@ -660,6 +732,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     // Update transcription mode at runtime
     ipcMain.handle('update-transcription-mode', async (event, mode) => {
         try {
+            process.stdout.write('utm');
             transcriptionMode = mode === 'manual' ? 'manual' : 'auto';
             return { success: true };
         } catch (error) {

@@ -22,6 +22,8 @@ export class AssistantView extends LitElement {
             background: var(--main-content-background);
             padding: 16px;
             scroll-behavior: smooth;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-color);
         }
 
         /* Markdown styling */
@@ -102,6 +104,54 @@ export class AssistantView extends LitElement {
             border-radius: 0;
         }
 
+        /* Match horizontal/vertical scrollbar styling inside code blocks */
+        .response-container pre {
+            /* Firefox */
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+        .response-container pre::-webkit-scrollbar {
+            width: 3px;   /* vertical scrollbar width */
+            height: 3px;  /* horizontal scrollbar height */
+        }
+        .response-container pre::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+            border-radius: 999px;
+        }
+        .response-container pre::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 999px;
+            border: 1px solid transparent;
+            background-clip: padding-box;
+        }
+        .response-container pre::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
+        }
+
+        /* Ensure inner <code> element scrollbars (horizontal) are equally thin */
+        .response-container pre code {
+            /* Firefox */
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+        .response-container pre code::-webkit-scrollbar {
+            width: 3px;   /* vertical */
+            height: 3px;  /* horizontal */
+        }
+        .response-container pre code::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+            border-radius: 999px;
+        }
+        .response-container pre code::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 999px;
+            border: 1px solid transparent;
+            background-clip: padding-box;
+        }
+        .response-container pre code::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
+        }
+
         .response-container a {
             color: var(--link-color);
             text-decoration: none;
@@ -114,8 +164,8 @@ export class AssistantView extends LitElement {
         .response-container strong,
         .response-container b {
             font-weight: 700;
-            color: #fa6e4eff; /* warm accent for high visibility */
-            background: rgba(255, 209, 102, 0.16);
+            color: var(--highlight-color);
+            background: var(--highlight-bg-color);
             padding: 0 2px;
             border-radius: 4px;
         }
@@ -150,7 +200,8 @@ export class AssistantView extends LitElement {
         }
 
         .response-container::-webkit-scrollbar {
-            width: 8px;
+            width: 5px;
+            height: 5px;
         }
 
         .response-container::-webkit-scrollbar-track {
@@ -187,6 +238,10 @@ export class AssistantView extends LitElement {
             gap: 10px;
             margin-top: 10px;
             align-items: center;
+            background: var(--input-background);
+            border: 1px solid var(--button-border);
+            border-radius: 12px;
+            padding: 8px;
         }
 
         .text-input-container input {
@@ -244,8 +299,22 @@ export class AssistantView extends LitElement {
 
         /* Hide scrollbars in WebKit browsers while keeping scroll functional */
         .text-input-container textarea::-webkit-scrollbar {
-            width: 0;
-            height: 0;
+            width: 5px;
+            height: 5px;
+        }
+        .text-input-container textarea::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+            border-radius: 6px;
+        }
+        .text-input-container textarea::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 6px;
+            border: 1px solid transparent;
+            background-clip: padding-box;
+            transition: background-color 0.2s ease;
+        }
+        .text-input-container textarea::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
         }
 
         .text-input-container button {
@@ -261,11 +330,11 @@ export class AssistantView extends LitElement {
         }
 
         .nav-button {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.06);
             color: white;
-            border: none;
+            border: 1px solid var(--button-border);
             padding: 4px;
-            border-radius: 50%;
+            border-radius: 10px;
             font-size: 12px;
             display: flex;
             align-items: center;
@@ -274,9 +343,9 @@ export class AssistantView extends LitElement {
             justify-content: center;
         }
 
-        .nav-button:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
+        .nav-button:hover { background: var(--glass-hover-bg); }
+        .nav-button { backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease; }
+        .nav-button:active { transform: translateY(1px); }
 
         .nav-button:disabled {
             opacity: 0.3;
@@ -293,6 +362,24 @@ export class AssistantView extends LitElement {
             min-width: 60px;
             text-align: center;
         }
+
+        .tabbar { display: flex; gap: 8px; align-items: center; margin: 0 0 8px 0; }
+        .tab-btn {
+            background: var(--glass-bg);
+            color: var(--text-color);
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+            box-shadow: var(--glass-shadow);
+            transition: background-color 0.2s ease, transform 0.12s ease;
+        }
+        .tab-btn:hover { background: var(--glass-hover-bg); }
+        .tab-btn:active { transform: translateY(1px); }
+        .tab-btn.active { box-shadow: 0 0 0 2px var(--focus-border-color, #007aff); }
+        
+        .send-primary { background: var(--text-input-button-hover); color: #fff; border: 1px solid var(--button-border); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
 
         /* Syntax highlighting (highlight.js inspired) */
         pre code.hljs {
@@ -348,6 +435,140 @@ export class AssistantView extends LitElement {
             cursor: default;
         }
 
+        /* Prompt buttons next to Auto-scroll */
+        .prompt-buttons {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 10px;
+            flex-wrap: wrap;
+        }
+        .prompt-button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); border-radius: 999px; padding: 6px 10px; font-size: 12px; line-height: 1; cursor: default; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease, box-shadow 0.2s ease; }
+        .prompt-button:hover { background: var(--glass-hover-bg); }
+        .prompt-button:active { transform: translateY(1px); }
+        .prompt-button.pulse {
+            box-shadow: 0 0 0 2px var(--focus-border-color, #007aff); /* blue outline on click */
+        }
+
+        /* Right-side sliding modal for prompt configuration */
+        .prompt-panel-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(2px);
+            display: flex;
+            justify-content: flex-end;
+            align-items: stretch;
+            z-index: 9998;
+        }
+        .prompt-panel {
+            width: 340px;
+            max-width: 92vw;
+            height: 100%;
+            background: var(--main-content-background);
+            border-left: 1px solid var(--border-color);
+            border-radius: 8px 0 0 8px;
+            transform: translateX(100%);
+            transition: transform 0.2s ease-out;
+            display: flex;
+            flex-direction: column;
+        }
+        .prompt-panel.open {
+            transform: translateX(0);
+        }
+        .prompt-panel-header {
+            padding: 10px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .prompt-panel-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+        .prompt-panel-body {
+            flex: 1;
+            overflow: auto;
+            padding: 10px;
+        }
+        .prompt-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--card-background);
+            margin-bottom: 10px;
+        }
+        .prompt-row input,
+        .prompt-row textarea {
+            background: var(--input-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+        .prompt-row textarea {
+            min-height: 64px;
+            resize: vertical;
+        }
+        /* Thin rounded scrollbars inside prompt editor textareas */
+        .prompt-row textarea {
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35)) var(--scrollbar-track, transparent);
+        }
+        .prompt-row textarea::-webkit-scrollbar { width: 6px; height: 6px; }
+        .prompt-row textarea::-webkit-scrollbar-track { background: var(--scrollbar-track, transparent); border-radius: 8px; }
+        .prompt-row textarea::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35)); border-radius: 8px; }
+        .prompt-row textarea::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.5)); }
+        .prompt-row textarea::-webkit-scrollbar-thumb:active { background: var(--scrollbar-thumb-active, rgba(255, 255, 255, 0.6)); }
+        .prompt-panel-actions {
+            padding: 10px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .prompt-action-button {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: default;
+        }
+        .prompt-action-button:hover {
+            background: var(--hover-background);
+        }
+        .add-prompt-button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+        /* Modal scrollbar styling */
+        .prompt-panel-body::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        .prompt-panel-body::-webkit-scrollbar-track {
+            background: var(--scrollbar-track);
+            border-radius: 6px;
+        }
+        .prompt-panel-body::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-thumb);
+            border-radius: 6px;
+            border: 1px solid transparent;
+            background-clip: padding-box;
+            transition: background-color 0.2s ease;
+        }
+        .prompt-panel-body::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
+        }
+
         /* Resize handles overlay */
         .resize-overlay {
             position: fixed;
@@ -375,10 +596,19 @@ export class AssistantView extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         selectedProfile: { type: String },
+        selectedLanguage: { type: String },
+        statusText: { type: String },
         onSendText: { type: Function },
         isStreaming: { type: Boolean },
         autoScrollEnabled: { type: Boolean },
-        autoFocusEnabled: { type: Boolean },
+        promptPanelOpen: { type: Boolean },
+        // Streaming inputs from parent component
+        streamDelta: { type: String },
+        streamSession: { type: Number },
+        streamIsFinal: { type: Boolean },
+        activeTab: { type: String },
+        transcriptText: { type: String },
+        onTabChange: { type: Function },
     };
 
     constructor() {
@@ -386,13 +616,34 @@ export class AssistantView extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.selectedProfile = 'interview';
+        this.selectedLanguage = 'en-US';
+        this.statusText = '';
         this.onSendText = () => {};
         this.isStreaming = false;
+        this.streamDelta = '';
+        this.streamSession = 0;
+        this.streamIsFinal = false;
         // Syntax highlighting library instance (loaded in connectedCallback)
         this.hljs = null;
         // Load toggles from localStorage
         this.autoScrollEnabled = localStorage.getItem('assistantAutoScroll') !== 'false';
-        this.autoFocusEnabled = localStorage.getItem('autoFocusOnCtrlEnter') === 'true';
+        // Prompt panel and buttons state
+        this.promptPanelOpen = false;
+        this.promptButtons = [];
+        this.editablePrompts = [];
+        this._lastPromptClickTs = 0;
+        this.activeTab = 'chat';
+        this.transcriptText = '';
+        this.onTabChange = () => {};
+
+        // Internal streaming state (typewriter engine)
+        this._streamTypedText = '';
+        this._streamTargetText = '';
+        this._currentStreamSession = 0;
+        this._typingInterval = null;
+        this._typingCharsPerTick = 6;
+        this._typingMs = 8;
+        this._finalEventEmitted = false;
     }
 
     getProfileNames() {
@@ -520,11 +771,30 @@ export class AssistantView extends LitElement {
         }
     }
 
+    hexToRgba(hex, alpha) {
+        const h = hex.replace('#', '');
+        const r = parseInt(h.substring(0, 2), 16);
+        const g = parseInt(h.substring(2, 4), 16);
+        const b = parseInt(h.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    loadHighlightColor() {
+        const saved = localStorage.getItem('highlightColor');
+        if (saved) {
+            const root = document.documentElement;
+            root.style.setProperty('--highlight-color', saved);
+            root.style.setProperty('--highlight-bg-color', this.hexToRgba(saved, 0.16));
+        }
+    }
+
     connectedCallback() {
         super.connectedCallback();
 
         // Load and apply font size
         this.loadFontSize();
+
+        this.loadHighlightColor();
 
         // Load highlight.js if available
         if (window.require) {
@@ -655,7 +925,7 @@ export class AssistantView extends LitElement {
         if (!el) return;
         el.value = (text || '').trim();
         this.adjustTextareaHeight(el);
-        this.focusTextInput();
+        // Intentionally no auto-focus
     }
 
     handleTextInput(e) {
@@ -684,9 +954,9 @@ export class AssistantView extends LitElement {
         el.style.height = `${newHeight}px`;
     }
 
-    scrollToBottom() {
+    scrollToBottom(containerId) {
         setTimeout(() => {
-            const container = this.shadowRoot.querySelector('.response-container');
+            const container = this.shadowRoot.querySelector(`#${containerId}`);
             if (container) {
                 container.scrollTop = container.scrollHeight;
             }
@@ -696,6 +966,7 @@ export class AssistantView extends LitElement {
     firstUpdated() {
         super.firstUpdated();
         this.updateResponseContent();
+        this.updateTranscriptContent();
         // Do not auto-resize on first render; keep compact initial height.
     }
 
@@ -708,13 +979,34 @@ export class AssistantView extends LitElement {
         ) {
             this.updateResponseContent();
         }
+        // Streaming coordination
+        if (changedProperties.has('streamSession')) {
+            this._handleStreamSessionChange();
+        }
+        if (changedProperties.has('streamDelta')) {
+            this._handleStreamDeltaChange();
+        }
+        if (changedProperties.has('isStreaming')) {
+            this._handleStreamingStateChange();
+        }
+        if (changedProperties.has('promptPanelOpen') && this.promptPanelOpen) {
+            this.openPromptPanel();
+        }
+        if (changedProperties.has('transcriptText')) {
+            this.updateTranscriptContent();
+        }
+        if (changedProperties.has('activeTab')) {
+            if (this.activeTab === 'transcript') this.updateTranscriptContent();
+            else this.updateResponseContent();
+        }
     }
 
     updateResponseContent() {
         const container = this.shadowRoot.querySelector('#responseContainer');
         if (container) {
             const currentResponse = this.getCurrentResponse();
-            const renderedResponse = this.renderMarkdown(currentResponse, this.isStreaming);
+            const contentToRender = this.isStreaming ? this._streamTypedText : currentResponse;
+            const renderedResponse = this.renderMarkdown(contentToRender, this.isStreaming);
             container.innerHTML = renderedResponse + (this.isStreaming ? '<span class="stream-caret"></span>' : '');
 
             // Highlight code blocks only after stream completes (skip during streaming)
@@ -729,20 +1021,223 @@ export class AssistantView extends LitElement {
             }
 
             // Keep the latest content visible during streaming
-            if (this.autoScrollEnabled) this.scrollToBottom();
+            if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
         } else {
         console.warn('Response container not found');
         }
     }
+
+    updateTranscriptContent() {
+        const container = this.shadowRoot?.querySelector('#transcriptContainer');
+        if (!container) return;
+        container.textContent = this.transcriptText || '';
+        if (this.autoScrollEnabled) this.scrollToBottom('transcriptContainer');
+    }
+
+    // --- Streaming engine (typewriter) ---
+    _beginStream() {
+        // Interrupt any previous stream
+        if (this._typingInterval) {
+            clearInterval(this._typingInterval);
+            this._typingInterval = null;
+        }
+        this._streamTypedText = '';
+        this._streamTargetText = '';
+        this._finalEventEmitted = false;
+        // Start typing loop
+        this._typingInterval = setInterval(() => this._applyTyping(), this._typingMs);
+    }
+
+    _endStream() {
+        if (this._typingInterval) {
+            clearInterval(this._typingInterval);
+            this._typingInterval = null;
+        }
+        // After stream ends, the final response will be rendered from responses[]
+        this._streamTypedText = '';
+        this._streamTargetText = '';
+    }
+
+    _handleStreamSessionChange() {
+        if (typeof this.streamSession === 'number' && this.streamSession !== this._currentStreamSession) {
+            this._currentStreamSession = this.streamSession;
+            // New stream session begins
+            this._beginStream();
+        }
+    }
+
+    _handleStreamDeltaChange() {
+        const delta = this.streamDelta || '';
+        if (this.isStreaming && delta) {
+            this._streamTargetText += delta;
+            // Trigger fast update to keep flow smooth
+            this.updateResponseContent();
+        }
+    }
+
+    _handleStreamingStateChange() {
+        if (!this.isStreaming) {
+            // Stream finished or interrupted
+            this._endStream();
+            this.updateResponseContent();
+        }
+    }
+
+    _applyTyping() {
+        try {
+            if (!this.isStreaming) return;
+            const currentLen = this._streamTypedText.length;
+            const targetLen = this._streamTargetText.length;
+            if (currentLen >= targetLen) return; // wait for more deltas
+            const nextLen = Math.min(currentLen + this._typingCharsPerTick, targetLen);
+            this._streamTypedText = this._streamTargetText.slice(0, nextLen);
+            this.updateResponseContent();
+
+            // If final response is expected and we've caught up, signal completion once
+            if (this.streamIsFinal && this._streamTypedText.length === this._streamTargetText.length && !this._finalEventEmitted) {
+                this._finalEventEmitted = true;
+                this.dispatchEvent(new CustomEvent('stream-finished')); // parent will end streaming state
+            }
+        } catch (e) {
+            console.warn('AssistantView _applyTyping error:', e);
+        }
+    }
+
+    // Toggle handlers
+    handleAutoScrollChange(e) {
+        const checked = !!(e?.target?.checked);
+        this.autoScrollEnabled = checked;
+        try {
+            localStorage.setItem('assistantAutoScroll', checked ? 'true' : 'false');
+        } catch (_) {}
+        if (checked) {
+            this.scrollToBottom(this.activeTab==='transcript'?'transcriptContainer':'responseContainer');
+        }
+    }
+
+    // --- Prompt buttons logic ---
+    loadPromptButtons() {
+        try {
+            const raw = localStorage.getItem('assistantPromptButtons');
+            const arr = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(arr)) {
+                const cleaned = arr.filter(p => p && typeof p.name === 'string' && typeof p.text === 'string');
+                if (cleaned.length === 0) {
+                    const defaults = [
+                        {
+                            name: 'Assist',
+                            text: 'Listen and check the screen to see what is being asked. Carefully review any code shown and analyze it thoroughly before giving an answer.\n\nIf the question is an output-prediction type, examine the code very closely and provide the exact output. Also include an explanation showing how you arrived at that answer and your reasoning steps.',
+                        },
+                        {
+                            name: 'Code Assistance',
+                            text: 'Carefully review the captured screen and the conversation.\n\nUnderstand the question clearly, then provide a precise and helpful answer.\n\nAlways follow the Custom AI Instructions/Context provided — they override everything else.',
+                        },
+                    ];
+                    this.savePromptButtons(defaults);
+                    return defaults;
+                }
+                return cleaned;
+            }
+        } catch (_) {}
+        return [];
+    }
+
+    savePromptButtons(list) {
+        try {
+            localStorage.setItem('assistantPromptButtons', JSON.stringify(list || []));
+        } catch (_) {}
+    }
+
+    openPromptPanel() {
+        this.editablePrompts = [...this.loadPromptButtons()];
+        this.requestUpdate();
+    }
+
+    closePromptPanel() {
+        this.dispatchEvent(new CustomEvent('close-prompt-panel', { bubbles: true, composed: true }));
+    }
+
+    addPromptRow() {
+        if ((this.editablePrompts || []).length >= 5) return;
+        this.editablePrompts = [...(this.editablePrompts || []), { name: '', text: '' }];
+        this.requestUpdate();
+    }
+
+    deletePromptRow(idx) {
+        const list = [...(this.editablePrompts || [])];
+        if (idx >= 0 && idx < list.length) {
+            list.splice(idx, 1);
+            this.editablePrompts = list;
+            this.requestUpdate();
+        }
+    }
+
+    updatePromptName(idx, e) {
+        const val = (e?.target?.value || '').slice(0, 60);
+        const list = [...(this.editablePrompts || [])];
+        if (list[idx]) list[idx].name = val;
+        this.editablePrompts = list;
+        this.requestUpdate();
+    }
+
+    updatePromptText(idx, e) {
+        const val = (e?.target?.value || '');
+        const list = [...(this.editablePrompts || [])];
+        if (list[idx]) list[idx].text = val;
+        this.editablePrompts = list;
+        this.requestUpdate();
+    }
+
+    saveEditablePrompts() {
+        const cleaned = (this.editablePrompts || [])
+            .map(p => ({ name: (p.name || '').trim(), text: (p.text || '').trim() }))
+            .filter(p => p.name && p.text)
+            .slice(0, 5);
+        this.savePromptButtons(cleaned);
+        this.promptButtons = cleaned;
+        this.closePromptPanel();
+    }
+
+    handlePromptButtonClick(e, idx) {
+        const now = Date.now();
+        if (now - (this._lastPromptClickTs || 0) < 1000) return; // debounce 1s
+        this._lastPromptClickTs = now;
+
+        const btn = e.currentTarget;
+        try {
+            btn.classList.add('pulse');
+            setTimeout(() => btn.classList.remove('pulse'), 250);
+        } catch (_) {}
+
+        const prompt = (this.promptButtons || [])[idx];
+        const text = prompt?.text || '';
+        const el = this.shadowRoot?.querySelector('#textInput');
+        if (!el) return;
+        el.value = text.trim();
+        this.adjustTextareaHeight(el);
+        // Send using the same logic as typing then pressing Enter
+        this.handleSendText();
+    }
+
+
 
 
 
     render() {
         const currentResponse = this.getCurrentResponse();
         const responseCounter = this.getResponseCounter();
+        // Keep prompt buttons in sync
+        if (!this.promptButtons || this.promptButtons.length === 0) {
+            this.promptButtons = this.loadPromptButtons();
+        }
 
         return html`
-            <div class="response-container" id="responseContainer"></div>
+            <div class="tabbar">
+                <button class="tab-btn ${this.activeTab==='chat'?'active':''}" @click=${() => { this.activeTab='chat'; this.onTabChange('chat'); this.requestUpdate(); }}>Chat</button>
+                <button class="tab-btn ${this.activeTab==='transcript'?'active':''}" @click=${() => { this.activeTab='transcript'; this.onTabChange('transcript'); this.requestUpdate(); }}>Transcript</button>
+            </div>
+            <div class="response-container" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
+            <div class="response-container" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
 
             <div class="text-input-container">
                 <button class="nav-button" @click=${this.navigateToPreviousResponse} ?disabled=${this.currentResponseIndex <= 0}>
@@ -776,17 +1271,55 @@ export class AssistantView extends LitElement {
                         <path d="M9 6L15 12L9 18" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
                     </svg>
                 </button>
+                <button class="send-primary" @click=${() => this.handleSendText()}>Send</button>
             </div>
             <div class="assistant-toggles">
                 <label class="assistant-toggle-label">
                     <input type="checkbox" class="assistant-toggle-input" .checked=${this.autoScrollEnabled} @change=${this.handleAutoScrollChange} />
                     <span>Auto-scroll</span>
                 </label>
-                <label class="assistant-toggle-label">
-                    <input type="checkbox" class="assistant-toggle-input" .checked=${this.autoFocusEnabled} @change=${this.handleAutoFocusChange} />
-                    <span>Auto-focus</span>
-                </label>
+                ${this.promptButtons && this.promptButtons.length > 0
+                    ? html`<div class="prompt-buttons">
+                          ${this.promptButtons.map(
+                              (p, i) => html`<button class="prompt-button" @click=${e => this.handlePromptButtonClick(e, i)}>${p.name}</button>`
+                          )}
+                      </div>`
+                    : ''}
             </div>
+
+            ${this.promptPanelOpen
+                ? html`
+                      <div class="prompt-panel-overlay" @click=${e => {
+                          if (e.target.classList.contains('prompt-panel-overlay')) this.closePromptPanel();
+                      }}>
+                          <div class="prompt-panel open" @click=${e => e.stopPropagation()}>
+                              <div class="prompt-panel-header">
+                                  <span class="prompt-panel-title">Configurable Prompt Buttons</span>
+                                  <button class="prompt-action-button" @click=${() => this.closePromptPanel()}>Close</button>
+                              </div>
+                              <div class="prompt-panel-body">
+                                    ${(this.editablePrompts || []).map(
+                                        (p, idx) => html`
+                                            <div class="prompt-row">
+                                                <input type="text" placeholder="Name" .value=${p.name} @input=${e => this.updatePromptName(idx, e)} />
+                                                <textarea placeholder="Prompt text" .value=${p.text} @input=${e => this.updatePromptText(idx, e)}></textarea>
+                                                <div style="display:flex; justify-content:flex-end; gap:8px;">
+                                                    <button class="prompt-action-button" @click=${() => this.deletePromptRow(idx)}>Delete</button>
+                                                </div>
+                                            </div>
+                                        `
+                                    )}
+                                  <button class="prompt-action-button add-prompt-button" @click=${() => this.addPromptRow()} ?disabled=${(this.editablePrompts || []).length >= 5}>
+                                      Add prompt
+                                  </button>
+                              </div>
+                              <div class="prompt-panel-actions">
+                                  <button class="prompt-action-button" @click=${() => this.saveEditablePrompts()}>Save</button>
+                              </div>
+                          </div>
+                      </div>
+                  `
+                : ''}
 
             <!-- Resize overlay on all edges and corners -->
             <div class="resize-overlay">
@@ -900,59 +1433,7 @@ export class AssistantView extends LitElement {
         } catch (_) {}
     }
 
-    render() {
-        const currentResponse = this.getCurrentResponse();
-        const responseCounter = this.getResponseCounter();
-
-        return html`
-            <div class="response-container" id="responseContainer"></div>
-
-            <div class="text-input-container">
-                <button class="nav-button" @click=${this.navigateToPreviousResponse} ?disabled=${this.currentResponseIndex <= 0}>
-                    <?xml version="1.0" encoding="UTF-8"?><svg
-                        width="24px"
-                        height="24px"
-                        stroke-width="1.7"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        color="#ffffff"
-                    >
-                        <path d="M15 6L9 12L15 18" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                </button>
-
-                ${this.responses.length > 0 ? html` <span class="response-counter">${responseCounter}</span> ` : ''}
-
-                <textarea id="textInput" rows="1" placeholder="Type a message to the AI..." @keydown=${this.handleTextKeydown} @input=${this.handleTextInput} @paste=${this.handleTextInput}></textarea>
-
-                <button class="nav-button" @click=${this.navigateToNextResponse} ?disabled=${this.currentResponseIndex >= this.responses.length - 1}>
-                    <?xml version="1.0" encoding="UTF-8"?><svg
-                        width="24px"
-                        height="24px"
-                        stroke-width="1.7"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        color="#ffffff"
-                    >
-                        <path d="M9 6L15 12L9 18" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                </button>
-            </div>
-            <!-- Resize overlay on all edges and corners -->
-            <div class="resize-overlay">
-                <div class="resize-handle top" @pointerdown=${e => this._startResize(e, 'top')}></div>
-                <div class="resize-handle right" @pointerdown=${e => this._startResize(e, 'right')}></div>
-                <div class="resize-handle bottom" @pointerdown=${e => this._startResize(e, 'bottom')}></div>
-                <div class="resize-handle left" @pointerdown=${e => this._startResize(e, 'left')}></div>
-                <div class="resize-handle tl" @pointerdown=${e => this._startResize(e, 'top-left')}></div>
-                <div class="resize-handle tr" @pointerdown=${e => this._startResize(e, 'top-right')}></div>
-                <div class="resize-handle bl" @pointerdown=${e => this._startResize(e, 'bottom-left')}></div>
-                <div class="resize-handle br" @pointerdown=${e => this._startResize(e, 'bottom-right')}></div>
-            </div>
-        `;
-    }
+    // Duplicate render() removed; primary render is defined earlier in the class.
 }
 
 customElements.define('assistant-view', AssistantView);

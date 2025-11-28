@@ -16,6 +16,8 @@ export class AppHeader extends LitElement {
             border: 1px solid var(--border-color);
             background: var(--header-background);
             border-radius: var(--border-radius);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
         }
 
         .header-title {
@@ -37,38 +39,17 @@ export class AppHeader extends LitElement {
             color: var(--header-actions-color);
         }
 
-        .button {
-            background: var(--button-background);
-            color: var(--text-color);
-            border: 1px solid var(--button-border);
-            padding: var(--header-button-padding);
-            border-radius: 8px;
-            font-size: var(--header-font-size-small);
-            font-weight: 500;
-        }
+        .button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); padding: var(--header-button-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease; }
 
-        .icon-button {
-            background: none;
-            color: var(--icon-button-color);
-            border: none;
-            padding: var(--header-icon-padding);
-            border-radius: 8px;
-            font-size: var(--header-font-size-small);
-            font-weight: 500;
-            display: flex;
-            opacity: 0.6;
-            transition: opacity 0.2s ease;
-        }
+        .icon-button { background: var(--glass-bg); color: var(--icon-button-color); border: 1px solid var(--glass-border); padding: var(--header-icon-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; display: flex; opacity: 0.85; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.12s ease; }
 
         .icon-button svg {
             width: var(--icon-size);
             height: var(--icon-size);
         }
 
-        .icon-button:hover {
-            background: var(--hover-background);
-            opacity: 1;
-        }
+        .icon-button:hover { background: var(--glass-hover-bg); opacity: 1; }
+        .icon-button:active { transform: translateY(1px); }
 
         .button:hover {
             background: var(--hover-background);
@@ -183,6 +164,8 @@ export class AppHeader extends LitElement {
         isClickThrough: { type: Boolean, reflect: true },
         advancedMode: { type: Boolean },
         onAdvancedClick: { type: Function },
+        // New: handler for opening prompt configuration panel
+        onDocumentClick: { type: Function },
         backgroundTransparency: { type: Number },
     };
 
@@ -200,6 +183,7 @@ export class AppHeader extends LitElement {
         this.isClickThrough = false;
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
+        this.onDocumentClick = () => {};
         this._timerInterval = null;
         this.backgroundTransparency = 0.8;
     }
@@ -337,6 +321,27 @@ export class AppHeader extends LitElement {
                         </div>
                               <span>${elapsedTime}</span>
                               <span>${this.statusText}</span>
+                              ${this.startTime
+                                  ? html`
+                                        <button class="icon-button" @click=${this.onDocumentClick} title="Configure Prompts">
+                                            <?xml version="1.0" encoding="UTF-8"?>
+                                            <svg
+                                                width="24px"
+                                                height="24px"
+                                                stroke-width="1.7"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                color="currentColor"
+                                            >
+                                                <path d="M6 2.6C6 2.26863 6.26863 2 6.6 2H13.8C13.9341 2 14.0637 2.05268 14.159 2.14645L19.8536 7.84106C19.9473 7.93635 20 8.06585 20 8.2V21.4C20 21.7314 19.7314 22 19.4 22H6.6C6.26863 22 6 21.7314 6 21.4V2.6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path>
+                                                <path d="M14 2V7.4C14 7.73137 14.2686 8 14.6 8H20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+                                                <path d="M8 12H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+                                                <path d="M8 16H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+                                            </svg>
+                                        </button>
+                                    `
+                                  : ''}
                           `
                         : ''}
                     ${this.currentView === 'main'

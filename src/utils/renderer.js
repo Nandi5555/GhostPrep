@@ -5,17 +5,23 @@ let mediaStream = null;
 let screenshotInterval = null;
 let audioContext = null;
 let audioProcessor = null;
-let micAudioProcessor = null;
-let audioBuffer = [];
-const SAMPLE_RATE = 24000;
-const AUDIO_CHUNK_DURATION = 0.1; // seconds
-const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
-let audioPauseUntil = 0;
+  let audioBuffer = [];
+  const SAMPLE_RATE = 24000;
+  const AUDIO_CHUNK_DURATION = 0.05; // seconds
+  const BUFFER_SIZE = 1024; // Smaller buffer for lower-latency callbacks
+  let audioPauseUntil = 0;
+  // Simple VAD config for auto end-of-speech detection
+  let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '600', 10);
+  let vadAmplitudeThreshold = parseFloat(localStorage.getItem('vadThreshold') || '0.02');
+  let vadCooldownMs = parseInt(localStorage.getItem('vadCooldownMs') || '2000', 10);
+  let vadLastTriggerAt = 0;
 
 let hiddenVideo = null;
 let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
+
+let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode') || 'auto').toLowerCase();
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
@@ -126,26 +132,57 @@ function convertFloat32ToInt16(float32Array) {
     return int16Array;
 }
 
-function arrayBufferToBase64(buffer) {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-}
+// Renderer-side base64 conversion removed to reduce main-thread CPU; raw PCM sent to main.
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     const apiKey = localStorage.getItem('apiKey')?.trim();
     if (apiKey) {
-        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, localStorage.getItem('customPrompt') || '', profile, language);
+        // Determine active custom prompt content from the prompt library.
+        // Fallback to legacy single customPrompt if no library/active prompt is set.
+        let activeCustomPrompt = '';
+        try {
+            const raw = localStorage.getItem('customPrompts');
+            const prompts = raw ? JSON.parse(raw) : [];
+            const activeId = localStorage.getItem('activePromptId');
+            if (Array.isArray(prompts) && prompts.length > 0 && activeId) {
+                const active = prompts.find(p => p.id === activeId);
+                activeCustomPrompt = active?.content || '';
+            } else {
+                activeCustomPrompt = localStorage.getItem('customPrompt') || '';
+            }
+        } catch (_) {
+            activeCustomPrompt = localStorage.getItem('customPrompt') || '';
+        }
+
+        // Preflight: validate API key via a lightweight models listing call
+        try {
+            const resp = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
+                { method: 'GET', cache: 'no-store' }
+            );
+            if (!resp.ok) {
+                cheddar.e().setStatus('Invalid API key');
+                return false;
+            }
+        } catch (_) {
+            // Network errors: treat as failure so we don't proceed to live connect
+            cheddar.e().setStatus('Network error');
+            return false;
+        }
+
+        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, activeCustomPrompt, profile, language);
         if (success) {
             cheddar.e().setStatus('Live');
+            try { window.__geminiLiveReady = true; } catch (_) {}
+            return true;
         } else {
             cheddar.e().setStatus('error');
+            try { window.__geminiLiveReady = false; } catch (_) {}
+            return false;
         }
     }
+    try { window.__geminiLiveReady = false; } catch (_) {}
+    return false;
 }
 
 // Listen for status updates
@@ -161,6 +198,9 @@ ipcRenderer.on('update-status', (event, status) => {
 // });
 
 async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
+    if (!window.__geminiLiveReady) {
+        return;
+    }
     // Store the image quality for manual screenshots
     currentImageQuality = imageQuality;
 
@@ -168,13 +208,15 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     tokenTracker.reset();
 
     try {
+        const audioMode = (localStorage.getItem('selectedAudioMode') || 'speaker').toLowerCase();
         if (isMacOS) {
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
-
-            // Start macOS audio capture
-            const audioResult = await ipcRenderer.invoke('start-macos-audio');
-            if (!audioResult.success) {
-                throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
+            if (audioMode === 'speaker') {
+                // Start macOS system audio capture
+                const audioResult = await ipcRenderer.invoke('start-macos-audio');
+                if (!audioResult.success) {
+                    throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
+                }
             }
 
             // Get screen capture for screenshots
@@ -187,7 +229,26 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 audio: false, // Don't use browser audio on macOS
             });
 
-            // macOS screen capture started - audio handled by SystemAudioDump
+            // macOS screen capture started - audio handled by SystemAudioDump or mic
+
+            // If mic mode, capture microphone and process
+            if (audioMode === 'mic') {
+                try {
+                    const micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            sampleRate: SAMPLE_RATE,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                        },
+                        video: false,
+                    });
+                    setupLinuxMicProcessing(micStream);
+                } catch (micError) {
+                    console.warn('Failed to get microphone access on macOS:', micError);
+                }
+            }
         } else if (isLinux) {
             // Linux - use display media for screen capture and getUserMedia for microphone
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -199,10 +260,44 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 audio: false, // Don't use system audio loopback on Linux
             });
 
-            // Get microphone input for Linux
-            let micStream = null;
-            try {
-                micStream = await navigator.mediaDevices.getUserMedia({
+            if (audioMode === 'mic') {
+                // Get microphone input for Linux
+                let micStream = null;
+                try {
+                    micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            sampleRate: SAMPLE_RATE,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                        },
+                        video: false,
+                    });
+
+                    // Linux microphone capture started
+
+                    // Setup audio processing for microphone on Linux
+                    setupLinuxMicProcessing(micStream);
+                } catch (micError) {
+                    console.warn('Failed to get microphone access on Linux:', micError);
+                    // Continue without microphone if permission denied
+                }
+            } else {
+                // Speaker-only mode on Linux is not reliably supported; skip audio to avoid mic input
+                console.info('Audio Mode: speaker-only selected on Linux; skipping mic capture.');
+            }
+
+            // Linux screen capture started
+        } else {
+            // Windows - use display media with loopback for system audio
+            if (audioMode === 'speaker') {
+                mediaStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        frameRate: 1,
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                    },
                     audio: {
                         sampleRate: SAMPLE_RATE,
                         channelCount: 1,
@@ -210,40 +305,40 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         noiseSuppression: true,
                         autoGainControl: true,
                     },
-                    video: false,
                 });
 
-                // Linux microphone capture started
+                // Windows capture started with loopback audio
 
-                // Setup audio processing for microphone on Linux
-                setupLinuxMicProcessing(micStream);
-            } catch (micError) {
-                console.warn('Failed to get microphone access on Linux:', micError);
-                // Continue without microphone if permission denied
+                // Setup audio processing for Windows loopback audio only
+                setupWindowsLoopbackProcessing();
+            } else {
+                // Mic-only: capture screen without audio, then get microphone stream
+                mediaStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        frameRate: 1,
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                    },
+                    audio: false,
+                });
+
+                try {
+                    const micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            sampleRate: SAMPLE_RATE,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                        },
+                        video: false,
+                    });
+
+                    setupLinuxMicProcessing(micStream);
+                } catch (micError) {
+                    console.warn('Failed to get microphone access on Windows:', micError);
+                }
             }
-
-            // Linux screen capture started
-        } else {
-            // Windows - use display media with loopback for system audio
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    frameRate: 1,
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                },
-                audio: {
-                    sampleRate: SAMPLE_RATE,
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
-            });
-
-            // Windows capture started with loopback audio
-
-            // Setup audio processing for Windows loopback audio only
-            setupWindowsLoopbackProcessing();
         }
 
         // MediaStream obtained
@@ -264,6 +359,13 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     }
 }
 
+// Expose renderer utilities to app shell
+try {
+    window.cheddar = window.cheddar || {};
+    window.cheddar.initializeGemini = initializeGemini;
+    window.cheddar.startCapture = startCapture;
+} catch (_) {}
+
 function setupLinuxMicProcessing(micStream) {
     // Setup microphone audio processing for Linux
     const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
@@ -278,18 +380,55 @@ function setupLinuxMicProcessing(micStream) {
             return;
         }
         const inputData = e.inputBuffer.getChannelData(0);
+
+        // Auto end-of-speech detection (Linux mic)
+        try {
+            if (transcriptionModeCached === 'auto') {
+                // Compute RMS amplitude (stride 4 for lower CPU)
+                let sum = 0;
+                for (let i = 0; i < inputData.length; i += 4) {
+                    const v = inputData[i];
+                    sum += v * v;
+                }
+                const rms = Math.sqrt(sum / (inputData.length / 4));
+                const now = Date.now();
+
+                // If below threshold for configured duration and cooldown passed, trigger transcription send
+                if (rms < vadAmplitudeThreshold) {
+                    const silenceStart = (micProcessor._silenceStart || now);
+                    micProcessor._silenceStart = silenceStart;
+                    const silenceElapsed = now - silenceStart;
+                    if (silenceElapsed >= vadSilenceMsToTrigger && now - vadLastTriggerAt >= vadCooldownMs) {
+                        vadLastTriggerAt = now;
+                        audioPauseUntil = Date.now() + 120; // brief pause helps model finalize
+                        try {
+                            const result = await ipcRenderer.invoke('send-current-transcription');
+                            if (!result.success) {
+                                console.warn('Auto transcription send failed:', result.error);
+                            }
+                        } catch (err) {
+                            console.warn('Error sending auto transcription:', err?.message || err);
+                        }
+                    }
+                } else {
+                    // Reset silence start on speech activity
+                    micProcessor._silenceStart = Date.now();
+                }
+            }
+        } catch (_) {}
+
         audioBuffer.push(...inputData);
 
         // Process audio in chunks
         while (audioBuffer.length >= samplesPerChunk) {
             const chunk = audioBuffer.splice(0, samplesPerChunk);
             const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
+            const raw = new Uint8Array(pcmData16.buffer);
 
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
+            ipcRenderer.invoke('send-audio-content', {
+                raw,
                 mimeType: 'audio/pcm;rate=24000',
-            });
+            }).catch(() => {});
         }
     };
 
@@ -314,18 +453,53 @@ function setupWindowsLoopbackProcessing() {
             return;
         }
         const inputData = e.inputBuffer.getChannelData(0);
+
+        // Auto end-of-speech detection (Windows loopback)
+        try {
+            if (transcriptionModeCached === 'auto') {
+                // Compute RMS amplitude (stride 4 for lower CPU)
+                let sum = 0;
+                for (let i = 0; i < inputData.length; i += 4) {
+                    const v = inputData[i];
+                    sum += v * v;
+                }
+                const rms = Math.sqrt(sum / (inputData.length / 4));
+                const now = Date.now();
+
+                if (rms < vadAmplitudeThreshold) {
+                    const silenceStart = (audioProcessor._silenceStart || now);
+                    audioProcessor._silenceStart = silenceStart;
+                    const silenceElapsed = now - silenceStart;
+                    if (silenceElapsed >= vadSilenceMsToTrigger && now - vadLastTriggerAt >= vadCooldownMs) {
+                        vadLastTriggerAt = now;
+                        audioPauseUntil = Date.now() + 120; // brief pause helps model finalize
+                        try {
+                            const result = await ipcRenderer.invoke('send-current-transcription');
+                            if (!result.success) {
+                                console.warn('Auto transcription send failed:', result.error);
+                            }
+                        } catch (err) {
+                            console.warn('Error sending auto transcription:', err?.message || err);
+                        }
+                    }
+                } else {
+                    audioProcessor._silenceStart = Date.now();
+                }
+            }
+        } catch (_) {}
+
         audioBuffer.push(...inputData);
 
         // Process audio in chunks
         while (audioBuffer.length >= samplesPerChunk) {
             const chunk = audioBuffer.splice(0, samplesPerChunk);
             const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
+            const raw = new Uint8Array(pcmData16.buffer);
 
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
+            ipcRenderer.invoke('send-audio-content', {
+                raw,
                 mimeType: 'audio/pcm;rate=24000',
-            });
+            }).catch(() => {});
         }
     };
 
@@ -435,12 +609,14 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 async function captureManualScreenshot(imageQuality = null) {
     const quality = imageQuality || currentImageQuality;
     await captureScreenshot(quality, true); // Pass true for isManual
-    await new Promise(resolve => setTimeout(resolve, 2000)); // TODO shitty hack
-    await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
-        So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
-        If its a question about the website, give me the answer no bs, complete answer.
-        If its a mcq question, give me the answer no bs, complete answer.
-        `);
+    // Respect transcription mode: do not auto-send any prompt in manual mode
+    if ((transcriptionModeCached || 'auto') === 'auto') {
+        await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
+            So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
+            If its a question about the website, give me the answer no bs, complete answer.
+            If its a mcq question, give me the answer no bs, complete answer.
+            `);
+    }
 }
 
 // Expose functions to global scope for external access
@@ -627,12 +803,23 @@ function handleShortcut(shortcutKey) {
                 }
             }
         } else {
-            // In other views, take manual screenshot
+            // In other views, take manual screenshot and send current transcription
             captureManualScreenshot();
+            audioPauseUntil = Date.now() + 120;
+            ipcRenderer
+                .invoke('send-current-transcription')
+                .then(result => {
+                    if (!result.success) {
+                        console.error('Failed to send current transcription:', result.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending current transcription:', error);
+                });
         }
     } else if (shortcutKey === 'ctrl+shift+enter' || shortcutKey === 'cmd+shift+enter') {
         // Briefly pause audio streaming to help the model finalize the current utterance
-        audioPauseUntil = Date.now() + 1200; // ~1.2s pause to trigger turn closure
+        audioPauseUntil = Date.now() + 300; // faster pause for quick turn closure
 
         // Request to send the current transcription (handler will also wait briefly if empty)
         ipcRenderer
@@ -653,6 +840,9 @@ window.cheddar = {
     startCapture,
     stopCapture,
     sendTextMessage,
+    setTranscriptionModeCached: mode => {
+        transcriptionModeCached = (mode || 'auto').toLowerCase();
+    },
     handleShortcut,
     // Conversation history functions
     getAllConversationSessions,
@@ -660,8 +850,14 @@ window.cheddar = {
     initConversationStorage,
     // Content protection function
     getContentProtection: () => {
-        const contentProtection = localStorage.getItem('contentProtection');
-        return contentProtection !== null ? contentProtection === 'true' : true;
+        // Read-only: use undetectableEnabled; fall back to legacy keys; default OFF
+        const undetectable = localStorage.getItem('undetectableEnabled');
+        if (undetectable !== null) return undetectable === 'true';
+        const legacyCP = localStorage.getItem('contentProtection');
+        if (legacyCP !== null) return legacyCP === 'true';
+        const legacyToggle = localStorage.getItem('undetectableTEnabled');
+        if (legacyToggle !== null) return legacyToggle === 'true';
+        return false;
     },
     isLinux: isLinux,
     isMacOS: isMacOS,
