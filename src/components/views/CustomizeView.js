@@ -522,6 +522,8 @@ export class CustomizeView extends LitElement {
         onAdvancedModeChange: { type: Function },
         // Prompt library modal state
         promptLibraryOpen: { type: Boolean },
+        highlightColor: { type: String },
+        pendingHighlightColor: { type: String },
     };
 
     constructor() {
@@ -565,6 +567,12 @@ export class CustomizeView extends LitElement {
         this.loadBackgroundTransparency();
         this.loadFontSize();
         this.promptLibraryOpen = false;
+
+        const cs = getComputedStyle(document.documentElement);
+        const defaultHighlight = cs.getPropertyValue('--highlight-color')?.trim() || '#fa6e4e';
+        this.highlightColor = localStorage.getItem('highlightColor') || defaultHighlight;
+        this.pendingHighlightColor = '';
+        this.applyHighlightColor(this.highlightColor);
     }
 
     connectedCallback() {
@@ -1096,6 +1104,34 @@ export class CustomizeView extends LitElement {
         root.style.setProperty('--response-font-size', `${this.fontSize}px`);
     }
 
+    hexToRgba(hex, alpha) {
+        const h = hex.replace('#', '');
+        const r = parseInt(h.substring(0, 2), 16);
+        const g = parseInt(h.substring(2, 4), 16);
+        const b = parseInt(h.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    applyHighlightColor(color) {
+        const root = document.documentElement;
+        root.style.setProperty('--highlight-color', color);
+        root.style.setProperty('--highlight-bg-color', this.hexToRgba(color, 0.16));
+    }
+
+    handleHighlightColorChange(e) {
+        this.pendingHighlightColor = e.target.value;
+        this.requestUpdate();
+    }
+
+    saveHighlightColor() {
+        if (!this.pendingHighlightColor) return;
+        this.highlightColor = this.pendingHighlightColor;
+        localStorage.setItem('highlightColor', this.highlightColor);
+        this.applyHighlightColor(this.highlightColor);
+        this.pendingHighlightColor = '';
+        this.requestUpdate();
+    }
+
     render() {
         const profiles = this.getProfiles();
         const languages = this.getLanguages();
@@ -1320,6 +1356,33 @@ export class CustomizeView extends LitElement {
                         </div>
 
 
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="section-title">
+                        <span>Highlight Color</span>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Main Points Highlight</label>
+                                <input
+                                    type="color"
+                                    class="form-control"
+                                    .value=${this.pendingHighlightColor || this.highlightColor}
+                                    @input=${this.handleHighlightColorChange}
+                                />
+                                <div class="form-description">Select the color used to highlight important points.</div>
+                                ${this.pendingHighlightColor && this.pendingHighlightColor !== this.highlightColor
+                                    ? html`<button
+                                            class="reset-keybinds-button"
+                                            style="border-color: ${this.pendingHighlightColor};"
+                                            @click=${this.saveHighlightColor}
+                                        >Save</button>`
+                                    : ''}
+                            </div>
+                        </div>
                     </div>
                 </div>
 

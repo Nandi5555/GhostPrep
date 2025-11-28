@@ -164,8 +164,8 @@ export class AssistantView extends LitElement {
         .response-container strong,
         .response-container b {
             font-weight: 700;
-            color: #fa6e4eff; /* warm accent for high visibility */
-            background: rgba(255, 209, 102, 0.16);
+            color: var(--highlight-color);
+            background: var(--highlight-bg-color);
             padding: 0 2px;
             border-radius: 4px;
         }
@@ -771,11 +771,30 @@ export class AssistantView extends LitElement {
         }
     }
 
+    hexToRgba(hex, alpha) {
+        const h = hex.replace('#', '');
+        const r = parseInt(h.substring(0, 2), 16);
+        const g = parseInt(h.substring(2, 4), 16);
+        const b = parseInt(h.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    loadHighlightColor() {
+        const saved = localStorage.getItem('highlightColor');
+        if (saved) {
+            const root = document.documentElement;
+            root.style.setProperty('--highlight-color', saved);
+            root.style.setProperty('--highlight-bg-color', this.hexToRgba(saved, 0.16));
+        }
+    }
+
     connectedCallback() {
         super.connectedCallback();
 
         // Load and apply font size
         this.loadFontSize();
+
+        this.loadHighlightColor();
 
         // Load highlight.js if available
         if (window.require) {
