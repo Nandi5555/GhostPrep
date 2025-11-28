@@ -223,11 +223,19 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     }
 
     try {
+        let opened = false;
+        let resolveReady;
+        const readyPromise = new Promise(resolve => {
+            resolveReady = resolve;
+        });
+
         const session = await client.live.connect({
             model: 'gemini-live-2.5-flash-preview',
             callbacks: {
                 onopen: function () {
+                    opened = true;
                     sendToRenderer('update-status', 'Live session connected');
+                    try { resolveReady({ ok: true }); } catch (_) {}
                 },
                 onmessage: function (message) {
                     console.log('----------------', message);
@@ -301,6 +309,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         lastSessionParams = null; // Clear session params to prevent reconnection
                         reconnectionAttempts = maxReconnectionAttempts; // Stop further attempts
                         sendToRenderer('update-status', 'Error: Invalid API key');
+                        try { resolveReady({ ok: false, reason: 'invalid_key' }); } catch (_) {}
                         return;
                     }
 
@@ -321,6 +330,10 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         lastSessionParams = null; // Clear session params to prevent reconnection
                         reconnectionAttempts = maxReconnectionAttempts; // Stop further attempts
                         sendToRenderer('update-status', 'Session closed: Invalid API key');
+                        // If we never opened, treat as failed initialization
+                        if (!opened) {
+                            try { resolveReady({ ok: false, reason: 'invalid_key' }); } catch (_) {}
+                        }
                         return;
                     }
 
@@ -343,10 +356,19 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                 },
             },
         });
+        // Wait for handshake success or invalid-key failure, with timeout
+        const result = await Promise.race([
+            readyPromise,
+            new Promise(resolve => setTimeout(() => resolve({ ok: false, reason: 'timeout' }), 5000)),
+        ]);
 
         isInitializingSession = false;
         sendToRenderer('session-initializing', false);
-        return session;
+
+        if (result && result.ok) {
+            return session;
+        }
+        return null;
     } catch (error) {
         console.error('Failed to initialize Gemini session:', error);
         isInitializingSession = false;

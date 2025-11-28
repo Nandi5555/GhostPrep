@@ -154,13 +154,35 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
             activeCustomPrompt = localStorage.getItem('customPrompt') || '';
         }
 
+        // Preflight: validate API key via a lightweight models listing call
+        try {
+            const resp = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
+                { method: 'GET', cache: 'no-store' }
+            );
+            if (!resp.ok) {
+                cheddar.e().setStatus('Invalid API key');
+                return false;
+            }
+        } catch (_) {
+            // Network errors: treat as failure so we don't proceed to live connect
+            cheddar.e().setStatus('Network error');
+            return false;
+        }
+
         const success = await ipcRenderer.invoke('initialize-gemini', apiKey, activeCustomPrompt, profile, language);
         if (success) {
             cheddar.e().setStatus('Live');
+            try { window.__geminiLiveReady = true; } catch (_) {}
+            return true;
         } else {
             cheddar.e().setStatus('error');
+            try { window.__geminiLiveReady = false; } catch (_) {}
+            return false;
         }
     }
+    try { window.__geminiLiveReady = false; } catch (_) {}
+    return false;
 }
 
 // Listen for status updates
@@ -176,6 +198,9 @@ ipcRenderer.on('update-status', (event, status) => {
 // });
 
 async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
+    if (!window.__geminiLiveReady) {
+        return;
+    }
     // Store the image quality for manual screenshots
     currentImageQuality = imageQuality;
 
@@ -333,6 +358,13 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
         cheddar.e().setStatus('error');
     }
 }
+
+// Expose renderer utilities to app shell
+try {
+    window.cheddar = window.cheddar || {};
+    window.cheddar.initializeGemini = initializeGemini;
+    window.cheddar.startCapture = startCapture;
+} catch (_) {}
 
 function setupLinuxMicProcessing(micStream) {
     // Setup microphone audio processing for Linux

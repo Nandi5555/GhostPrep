@@ -127,6 +127,51 @@ export class MainView extends LitElement {
             width: 100%;
             max-width: 500px;
         }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 18px;
+            border-radius: 12px;
+            color: var(--text-color);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            backdrop-filter: blur(12px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 300ms ease, transform 300ms ease;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .toast.hide {
+            opacity: 0;
+            transform: translateX(-50%) translateY(-6px);
+        }
+
+        .toast.error {
+            background: rgba(255, 68, 68, 0.15);
+            border-color: #ff6666;
+            color: #ffdede;
+        }
+        .toast-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            color: #ff6666;
+        }
+        
     `;
 
     static properties = {
@@ -134,6 +179,9 @@ export class MainView extends LitElement {
         isInitializing: { type: Boolean },
         onLayoutModeChange: { type: Function },
         showApiKeyError: { type: Boolean },
+        toastText: { type: String },
+        toastState: { type: String },
+        toastType: { type: String },
     };
 
     constructor() {
@@ -143,6 +191,10 @@ export class MainView extends LitElement {
         this.onLayoutModeChange = () => {};
         this.showApiKeyError = false;
         this.boundKeydownHandler = this.handleKeydown.bind(this);
+        this.toastText = '';
+        this.toastState = 'hide';
+        this.toastType = 'info';
+        this._toastTimer = null;
     }
 
     connectedCallback() {
@@ -216,6 +268,29 @@ export class MainView extends LitElement {
         }, 1000);
     }
 
+    showToast(message, type = 'info') {
+        this.toastText = message || '';
+        this.toastType = type;
+        this.toastState = 'show';
+        if (this._toastTimer) {
+            clearTimeout(this._toastTimer);
+        }
+        this._toastTimer = setTimeout(() => {
+            this.toastState = 'hide';
+            this.requestUpdate();
+        }, 3000);
+        this.requestUpdate();
+    }
+
+    dismissToast() {
+        this.toastState = 'hide';
+        if (this._toastTimer) {
+            clearTimeout(this._toastTimer);
+            this._toastTimer = null;
+        }
+        this.requestUpdate();
+    }
+
     getStartButtonText() {
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
@@ -264,6 +339,25 @@ export class MainView extends LitElement {
 
     render() {
         return html`
+            <div class="toast ${this.toastState} ${this.toastType}">
+                <div class="toast-content" role="alert" aria-live="polite">
+                    <span class="toast-icon" aria-hidden="true">
+                        <svg width="22" height="22" viewBox="0 0 292.146 292.146" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path fill="currentColor" d="M265.818,26.328c-35.103-35.104-92.017-35.104-127.12,0c-23.7,23.7-31.374,57.337-23.073,87.496L7.057,222.391
+    c-2.456,2.456-3.933,5.725-4.152,9.19l-2.876,45.386c-0.259,4.093,1.253,8.098,4.152,10.997c2.899,2.899,6.905,4.412,10.997,4.152
+    l45.386-2.876c3.466-0.22,6.734-1.696,9.19-4.153l7.651-7.65c3.987-3.987,5.672-9.727,4.473-15.237l-3.859-17.735
+    c-0.259-1.191,0.105-2.432,0.967-3.294c0.862-0.862,2.103-1.227,3.294-0.967l17.735,3.86c5.509,1.199,11.249-0.486,15.236-4.473
+    c3.987-3.987,5.672-9.727,4.473-15.236l-3.859-17.734c-0.259-1.191,0.105-2.432,0.967-3.294c0.862-0.862,2.103-1.227,3.294-0.967
+    l17.735,3.86c5.509,1.199,11.249-0.486,15.236-4.473l25.224-25.224c30.16,8.303,63.797,0.628,87.497-23.072
+    C300.922,118.346,300.922,61.431,265.818,26.328z M119.566,166.925l-71.771,71.771c-1.953,1.952-4.512,2.929-7.071,2.929
+    s-5.118-0.977-7.071-2.929c-3.905-3.905-3.905-10.237,0-14.142l71.771-71.771c3.906-3.904,10.236-3.904,14.143,0
+    C123.471,156.687,123.471,163.019,119.566,166.925z M228.122,115.752c-14.284,14.284-37.445,14.284-51.729,0
+    c-14.283-14.282-14.283-37.443,0.002-51.728c14.282-14.283,37.443-14.283,51.726,0C242.405,78.308,242.405,101.47,228.122,115.752z"/>
+                        </svg>
+                    </span>
+                    <span>${this.toastText}</span>
+                </div>
+            </div>
             <div class="welcome">Welcome</div>
 
             <div class="input-group">

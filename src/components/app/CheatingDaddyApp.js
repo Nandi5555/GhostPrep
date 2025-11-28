@@ -170,6 +170,15 @@ export class CheatingDaddyApp extends LitElement {
             });
             ipcRenderer.on('update-status', (_, status) => {
                 this.setStatus(status);
+                const lower = String(status || '').toLowerCase();
+                if (lower.includes('invalid api key')) {
+                    this.currentView = 'main';
+                    const mainView = this.shadowRoot.querySelector('main-view');
+                    if (mainView && typeof mainView.showToast === 'function') {
+                        mainView.showToast('Invalid API key', 'error');
+                    }
+                    this.requestUpdate();
+                }
             });
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
@@ -427,8 +436,14 @@ export class CheatingDaddyApp extends LitElement {
         }
 
         if (window.cheddar) {
-            await window.cheddar.initializeGemini(this.selectedProfile, this.selectedLanguage);
-            // Pass the screenshot interval as string (including 'manual' option)
+            const success = await window.cheddar.initializeGemini(this.selectedProfile, this.selectedLanguage);
+            if (!success) {
+                const mainView = this.shadowRoot.querySelector('main-view');
+                if (mainView && typeof mainView.showToast === 'function') {
+                    mainView.showToast('Invalid API key', 'error');
+                }
+                return;
+            }
             window.cheddar.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         }
         this.responses = [];
