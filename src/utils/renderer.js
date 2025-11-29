@@ -190,7 +190,7 @@ ipcRenderer.on('update-status', (event, status) => {
     cheddar.e().setStatus(status);
 });
 
-// Listen for responses - REMOVED: This is handled in CheatingDaddyApp.js to avoid duplicates
+// Listen for responses - REMOVED: This is handled in GhostPrepApp.js to avoid duplicates
 // ipcRenderer.on('update-response', (event, response) => {
 //     console.log('Gemini response:', response);
 //     cheddar.e().setResponse(response);
@@ -785,7 +785,7 @@ function handleShortcut(shortcutKey) {
             // Trigger the start session from main view
 
             // First try to get the app component and call handleStart directly
-            const appElement = document.querySelector('cheating-daddy-app');
+            const appElement = document.querySelector('ghostprep-app');
             if (appElement && typeof appElement.handleStart === 'function') {
                 appElement.handleStart();
             } else {
