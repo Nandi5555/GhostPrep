@@ -7,8 +7,8 @@ let audioContext = null;
 let audioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
-  const AUDIO_CHUNK_DURATION = 0.05; // seconds
-  const BUFFER_SIZE = 1024; // Smaller buffer for lower-latency callbacks
+  const AUDIO_CHUNK_DURATION = 0.025;
+  const BUFFER_SIZE = 512;
   let audioPauseUntil = 0;
   // Simple VAD config for auto end-of-speech detection
   let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '600', 10);
@@ -301,9 +301,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     audio: {
                         sampleRate: SAMPLE_RATE,
                         channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
                     },
                 });
 
@@ -368,7 +368,7 @@ try {
 
 function setupLinuxMicProcessing(micStream) {
     // Setup microphone audio processing for Linux
-    const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
     const micSource = micAudioContext.createMediaStreamSource(micStream);
     const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
@@ -441,7 +441,7 @@ function setupLinuxMicProcessing(micStream) {
 
 function setupWindowsLoopbackProcessing() {
     // Setup audio processing for Windows loopback audio only
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
     const source = audioContext.createMediaStreamSource(mediaStream);
     audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
