@@ -60,6 +60,120 @@ export class HistoryView extends LitElement {
             margin-bottom: 6px;
         }
 
+        .session-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .session-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--focus-border-color);
+            cursor: pointer;
+        }
+
+        .icon-button {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: all 0.15s ease;
+        }
+
+        .icon-button:hover {
+            background: var(--hover-background);
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .controls-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-color);
+        }
+
+        .controls-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal {
+            background: var(--main-content-background);
+            border: 1px solid var(--button-border);
+            border-radius: 8px;
+            width: 360px;
+            max-width: 90vw;
+            padding: 14px;
+            color: var(--text-color);
+        }
+
+        .modal-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .modal-body {
+            font-size: 12px;
+            color: var(--description-color);
+            margin-bottom: 12px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .button {
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .button:hover {
+            background: var(--hover-background);
+        }
+
+        .button.danger {
+            border-color: var(--focus-border-color);
+        }
+
         .session-date {
             font-size: 12px;
             font-weight: 600;
@@ -226,6 +340,10 @@ export class HistoryView extends LitElement {
         sessions: { type: Array },
         selectedSession: { type: Object },
         loading: { type: Boolean },
+        selectedIds: { type: Object },
+        confirmMode: { type: String },
+        confirmSessionId: { type: String },
+        deleting: { type: Boolean },
     };
 
     constructor() {
@@ -233,6 +351,10 @@ export class HistoryView extends LitElement {
         this.sessions = [];
         this.selectedSession = null;
         this.loading = true;
+        this.selectedIds = new Set();
+        this.confirmMode = null;
+        this.confirmSessionId = null;
+        this.deleting = false;
         this.loadSessions();
     }
 
@@ -301,6 +423,67 @@ export class HistoryView extends LitElement {
         this.selectedSession = null;
     }
 
+    isAllSelected() {
+        return this.sessions.length > 0 && this.selectedIds.size === this.sessions.length;
+    }
+
+    toggleSelect(sessionId) {
+        const next = new Set(this.selectedIds);
+        if (next.has(sessionId)) {
+            next.delete(sessionId);
+        } else {
+            next.add(sessionId);
+        }
+        this.selectedIds = next;
+    }
+
+    toggleSelectAll() {
+        if (this.isAllSelected()) {
+            this.selectedIds = new Set();
+        } else {
+            const all = new Set(this.sessions.map(s => s.sessionId));
+            this.selectedIds = all;
+        }
+    }
+
+    async deleteSelected() {
+        if (!this.selectedIds || this.selectedIds.size === 0) return;
+        this.confirmMode = 'bulk';
+    }
+
+    async deleteSessionById(sessionId) {
+        this.confirmMode = 'single';
+        this.confirmSessionId = sessionId;
+    }
+
+    cancelConfirm() {
+        this.confirmMode = null;
+        this.confirmSessionId = null;
+        this.deleting = false;
+    }
+
+    async confirmDelete() {
+        if (this.deleting) return;
+        const ids = this.confirmMode === 'single' ? [this.confirmSessionId] : Array.from(this.selectedIds);
+        if (!ids || ids.length === 0) {
+            this.cancelConfirm();
+            return;
+        }
+        if (window.cheddar && window.cheddar.deleteConversationSessions) {
+            this.deleting = true;
+            await window.cheddar.deleteConversationSessions(ids);
+            const remaining = this.sessions.filter(s => !ids.includes(s.sessionId));
+            this.sessions = remaining;
+            const next = new Set(this.selectedIds);
+            ids.forEach(id => next.delete(id));
+            this.selectedIds = next;
+            if (this.selectedSession && ids.includes(this.selectedSession.sessionId)) {
+                this.selectedSession = null;
+            }
+            this.cancelConfirm();
+        }
+    }
+
     renderSessionsList() {
         if (this.loading) {
             return html`<div class="loading">Loading conversation history...</div>`;
@@ -316,18 +499,88 @@ export class HistoryView extends LitElement {
         }
 
         return html`
+            <div class="controls">
+                <div class="controls-left">
+                    <input
+                        class="checkbox"
+                        type="checkbox"
+                        .checked=${this.isAllSelected()}
+                        @click=${e => {
+                            e.stopPropagation();
+                            this.toggleSelectAll();
+                        }}
+                    />
+                    <span>Select all</span>
+                </div>
+                <div class="controls-right">
+                    <button class="icon-button" @click=${() => this.deleteSelected()}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" color="currentColor">
+                            <path d="M3 6h18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                            <path d="M8 6V4h8v2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                            <path d="M19 6l-1 14H6L5 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Delete selected
+                    </button>
+                </div>
+            </div>
             <div class="sessions-list">
                 ${this.sessions.map(
                     session => html`
                         <div class="session-item" @click=${() => this.handleSessionClick(session)}>
                             <div class="session-header">
-                                <div class="session-date">${this.formatDate(session.timestamp)}</div>
-                                <div class="session-time">${this.formatTime(session.timestamp)}</div>
+                                <div class="session-header-left">
+                                    <input
+                                        class="checkbox"
+                                        type="checkbox"
+                                        .checked=${this.selectedIds.has(session.sessionId)}
+                                        @click=${e => {
+                                            e.stopPropagation();
+                                            this.toggleSelect(session.sessionId);
+                                        }}
+                                    />
+                                    <div class="session-date">${this.formatDate(session.timestamp)}</div>
+                                </div>
+                                <div class="session-actions">
+                                    <div class="session-time">${this.formatTime(session.timestamp)}</div>
+                                    <button
+                                        class="icon-button"
+                                        @click=${e => {
+                                            e.stopPropagation();
+                                            this.deleteSessionById(session.sessionId);
+                                        }}
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" color="currentColor">
+                                            <path d="M3 6h18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                                            <path d="M8 6V4h8v2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                                            <path d="M19 6l-1 14H6L5 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                             <div class="session-preview">${this.getSessionPreview(session)}</div>
                         </div>
                     `
                 )}
+            </div>
+        `;
+    }
+
+    renderConfirmDialog() {
+        if (!this.confirmMode) return html``;
+        const isBulk = this.confirmMode === 'bulk';
+        const count = isBulk ? this.selectedIds.size : 1;
+        const title = isBulk ? 'Delete selected chats?' : 'Delete this chat?';
+        const body = isBulk ? `This will delete ${count} ${count === 1 ? 'chat' : 'chats'}.` : 'This will delete the selected chat.';
+        return html`
+            <div class="overlay" @click=${() => this.cancelConfirm()}>
+                <div class="modal" @click=${e => e.stopPropagation()}>
+                    <div class="modal-title">${title}</div>
+                    <div class="modal-body">${body}</div>
+                    <div class="modal-actions">
+                        <button class="button" ?disabled=${this.deleting} @click=${() => this.cancelConfirm()}>Cancel</button>
+                        <button class="button danger" ?disabled=${this.deleting} @click=${() => this.confirmDelete()}>Delete</button>
+                    </div>
+                </div>
             </div>
         `;
     }
@@ -394,7 +647,7 @@ export class HistoryView extends LitElement {
     }
 
     render() {
-        return html` <div class="history-container">${this.selectedSession ? this.renderConversationView() : this.renderSessionsList()}</div> `;
+        return html` <div class="history-container">${this.selectedSession ? this.renderConversationView() : this.renderSessionsList()}${this.renderConfirmDialog()}</div> `;
     }
 }
 
