@@ -427,7 +427,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
 
     // macOS audio capture started
 
-    const CHUNK_DURATION = 0.05;
+    const CHUNK_DURATION = 0.025;
     const SAMPLE_RATE = 24000;
     const BYTES_PER_SAMPLE = 2;
     const CHANNELS = 2;
