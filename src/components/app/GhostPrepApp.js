@@ -52,7 +52,7 @@ export class GhostPrepApp extends LitElement {
             transition: all 0.15s ease-out;
             background: var(--main-content-background);
             backdrop-filter: blur(8px);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            box-shadow: none;
         }
 
         .main-content.with-border {
