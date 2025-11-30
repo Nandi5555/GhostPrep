@@ -19,7 +19,23 @@ export class AppHeader extends LitElement {
             border-radius: 999px;
             backdrop-filter: blur(8px);
             box-shadow: none;
+            transition: padding 0.2s ease;
         }
+
+        .header.compact {
+            padding: 6px 12px;
+            display: grid;
+            width: max-content;
+            margin: 0 auto;
+            grid-template-columns: auto auto auto;
+            align-items: center;
+            justify-items: center;
+            gap: 8px;
+            transition: transform 0.18s ease, padding 0.18s ease;
+        }
+        .header.compact .header-title { padding-left: 0; justify-self: end; }
+        .header.compact .header-actions { gap: 0; justify-self: start; }
+        .header.compact .center-actions { position: static; left: auto; transform: none; justify-self: center; }
 
         .header-title {
             flex: 1;
@@ -46,9 +62,9 @@ export class AppHeader extends LitElement {
 
         .primary-toggle {
             color: var(--primary-button-text, #ffffff);
-            padding: 9px 18px;
+            padding: 9px 20px;
             border-radius: var(--primary-button-radius, 16px);
-            font-size: 13px;
+            font-size: 15px;
             font-weight: 600;
             border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 999px;
@@ -87,6 +103,23 @@ export class AppHeader extends LitElement {
 
         .icon-button:hover { background: var(--glass-hover-bg); opacity: 1; }
         .icon-button:active { transform: translateY(1px); }
+
+        .floating-close {
+            position: absolute;
+            right: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-radius: 999px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: var(--header-icon-padding);
+            box-shadow: var(--glass-shadow);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            z-index: 2;
+            transition: right 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+        }
 
         .button:hover {
             background: var(--hover-background);
@@ -341,7 +374,7 @@ export class AppHeader extends LitElement {
         const elapsedTime = this.getElapsedTime();
 
         return html`
-            <div class="header">
+            <div class="header ${this.currentView === 'main' && this.isMainCollapsed ? 'compact' : ''}">
                 <div class="header-title">${this.getViewTitle()}</div>
                 ${this.currentView === 'main'
                     ? html`
@@ -399,7 +432,7 @@ export class AppHeader extends LitElement {
                                   : ''}
                           `
                         : ''}
-                    ${this.currentView === 'main'
+                    ${this.currentView === 'main' && !this.isMainCollapsed
                         ? html`
                               <button class="icon-button" @click=${this.onHistoryClick}>
                                   <?xml version="1.0" encoding="UTF-8"?><svg
@@ -574,7 +607,9 @@ export class AppHeader extends LitElement {
                               </button>
                           `
                         : html`
-                              <button @click=${this.isNavigationView() ? this.onBackClick : this.onCloseClick} class="icon-button window-close">
+                              ${this.currentView === 'main' && this.isMainCollapsed
+                                  ? ''
+                                  : html`<button @click=${this.isNavigationView() ? this.onBackClick : this.onCloseClick} class="icon-button window-close">
                                   <?xml version="1.0" encoding="UTF-8"?><svg
                                       width="24px"
                                       height="24px"
@@ -592,9 +627,30 @@ export class AppHeader extends LitElement {
                                           stroke-linejoin="round"
                                       ></path>
                                   </svg>
-                              </button>
+                              </button>`}
                           `}
                 </div>
+                ${this.currentView === 'main' && this.isMainCollapsed
+                    ? html`<button @click=${this.onCloseClick} class="floating-close">
+                        <?xml version="1.0" encoding="UTF-8"?><svg
+                            width="24px"
+                            height="24px"
+                            stroke-width="1.7"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            color="currentColor"
+                        >
+                            <path
+                                d="M6.75827 17.2426L12.0009 12M17.2435 6.75736L12.0009 12M12.0009 12L6.75827 6.75736M12.0009 12L17.2435 17.2426"
+                                stroke="currentColor"
+                                stroke-width="1.7"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            ></path>
+                        </svg>
+                    </button>`
+                    : ''}
             </div>
         `;
     }
