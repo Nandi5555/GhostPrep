@@ -49,7 +49,7 @@ export class GhostPrepApp extends LitElement {
             overflow-y: auto;
             margin-top: var(--main-content-margin-top);
             border-radius: var(--content-border-radius);
-            transition: all 0.15s ease-out;
+            transition: max-height 0.2s ease, opacity 0.2s ease, padding 0.2s ease, margin 0.2s ease;
             background: var(--main-content-background);
             backdrop-filter: blur(8px);
             box-shadow: none;
@@ -103,6 +103,19 @@ export class GhostPrepApp extends LitElement {
         ::-webkit-scrollbar-thumb:hover {
             background: var(--scrollbar-thumb-hover);
         }
+        .main-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            padding: 0;
+            margin-top: 0;
+            overflow: hidden;
+            border: none;
+        }
+
+        .main-content.expanded {
+            max-height: 100vh;
+            opacity: 1;
+        }
     `;
 
     static properties = {
@@ -125,6 +138,7 @@ export class GhostPrepApp extends LitElement {
         promptPanelOpen: { type: Boolean },
         transcriptText: { type: String },
         activeAssistantTab: { type: String },
+        mainCollapsed: { type: Boolean },
     };
 
     constructor() {
@@ -149,6 +163,7 @@ export class GhostPrepApp extends LitElement {
         this.promptPanelOpen = false;
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
+        this.mainCollapsed = this.currentView === 'main';
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -552,6 +567,12 @@ export class GhostPrepApp extends LitElement {
             }
         }
 
+        if (changedProperties.has('currentView')) {
+            if (this.currentView === 'main') {
+                this.mainCollapsed = true;
+            }
+        }
+
         // Only update localStorage when these specific properties change
         if (changedProperties.has('selectedProfile')) {
             localStorage.setItem('selectedProfile', this.selectedProfile);
@@ -649,9 +670,9 @@ export class GhostPrepApp extends LitElement {
     }
 
     render() {
-        const mainContentClass = `main-content ${
-            this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border'
-        }`;
+        const baseClass = this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border';
+        const collapseClass = this.currentView === 'main' ? (this.mainCollapsed ? 'collapsed' : 'expanded') : '';
+        const mainContentClass = `main-content ${baseClass} ${collapseClass}`;
 
         return html`
             <div class="window-container">
@@ -668,6 +689,8 @@ export class GhostPrepApp extends LitElement {
                         .onCloseClick=${() => this.handleClose()}
                         .onBackClick=${() => this.handleBackClick()}
                         .onHideToggleClick=${() => this.handleHideToggle()}
+                        .onMainToggleClick=${() => this.handleMainToggle()}
+                        .isMainCollapsed=${this.mainCollapsed}
                         .onDocumentClick=${() => this.handlePromptConfigOpen()}
                         ?isClickThrough=${this._isClickThrough}
                     ></app-header>
@@ -686,6 +709,12 @@ export class GhostPrepApp extends LitElement {
         } else {
             document.documentElement.classList.remove('compact-layout');
         }
+    }
+
+    handleMainToggle() {
+        if (this.currentView !== 'main') return;
+        this.mainCollapsed = !this.mainCollapsed;
+        this.requestUpdate();
     }
 
     async handleLayoutModeChange(layoutMode) {

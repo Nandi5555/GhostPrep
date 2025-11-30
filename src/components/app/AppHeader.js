@@ -12,6 +12,7 @@ export class AppHeader extends LitElement {
             -webkit-app-region: drag;
             display: flex;
             align-items: center;
+            position: relative;
             padding: var(--header-padding);
             border: 1px solid var(--border-color);
             background: var(--header-background);
@@ -33,6 +34,42 @@ export class AppHeader extends LitElement {
             align-items: center;
             -webkit-app-region: no-drag;
         }
+
+        .center-actions {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            -webkit-app-region: no-drag;
+            display: flex;
+            align-items: center;
+        }
+
+        .primary-toggle {
+            color: var(--primary-button-text, #ffffff);
+            padding: 9px 18px;
+            border-radius: var(--primary-button-radius, 16px);
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 999px;
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.18) 40%, rgba(255, 255, 255, 0.0) 60%),
+                linear-gradient(to bottom, #2a63d6 0%, #1f4bb5 50%, #173e9c 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.45), inset 0 -2px rgba(0, 0, 0, 0.35), 0 6px 12px rgba(0, 0, 0, 0.25);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: transform 0.12s ease, filter 0.2s ease;
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0.2px;
+        }
+
+        .primary-toggle:hover { filter: brightness(1.06); }
+        .primary-toggle:active { transform: translateY(1px); }
+
+        .primary-toggle .label { font-weight: 600; }
+        .primary-toggle .icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; }
+        .primary-toggle .icon svg { width: 16px; height: 16px; }
 
         .header-actions span {
             font-size: var(--header-font-size-small);
@@ -167,6 +204,8 @@ export class AppHeader extends LitElement {
         // New: handler for opening prompt configuration panel
         onDocumentClick: { type: Function },
         backgroundTransparency: { type: Number },
+        onMainToggleClick: { type: Function },
+        isMainCollapsed: { type: Boolean },
     };
 
     constructor() {
@@ -184,6 +223,8 @@ export class AppHeader extends LitElement {
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
         this.onDocumentClick = () => {};
+        this.onMainToggleClick = () => {};
+        this.isMainCollapsed = true;
         this._timerInterval = null;
         this.backgroundTransparency = 0.8;
     }
@@ -302,6 +343,20 @@ export class AppHeader extends LitElement {
         return html`
             <div class="header">
                 <div class="header-title">${this.getViewTitle()}</div>
+                ${this.currentView === 'main'
+                    ? html`
+                          <div class="center-actions">
+                              <button class="primary-toggle" @click=${this.onMainToggleClick}>
+                                  <span class="label">${this.isMainCollapsed ? 'GiveKey' : 'HideKey'}</span>
+                                  <span class="icon" aria-hidden="true">
+                                      ${this.isMainCollapsed
+                                          ? html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 9l6 6 6-6" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+                                          : html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 15l-6-6-6 6" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`}
+                                  </span>
+                              </button>
+                          </div>
+                      `
+                    : ''}
                 <div class="header-actions">
                     ${this.currentView === 'assistant'
                         ? html`
