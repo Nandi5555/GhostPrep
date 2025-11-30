@@ -218,20 +218,7 @@ export class AssistantView extends LitElement {
             background: var(--scrollbar-thumb-hover);
         }
 
-        /* Streaming caret indicator */
-        .stream-caret {
-            display: inline-block;
-            width: 8px;
-            height: 1em;
-            background: var(--text-color);
-            margin-left: 2px;
-            animation: blink 1s steps(1, end) infinite;
-            vertical-align: bottom;
-        }
-
-        @keyframes blink {
-            50% { opacity: 0; }
-        }
+        
 
         .text-input-container {
             display: flex;
@@ -643,6 +630,9 @@ export class AssistantView extends LitElement {
         this._typingInterval = null;
         this._typingCharsPerTick = 6;
         this._typingMs = 8;
+        this._typingRaf = null;
+        this._typingLastTs = 0;
+        this._typingCharsPerSecond = 300;
         this._finalEventEmitted = false;
     }
 
@@ -1007,7 +997,7 @@ export class AssistantView extends LitElement {
             const currentResponse = this.getCurrentResponse();
             const contentToRender = this.isStreaming ? this._streamTypedText : currentResponse;
             const renderedResponse = this.renderMarkdown(contentToRender, this.isStreaming);
-            container.innerHTML = renderedResponse + (this.isStreaming ? '<span class="stream-caret"></span>' : '');
+            container.innerHTML = renderedResponse;
 
             // Highlight code blocks only after stream completes (skip during streaming)
             if (this.hljs && !this.isStreaming) {
@@ -1041,17 +1031,43 @@ export class AssistantView extends LitElement {
             clearInterval(this._typingInterval);
             this._typingInterval = null;
         }
+        if (this._typingRaf) {
+            cancelAnimationFrame(this._typingRaf);
+            this._typingRaf = null;
+        }
         this._streamTypedText = '';
         this._streamTargetText = '';
         this._finalEventEmitted = false;
-        // Start typing loop
-        this._typingInterval = setInterval(() => this._applyTyping(), this._typingMs);
+        this._typingLastTs = performance.now();
+        const loop = (ts) => {
+            if (!this.isStreaming) return;
+            const delta = ts - (this._typingLastTs || ts);
+            this._typingLastTs = ts;
+            const add = Math.max(1, Math.floor((delta / 1000) * this._typingCharsPerSecond));
+            const currentLen = this._streamTypedText.length;
+            const targetLen = this._streamTargetText.length;
+            if (currentLen < targetLen) {
+                const nextLen = Math.min(currentLen + add, targetLen);
+                this._streamTypedText = this._streamTargetText.slice(0, nextLen);
+                this.updateResponseContent();
+                if (this.streamIsFinal && this._streamTypedText.length === this._streamTargetText.length && !this._finalEventEmitted) {
+                    this._finalEventEmitted = true;
+                    this.dispatchEvent(new CustomEvent('stream-finished'));
+                }
+            }
+            this._typingRaf = requestAnimationFrame(loop);
+        };
+        this._typingRaf = requestAnimationFrame(loop);
     }
 
     _endStream() {
         if (this._typingInterval) {
             clearInterval(this._typingInterval);
             this._typingInterval = null;
+        }
+        if (this._typingRaf) {
+            cancelAnimationFrame(this._typingRaf);
+            this._typingRaf = null;
         }
         // After stream ends, the final response will be rendered from responses[]
         this._streamTypedText = '';
