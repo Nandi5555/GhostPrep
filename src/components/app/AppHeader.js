@@ -22,6 +22,16 @@ export class AppHeader extends LitElement {
             transition: padding 0.2s ease;
         }
 
+        .header.jiggle { animation: header-jiggle 480ms ease; }
+        @keyframes header-jiggle {
+            0% { transform: translateY(0) rotate(0deg); }
+            15% { transform: translateY(-1px) rotate(-0.4deg); }
+            30% { transform: translateY(1px) rotate(0.4deg); }
+            45% { transform: translateY(-1px) rotate(-0.3deg); }
+            60% { transform: translateY(1px) rotate(0.3deg); }
+            100% { transform: translateY(0) rotate(0deg); }
+        }
+
         .header.compact {
             padding: 6px 12px;
             display: grid;
@@ -62,22 +72,23 @@ export class AppHeader extends LitElement {
 
         .primary-toggle {
             color: var(--primary-button-text, #ffffff);
-            padding: 9px 20px;
+            padding: 6px 16px;
             border-radius: var(--primary-button-radius, 16px);
             font-size: 15px;
             font-weight: 600;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.28);
             border-radius: 999px;
             background:
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.18) 40%, rgba(255, 255, 255, 0.0) 60%),
-                linear-gradient(to bottom, #2a63d6 0%, #1f4bb5 50%, #173e9c 100%);
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.45), inset 0 -2px rgba(0, 0, 0, 0.35), 0 6px 12px rgba(0, 0, 0, 0.25);
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
             display: inline-flex;
             align-items: center;
             gap: 8px;
             transition: transform 0.12s ease, filter 0.2s ease;
             font-family: 'Inter', sans-serif;
             letter-spacing: 0.2px;
+            backdrop-filter: blur(8px);
         }
 
         .primary-toggle:hover { filter: brightness(1.06); }
@@ -260,6 +271,7 @@ export class AppHeader extends LitElement {
         this.isMainCollapsed = true;
         this._timerInterval = null;
         this.backgroundTransparency = 0.8;
+        this._jiggleActive = false;
     }
 
     connectedCallback() {
@@ -313,6 +325,18 @@ export class AppHeader extends LitElement {
             clearInterval(this._timerInterval);
             this._timerInterval = null;
         }
+    }
+
+    _handleMainToggleClick() {
+        try {
+            this.onMainToggleClick();
+        } catch (_) {}
+        this._jiggleActive = true;
+        this.requestUpdate();
+        setTimeout(() => {
+            this._jiggleActive = false;
+            this.requestUpdate();
+        }, 500);
     }
 
     getViewTitle() {
@@ -374,12 +398,12 @@ export class AppHeader extends LitElement {
         const elapsedTime = this.getElapsedTime();
 
         return html`
-            <div class="header ${this.currentView === 'main' && this.isMainCollapsed ? 'compact' : ''}">
+            <div class="header ${this.currentView === 'main' && this.isMainCollapsed ? 'compact' : ''} ${this._jiggleActive ? 'jiggle' : ''}">
                 <div class="header-title">${this.getViewTitle()}</div>
                 ${this.currentView === 'main'
                     ? html`
                           <div class="center-actions">
-                              <button class="primary-toggle" @click=${this.onMainToggleClick}>
+                              <button class="primary-toggle" @click=${() => this._handleMainToggleClick()}>
                                   <span class="label">${this.isMainCollapsed ? 'GiveKey' : 'HideKey'}</span>
                                   <span class="icon" aria-hidden="true">
                                       ${this.isMainCollapsed
