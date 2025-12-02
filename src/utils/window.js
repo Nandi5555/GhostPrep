@@ -313,29 +313,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
         }
     }
 
-    // Register previous response shortcut
-    if (keybinds.previousResponse) {
-        try {
-            globalShortcut.register(keybinds.previousResponse, () => {
-                sendToRenderer('navigate-previous-response');
-            });
-            // Registered previousResponse
-        } catch (error) {
-            console.error(`Failed to register previousResponse (${keybinds.previousResponse}):`, error);
-        }
-    }
-
-    // Register next response shortcut
-    if (keybinds.nextResponse) {
-        try {
-            globalShortcut.register(keybinds.nextResponse, () => {
-                sendToRenderer('navigate-next-response');
-            });
-            // Registered nextResponse
-        } catch (error) {
-            console.error(`Failed to register nextResponse (${keybinds.nextResponse}):`, error);
-        }
-    }
+    // Remove previous/next response shortcuts for chat-style conversation
 
     // Register scroll up shortcut
     if (keybinds.scrollUp) {
