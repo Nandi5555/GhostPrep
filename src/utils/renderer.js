@@ -23,6 +23,10 @@ let currentImageQuality = 'medium'; // Store current image quality for manual sc
 
 let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode') || 'auto').toLowerCase();
 
+let audioHealthInterval = null;
+let lastAudioProcessTs = 0;
+let audioModeCurrent = 'speaker';
+
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
 
@@ -209,6 +213,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
     try {
         const audioMode = (localStorage.getItem('selectedAudioMode') || 'speaker').toLowerCase();
+        audioModeCurrent = audioMode;
         if (isMacOS) {
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             if (audioMode === 'speaker') {
@@ -361,6 +366,10 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
         console.error('Error starting capture:', err);
         cheddar.e().setStatus('error');
     }
+
+    try {
+        startAudioHealthMonitor();
+    } catch (_) {}
 }
 
 function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
@@ -392,10 +401,11 @@ function setupLinuxMicProcessing(micStream) {
     const micSource = micAudioContext.createMediaStreamSource(micStream);
     const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
-    let audioBuffer = [];
+    audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
     micProcessor.onaudioprocess = async e => {
+        lastAudioProcessTs = Date.now();
         if (audioPauseUntil && Date.now() < audioPauseUntil) {
             return;
         }
@@ -445,10 +455,12 @@ function setupLinuxMicProcessing(micStream) {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const raw = new Uint8Array(pcmData16.buffer);
 
-            ipcRenderer.invoke('send-audio-content', {
-                raw,
-                mimeType: 'audio/pcm;rate=24000',
-            }).catch(() => {});
+            try {
+                ipcRenderer.send('audio-chunk', {
+                    raw,
+                    mimeType: 'audio/pcm;rate=24000',
+                });
+            } catch (_) {}
         }
     };
 
@@ -465,10 +477,11 @@ function setupWindowsLoopbackProcessing() {
     const source = audioContext.createMediaStreamSource(mediaStream);
     audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
-    let audioBuffer = [];
+    audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
     audioProcessor.onaudioprocess = async e => {
+        lastAudioProcessTs = Date.now();
         if (audioPauseUntil && Date.now() < audioPauseUntil) {
             return;
         }
@@ -516,15 +529,38 @@ function setupWindowsLoopbackProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const raw = new Uint8Array(pcmData16.buffer);
 
-            ipcRenderer.invoke('send-audio-content', {
-                raw,
-                mimeType: 'audio/pcm;rate=24000',
-            }).catch(() => {});
+            try {
+                ipcRenderer.send('audio-chunk', {
+                    raw,
+                    mimeType: 'audio/pcm;rate=24000',
+                });
+            } catch (_) {}
         }
     };
 
     source.connect(audioProcessor);
     audioProcessor.connect(audioContext.destination);
+}
+
+function startAudioHealthMonitor() {
+    if (audioHealthInterval) {
+        try { clearInterval(audioHealthInterval); } catch (_) {}
+    }
+    audioHealthInterval = setInterval(() => {
+        try {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().catch(() => {});
+            }
+            if (lastAudioProcessTs && Date.now() - lastAudioProcessTs > 800) {
+                if (audioContext) {
+                    audioContext.resume().catch(() => {});
+                }
+                if (!isLinux && mediaStream) {
+                    setupWindowsLoopbackProcessing();
+                }
+            }
+        } catch (_) {}
+    }, 1000);
 }
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
@@ -678,6 +714,11 @@ function stopCapture() {
     }
     offscreenCanvas = null;
     offscreenContext = null;
+
+    if (audioHealthInterval) {
+        try { clearInterval(audioHealthInterval); } catch (_) {}
+        audioHealthInterval = null;
+    }
 }
 
 function stopScreenCapture() {
