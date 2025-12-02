@@ -616,8 +616,12 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                     targetWidth = baseWidth;
                     targetHeight = layoutMode === 'compact' ? 400 : 500;
                     break;
-                case 'main':
                 case 'assistant':
+                    // Always open Assistant in expanded default size, regardless of compact setting
+                    targetWidth = 800;
+                    targetHeight = 500;
+                    break;
+                case 'main':
                 case 'onboarding':
                 default:
                     targetWidth = baseWidth;

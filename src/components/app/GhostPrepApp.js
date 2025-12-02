@@ -1,5 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { AppHeader } from './AppHeader.js';
+import { resizeLayout } from '../../utils/windowResize.js';
 import { MainView } from '../views/MainView.js';
 import { CustomizeView } from '../views/CustomizeView.js';
 import { HelpView } from '../views/HelpView.js';
@@ -466,6 +467,7 @@ export class GhostPrepApp extends LitElement {
         this.transcriptText = '';
         this.startTime = Date.now();
         this.currentView = 'assistant';
+        try { resizeLayout(); } catch (_) {}
     }
 
     async handleAPIKeyHelp() {
