@@ -741,7 +741,7 @@ export class AssistantView extends LitElement {
         this._typingCharsPerSecond = 300;
         this._finalEventEmitted = false;
         this._lastRenderedCount = 0;
-        this.useScreen = false;
+        this.useScreen = localStorage.getItem('assistantUseScreen') === 'true';
         this.inputFocused = false;
     }
 
@@ -996,15 +996,19 @@ export class AssistantView extends LitElement {
             if (hasText) {
                 this.handleSendText();
             } else {
-                // No text: trigger screen + audio analysis using existing manual screenshot flow
-                try {
-                    if (window.captureManualScreenshot) {
-                        window.captureManualScreenshot();
-                    } else {
-                        console.warn('captureManualScreenshot not available');
-                    }
-                } catch (err) {
-                    console.warn('Failed to trigger manual screenshot analysis:', err);
+                if (this.useScreen) {
+                    try {
+                        if (window.captureManualScreenshot) {
+                            window.captureManualScreenshot();
+                        }
+                    } catch (_) {}
+                } else {
+                    try {
+                        if (window.require) {
+                            const { ipcRenderer } = window.require('electron');
+                            ipcRenderer.invoke('send-current-transcription');
+                        }
+                    } catch (_) {}
                 }
             }
         }
@@ -1061,6 +1065,20 @@ export class AssistantView extends LitElement {
 
     toggleUseScreen() {
         this.useScreen = !this.useScreen;
+        try {
+            localStorage.setItem('assistantUseScreen', this.useScreen ? 'true' : 'false');
+            if (this.useScreen) {
+                const interval = localStorage.getItem('selectedScreenshotInterval') || '5';
+                const quality = localStorage.getItem('selectedImageQuality') || 'medium';
+                if (window.cheddar && typeof window.cheddar.startCapture === 'function') {
+                    window.cheddar.startCapture(interval, quality);
+                }
+            } else {
+                if (window.cheddar && typeof window.cheddar.stopCapture === 'function') {
+                    window.cheddar.stopCapture();
+                }
+            }
+        } catch (_) {}
         this.requestUpdate();
     }
 
@@ -1339,7 +1357,11 @@ export class AssistantView extends LitElement {
                     const defaults = [
                         {
                             name: 'Assist',
-                            text: 'Listen and check the screen to see what is being asked. Carefully review any code shown and analyze it thoroughly before giving an answer.\n\nIf the question is an output-prediction type, examine the code very closely and provide the exact output. Also include an explanation showing how you arrived at that answer and your reasoning steps.',
+                            text: 'Assist!',
+                        },
+                         {
+                            name: 'What should I say?',
+                            text: 'What should I say?',
                         },
                         {
                             name: 'Code Assistance',

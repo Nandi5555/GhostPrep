@@ -465,7 +465,9 @@ export class GhostPrepApp extends LitElement {
                 }
                 return;
             }
-            window.cheddar.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+            if (localStorage.getItem('assistantUseScreen') === 'true') {
+                window.cheddar.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+            }
         }
         this.responses = [];
         this.currentResponseIndex = -1;

@@ -841,8 +841,10 @@ function handleShortcut(shortcutKey) {
                 }
             }
         } else {
-            // In other views, take manual screenshot and send current transcription
-            captureManualScreenshot();
+            const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+            if (useScreen) {
+                captureManualScreenshot();
+            }
             audioPauseUntil = Date.now() + 120;
             ipcRenderer
                 .invoke('send-current-transcription')
