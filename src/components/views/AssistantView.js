@@ -26,6 +26,44 @@ export class AssistantView extends LitElement {
             border: 1px solid var(--border-color);
         }
 
+        .response-container.chat {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+        }
+
+        .chat-row {
+            display: flex;
+            width: 100%;
+            margin: 8px 0;
+        }
+        .chat-row.right { justify-content: flex-end; }
+        .chat-row.left { justify-content: flex-start; }
+        .bubble {
+            max-width: 78%;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+        .bubble.user {
+            background: var(--glass-bg);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .bubble.user.multiline {
+            border-radius: 14px;
+        }
+        .bubble.ai {
+            background: var(--main-content-background);
+        }
+
+        .answer-block {
+            max-width: 100%;
+            margin: 8px 0;
+        }
+
         /* Markdown styling */
         .response-container h1,
         .response-container h2,
@@ -218,20 +256,7 @@ export class AssistantView extends LitElement {
             background: var(--scrollbar-thumb-hover);
         }
 
-        /* Streaming caret indicator */
-        .stream-caret {
-            display: inline-block;
-            width: 8px;
-            height: 1em;
-            background: var(--text-color);
-            margin-left: 2px;
-            animation: blink 1s steps(1, end) infinite;
-            vertical-align: bottom;
-        }
-
-        @keyframes blink {
-            50% { opacity: 0; }
-        }
+        
 
         .text-input-container {
             display: flex;
@@ -317,7 +342,8 @@ export class AssistantView extends LitElement {
             background: var(--scrollbar-thumb-hover);
         }
 
-        .text-input-container button {
+        /* Limit generic button styling to non-send buttons */
+        .text-input-container .nav-button {
             background: transparent;
             color: var(--start-button-background);
             border: none;
@@ -325,7 +351,7 @@ export class AssistantView extends LitElement {
             border-radius: 100px;
         }
 
-        .text-input-container button:hover {
+        .text-input-container .nav-button:hover {
             background: var(--text-input-button-hover);
         }
 
@@ -380,6 +406,24 @@ export class AssistantView extends LitElement {
         .tab-btn.active { box-shadow: 0 0 0 2px var(--focus-border-color, #007aff); }
         
         .send-primary { background: var(--text-input-button-hover); color: #fff; border: 1px solid var(--button-border); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
+        .send-button {
+            color: var(--primary-button-text, #ffffff);
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.12s ease, filter 0.2s ease;
+            backdrop-filter: blur(8px);
+        }
+        /* No hover color change for send button */
+        .send-button:active { transform: translateY(1px); }
 
         /* Syntax highlighting (highlight.js inspired) */
         pre code.hljs {
@@ -595,6 +639,7 @@ export class AssistantView extends LitElement {
     static properties = {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
+        questions: { type: Array },
         selectedProfile: { type: String },
         selectedLanguage: { type: String },
         statusText: { type: String },
@@ -615,6 +660,7 @@ export class AssistantView extends LitElement {
         super();
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.questions = [];
         this.selectedProfile = 'interview';
         this.selectedLanguage = 'en-US';
         this.statusText = '';
@@ -643,7 +689,11 @@ export class AssistantView extends LitElement {
         this._typingInterval = null;
         this._typingCharsPerTick = 6;
         this._typingMs = 8;
+        this._typingRaf = null;
+        this._typingLastTs = 0;
+        this._typingCharsPerSecond = 300;
         this._finalEventEmitted = false;
+        this._lastRenderedCount = 0;
     }
 
     getProfileNames() {
@@ -661,6 +711,12 @@ export class AssistantView extends LitElement {
         return this.responses.length > 0 && this.currentResponseIndex >= 0
             ? this.responses[this.currentResponseIndex]
             : `Hey, Im listening to your ${profileNames[this.selectedProfile] || 'session'}?`;
+    }
+
+    getCurrentQuestion() {
+        return this.questions && this.currentResponseIndex >= 0 && this.currentResponseIndex < this.questions.length
+            ? (this.questions[this.currentResponseIndex] || '')
+            : '';
     }
 
     renderMarkdown(content, light = false) {
@@ -955,12 +1011,33 @@ export class AssistantView extends LitElement {
     }
 
     scrollToBottom(containerId) {
-        setTimeout(() => {
+        const doScroll = () => {
             const container = this.shadowRoot.querySelector(`#${containerId}`);
-            if (container) {
+            if (!container) return;
+            const target = container.lastElementChild || container;
+            try {
+                container.scrollTop = container.scrollHeight;
+                target.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            } catch (_) {
                 container.scrollTop = container.scrollHeight;
             }
-        }, 0);
+
+            try {
+                let host = this.getRootNode()?.host;
+                let anc = host;
+                while (anc && anc.parentElement) {
+                    anc = anc.parentElement;
+                    const cs = getComputedStyle(anc);
+                    const overflowY = cs.overflowY;
+                    if ((overflowY === 'auto' || overflowY === 'scroll') && anc.scrollHeight > anc.clientHeight) {
+                        anc.scrollTop = anc.scrollHeight;
+                        break;
+                    }
+                }
+            } catch (_) {}
+        };
+        requestAnimationFrame(doScroll);
+        setTimeout(doScroll, 16);
     }
 
     firstUpdated() {
@@ -975,7 +1052,8 @@ export class AssistantView extends LitElement {
         if (
             changedProperties.has('responses') ||
             changedProperties.has('currentResponseIndex') ||
-            changedProperties.has('isStreaming')
+            changedProperties.has('isStreaming') ||
+            changedProperties.has('questions')
         ) {
             this.updateResponseContent();
         }
@@ -1004,10 +1082,35 @@ export class AssistantView extends LitElement {
     updateResponseContent() {
         const container = this.shadowRoot.querySelector('#responseContainer');
         if (container) {
-            const currentResponse = this.getCurrentResponse();
-            const contentToRender = this.isStreaming ? this._streamTypedText : currentResponse;
-            const renderedResponse = this.renderMarkdown(contentToRender, this.isStreaming);
-            container.innerHTML = renderedResponse + (this.isStreaming ? '<span class="stream-caret"></span>' : '');
+            const escape = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const maxLen = Math.max((this.questions || []).length, (this.responses || []).length);
+            let htmlStr = '';
+            for (let i = 0; i < maxLen; i++) {
+                const q = (this.questions || [])[i] || '';
+                const isCurrent = i === this.currentResponseIndex;
+                const ansText = isCurrent && this.isStreaming ? this._streamTypedText : ((this.responses || [])[i] || '');
+                const ansRendered = this.renderMarkdown(ansText, isCurrent && this.isStreaming);
+                if (q && q.trim()) {
+                    htmlStr += `<div class="chat-row right"><div class="bubble user">${escape(q)}</div></div>`;
+                }
+                if (ansText && ansText.trim()) {
+                    htmlStr += `<div class="chat-row left"><div class="answer-block">${ansRendered}</div></div>`;
+                }
+            }
+            container.innerHTML = htmlStr || '';
+            this._lastRenderedCount = maxLen;
+
+            try {
+                container.querySelectorAll('.bubble.user').forEach(el => {
+                    const cs = getComputedStyle(el);
+                    const lh = parseFloat(cs.lineHeight) || 18;
+                    const pt = parseFloat(cs.paddingTop) || 0;
+                    const pb = parseFloat(cs.paddingBottom) || 0;
+                    const contentH = (el.clientHeight || 0) - pt - pb; // exclude padding
+                    const isMulti = contentH > lh * 1.25; // more than ~1 line
+                    if (isMulti) el.classList.add('multiline'); else el.classList.remove('multiline');
+                });
+            } catch (_) {}
 
             // Highlight code blocks only after stream completes (skip during streaming)
             if (this.hljs && !this.isStreaming) {
@@ -1041,11 +1144,42 @@ export class AssistantView extends LitElement {
             clearInterval(this._typingInterval);
             this._typingInterval = null;
         }
+        if (this._typingRaf) {
+            cancelAnimationFrame(this._typingRaf);
+            this._typingRaf = null;
+        }
         this._streamTypedText = '';
         this._streamTargetText = '';
         this._finalEventEmitted = false;
-        // Start typing loop
-        this._typingInterval = setInterval(() => this._applyTyping(), this._typingMs);
+        this._typingLastTs = performance.now();
+        try {
+            const container = this.shadowRoot.querySelector('#responseContainer');
+            if (container && !this._scrollObserver) {
+                this._scrollObserver = new MutationObserver(() => {
+                    if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
+                });
+                this._scrollObserver.observe(container, { childList: true, subtree: true });
+            }
+        } catch (_) {}
+        const loop = (ts) => {
+            if (!this.isStreaming) return;
+            const delta = ts - (this._typingLastTs || ts);
+            this._typingLastTs = ts;
+            const add = Math.max(1, Math.floor((delta / 1000) * this._typingCharsPerSecond));
+            const currentLen = this._streamTypedText.length;
+            const targetLen = this._streamTargetText.length;
+            if (currentLen < targetLen) {
+                const nextLen = Math.min(currentLen + add, targetLen);
+                this._streamTypedText = this._streamTargetText.slice(0, nextLen);
+                this.updateResponseContent();
+                if (this.streamIsFinal && this._streamTypedText.length === this._streamTargetText.length && !this._finalEventEmitted) {
+                    this._finalEventEmitted = true;
+                    this.dispatchEvent(new CustomEvent('stream-finished'));
+                }
+            }
+            this._typingRaf = requestAnimationFrame(loop);
+        };
+        this._typingRaf = requestAnimationFrame(loop);
     }
 
     _endStream() {
@@ -1053,6 +1187,16 @@ export class AssistantView extends LitElement {
             clearInterval(this._typingInterval);
             this._typingInterval = null;
         }
+        if (this._typingRaf) {
+            cancelAnimationFrame(this._typingRaf);
+            this._typingRaf = null;
+        }
+        try {
+            if (this._scrollObserver) {
+                this._scrollObserver.disconnect();
+                this._scrollObserver = null;
+            }
+        } catch (_) {}
         // After stream ends, the final response will be rendered from responses[]
         this._streamTypedText = '';
         this._streamTargetText = '';
@@ -1072,6 +1216,7 @@ export class AssistantView extends LitElement {
             this._streamTargetText += delta;
             // Trigger fast update to keep flow smooth
             this.updateResponseContent();
+            if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
         }
     }
 
@@ -1236,42 +1381,16 @@ export class AssistantView extends LitElement {
                 <button class="tab-btn ${this.activeTab==='chat'?'active':''}" @click=${() => { this.activeTab='chat'; this.onTabChange('chat'); this.requestUpdate(); }}>Chat</button>
                 <button class="tab-btn ${this.activeTab==='transcript'?'active':''}" @click=${() => { this.activeTab='transcript'; this.onTabChange('transcript'); this.requestUpdate(); }}>Transcript</button>
             </div>
-            <div class="response-container" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
+            <div class="response-container chat" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
             <div class="response-container" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
 
             <div class="text-input-container">
-                <button class="nav-button" @click=${this.navigateToPreviousResponse} ?disabled=${this.currentResponseIndex <= 0}>
-                    <?xml version="1.0" encoding="UTF-8"?><svg
-                        width="24px"
-                        height="24px"
-                        stroke-width="1.7"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        color="#ffffff"
-                    >
-                        <path d="M15 6L9 12L15 18" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
-                    </svg>
-                </button>
-
-                ${this.responses.length > 0 ? html` <span class="response-counter">${responseCounter}</span> ` : ''}
-
                 <textarea id="textInput" rows="1" placeholder="Type a message to the AI..." @keydown=${this.handleTextKeydown} @input=${this.handleTextInput} @paste=${this.handleTextInput}></textarea>
-
-                <button class="nav-button" @click=${this.navigateToNextResponse} ?disabled=${this.currentResponseIndex >= this.responses.length - 1}>
-                    <?xml version="1.0" encoding="UTF-8"?><svg
-                        width="24px"
-                        height="24px"
-                        stroke-width="1.7"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        color="#ffffff"
-                    >
-                        <path d="M9 6L15 12L9 18" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+                <button class="send-button" @click=${() => this.handleSendText()}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </button>
-                <button class="send-primary" @click=${() => this.handleSendText()}>Send</button>
             </div>
             <div class="assistant-toggles">
                 <label class="assistant-toggle-label">
@@ -1372,7 +1491,7 @@ export class AssistantView extends LitElement {
         ev.preventDefault();
         const dx = ev.clientX - (this._resizeStartX || 0);
         const dy = ev.clientY - (this._resizeStartY || 0);
-        const b = this._resizeStartBounds || { x: 0, y: 0, width: 600, height: 400 };
+        const b = this._resizeStartBounds || { x: 0, y: 0, width: 600, height: 200 };
         let x = b.x;
         let y = b.y;
         let width = b.width;

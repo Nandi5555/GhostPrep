@@ -12,13 +12,40 @@ export class AppHeader extends LitElement {
             -webkit-app-region: drag;
             display: flex;
             align-items: center;
+            position: relative;
             padding: var(--header-padding);
             border: 1px solid var(--border-color);
             background: var(--header-background);
-            border-radius: var(--border-radius);
+            border-radius: 999px;
             backdrop-filter: blur(8px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+            box-shadow: none;
+            transition: padding 0.2s ease;
         }
+
+        .header.jiggle { animation: header-jiggle 480ms ease; }
+        @keyframes header-jiggle {
+            0% { transform: translateY(0) rotate(0deg); }
+            15% { transform: translateY(-1px) rotate(-0.4deg); }
+            30% { transform: translateY(1px) rotate(0.4deg); }
+            45% { transform: translateY(-1px) rotate(-0.3deg); }
+            60% { transform: translateY(1px) rotate(0.3deg); }
+            100% { transform: translateY(0) rotate(0deg); }
+        }
+
+        .header.compact {
+            padding: 6px 12px;
+            display: grid;
+            width: max-content;
+            margin: 0 auto;
+            grid-template-columns: auto auto auto;
+            align-items: center;
+            justify-items: center;
+            gap: 8px;
+            transition: transform 0.18s ease, padding 0.18s ease;
+        }
+        .header.compact .header-title { padding-left: 0; justify-self: end; }
+        .header.compact .header-actions { gap: 0; justify-self: start; }
+        .header.compact .center-actions { position: static; left: auto; transform: none; justify-self: center; }
 
         .header-title {
             flex: 1;
@@ -33,6 +60,43 @@ export class AppHeader extends LitElement {
             align-items: center;
             -webkit-app-region: no-drag;
         }
+
+        .center-actions {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            -webkit-app-region: no-drag;
+            display: flex;
+            align-items: center;
+        }
+
+        .primary-toggle {
+            color: var(--primary-button-text, #ffffff);
+            padding: 6px 16px;
+            border-radius: var(--primary-button-radius, 16px);
+            font-size: 15px;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            border-radius: 999px;
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: transform 0.12s ease, filter 0.2s ease;
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0.2px;
+            backdrop-filter: blur(8px);
+        }
+
+        .primary-toggle:hover { filter: brightness(1.06); }
+        .primary-toggle:active { transform: translateY(1px); }
+
+        .primary-toggle .label { font-weight: 600; }
+        .primary-toggle .icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; }
+        .primary-toggle .icon svg { width: 16px; height: 16px; }
 
         .header-actions span {
             font-size: var(--header-font-size-small);
@@ -50,6 +114,23 @@ export class AppHeader extends LitElement {
 
         .icon-button:hover { background: var(--glass-hover-bg); opacity: 1; }
         .icon-button:active { transform: translateY(1px); }
+
+        .floating-close {
+            position: absolute;
+            right: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-radius: 999px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: var(--header-icon-padding);
+            box-shadow: var(--glass-shadow);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            z-index: 2;
+            transition: right 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+        }
 
         .button:hover {
             background: var(--hover-background);
@@ -167,6 +248,8 @@ export class AppHeader extends LitElement {
         // New: handler for opening prompt configuration panel
         onDocumentClick: { type: Function },
         backgroundTransparency: { type: Number },
+        onMainToggleClick: { type: Function },
+        isMainCollapsed: { type: Boolean },
     };
 
     constructor() {
@@ -184,8 +267,11 @@ export class AppHeader extends LitElement {
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
         this.onDocumentClick = () => {};
+        this.onMainToggleClick = () => {};
+        this.isMainCollapsed = true;
         this._timerInterval = null;
         this.backgroundTransparency = 0.8;
+        this._jiggleActive = false;
     }
 
     connectedCallback() {
@@ -239,6 +325,18 @@ export class AppHeader extends LitElement {
             clearInterval(this._timerInterval);
             this._timerInterval = null;
         }
+    }
+
+    _handleMainToggleClick() {
+        try {
+            this.onMainToggleClick();
+        } catch (_) {}
+        this._jiggleActive = true;
+        this.requestUpdate();
+        setTimeout(() => {
+            this._jiggleActive = false;
+            this.requestUpdate();
+        }, 500);
     }
 
     getViewTitle() {
@@ -300,8 +398,22 @@ export class AppHeader extends LitElement {
         const elapsedTime = this.getElapsedTime();
 
         return html`
-            <div class="header">
+            <div class="header ${this.currentView === 'main' && this.isMainCollapsed ? 'compact' : ''} ${this._jiggleActive ? 'jiggle' : ''}">
                 <div class="header-title">${this.getViewTitle()}</div>
+                ${this.currentView === 'main'
+                    ? html`
+                          <div class="center-actions">
+                              <button class="primary-toggle" @click=${() => this._handleMainToggleClick()}>
+                                  <span class="label">${this.isMainCollapsed ? 'GiveKey' : 'HideKey'}</span>
+                                  <span class="icon" aria-hidden="true">
+                                      ${this.isMainCollapsed
+                                          ? html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 9l6 6 6-6" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+                                          : html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 15l-6-6-6 6" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`}
+                                  </span>
+                              </button>
+                          </div>
+                      `
+                    : ''}
                 <div class="header-actions">
                     ${this.currentView === 'assistant'
                         ? html`
@@ -344,7 +456,7 @@ export class AppHeader extends LitElement {
                                   : ''}
                           `
                         : ''}
-                    ${this.currentView === 'main'
+                    ${this.currentView === 'main' && !this.isMainCollapsed
                         ? html`
                               <button class="icon-button" @click=${this.onHistoryClick}>
                                   <?xml version="1.0" encoding="UTF-8"?><svg
@@ -519,7 +631,9 @@ export class AppHeader extends LitElement {
                               </button>
                           `
                         : html`
-                              <button @click=${this.isNavigationView() ? this.onBackClick : this.onCloseClick} class="icon-button window-close">
+                              ${this.currentView === 'main' && this.isMainCollapsed
+                                  ? ''
+                                  : html`<button @click=${this.isNavigationView() ? this.onBackClick : this.onCloseClick} class="icon-button window-close">
                                   <?xml version="1.0" encoding="UTF-8"?><svg
                                       width="24px"
                                       height="24px"
@@ -537,9 +651,30 @@ export class AppHeader extends LitElement {
                                           stroke-linejoin="round"
                                       ></path>
                                   </svg>
-                              </button>
+                              </button>`}
                           `}
                 </div>
+                ${this.currentView === 'main' && this.isMainCollapsed
+                    ? html`<button @click=${this.onCloseClick} class="floating-close">
+                        <?xml version="1.0" encoding="UTF-8"?><svg
+                            width="24px"
+                            height="24px"
+                            stroke-width="1.7"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            color="currentColor"
+                        >
+                            <path
+                                d="M6.75827 17.2426L12.0009 12M17.2435 6.75736L12.0009 12M12.0009 12L6.75827 6.75736M12.0009 12L17.2435 17.2426"
+                                stroke="currentColor"
+                                stroke-width="1.7"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            ></path>
+                        </svg>
+                    </button>`
+                    : ''}
             </div>
         `;
     }

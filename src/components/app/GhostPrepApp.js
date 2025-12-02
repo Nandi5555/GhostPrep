@@ -1,5 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { AppHeader } from './AppHeader.js';
+import { resizeLayout } from '../../utils/windowResize.js';
 import { MainView } from '../views/MainView.js';
 import { CustomizeView } from '../views/CustomizeView.js';
 import { HelpView } from '../views/HelpView.js';
@@ -49,17 +50,17 @@ export class GhostPrepApp extends LitElement {
             overflow-y: auto;
             margin-top: var(--main-content-margin-top);
             border-radius: var(--content-border-radius);
-            transition: all 0.15s ease-out;
+            transition: max-height 0.2s ease, opacity 0.2s ease, padding 0.2s ease, margin 0.2s ease;
             background: var(--main-content-background);
             backdrop-filter: blur(8px);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            box-shadow: none;
         }
 
         .main-content.with-border {
             border: 1px solid var(--border-color);
         }
 
-        .main-content.assistant-view { padding: 10px; border: 1px solid var(--border-color); }
+        .main-content.assistant-view { padding: 10px; border: none; }
 
         .main-content.onboarding-view {
             padding: 0;
@@ -103,6 +104,19 @@ export class GhostPrepApp extends LitElement {
         ::-webkit-scrollbar-thumb:hover {
             background: var(--scrollbar-thumb-hover);
         }
+        .main-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            padding: 0;
+            margin-top: 0;
+            overflow: hidden;
+            border: none;
+        }
+
+        .main-content.expanded {
+            max-height: 100vh;
+            opacity: 1;
+        }
     `;
 
     static properties = {
@@ -115,6 +129,7 @@ export class GhostPrepApp extends LitElement {
         selectedLanguage: { type: String },
         responses: { type: Array },
         currentResponseIndex: { type: Number },
+        questions: { type: Array },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
@@ -125,6 +140,7 @@ export class GhostPrepApp extends LitElement {
         promptPanelOpen: { type: Boolean },
         transcriptText: { type: String },
         activeAssistantTab: { type: String },
+        mainCollapsed: { type: Boolean },
     };
 
     constructor() {
@@ -144,11 +160,13 @@ export class GhostPrepApp extends LitElement {
         this.advancedMode = localStorage.getItem('advancedMode') === 'true';
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.questions = [];
         this._viewInstances = new Map();
         this._isClickThrough = false;
         this.promptPanelOpen = false;
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
+        this.mainCollapsed = this.currentView === 'main';
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -297,6 +315,9 @@ export class GhostPrepApp extends LitElement {
             if (!this._isStreaming) {
                 this._isStreaming = true;
                 this._streamCumulativeTarget = partial;
+                if ((this.questions || []).length < (this.responses || []).length + 1) {
+                    this.questions = [...(this.questions || []), ''];
+                }
                 this.responses.push('');
                 this.currentResponseIndex = this.responses.length - 1;
                 // Signal new stream session to AssistantView
@@ -448,9 +469,11 @@ export class GhostPrepApp extends LitElement {
         }
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.questions = [];
         this.transcriptText = '';
         this.startTime = Date.now();
         this.currentView = 'assistant';
+        try { resizeLayout(); } catch (_) {}
     }
 
     async handleAPIKeyHelp() {
@@ -499,6 +522,7 @@ export class GhostPrepApp extends LitElement {
     // Assistant view event handlers
     async handleSendText(message) {
         if (window.cheddar) {
+            try { this.questions.push(message); this.currentResponseIndex = this.questions.length - 1; } catch (_) {}
             const result = await window.cheddar.sendTextMessage(message);
 
             if (!result.success) {
@@ -549,6 +573,12 @@ export class GhostPrepApp extends LitElement {
                 requestAnimationFrame(() => {
                     viewContainer.classList.remove('entering');
                 });
+            }
+        }
+
+        if (changedProperties.has('currentView')) {
+            if (this.currentView === 'main') {
+                this.mainCollapsed = true;
             }
         }
 
@@ -625,6 +655,7 @@ export class GhostPrepApp extends LitElement {
                     <assistant-view
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
+                        .questions=${this.questions}
                         .selectedProfile=${this.selectedProfile}
                         .selectedLanguage=${this.selectedLanguage}
                         .statusText=${this.statusText}
@@ -649,9 +680,9 @@ export class GhostPrepApp extends LitElement {
     }
 
     render() {
-        const mainContentClass = `main-content ${
-            this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border'
-        }`;
+        const baseClass = this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border';
+        const collapseClass = this.currentView === 'main' ? (this.mainCollapsed ? 'collapsed' : 'expanded') : '';
+        const mainContentClass = `main-content ${baseClass} ${collapseClass}`;
 
         return html`
             <div class="window-container">
@@ -668,6 +699,8 @@ export class GhostPrepApp extends LitElement {
                         .onCloseClick=${() => this.handleClose()}
                         .onBackClick=${() => this.handleBackClick()}
                         .onHideToggleClick=${() => this.handleHideToggle()}
+                        .onMainToggleClick=${() => this.handleMainToggle()}
+                        .isMainCollapsed=${this.mainCollapsed}
                         .onDocumentClick=${() => this.handlePromptConfigOpen()}
                         ?isClickThrough=${this._isClickThrough}
                     ></app-header>
@@ -686,6 +719,12 @@ export class GhostPrepApp extends LitElement {
         } else {
             document.documentElement.classList.remove('compact-layout');
         }
+    }
+
+    handleMainToggle() {
+        if (this.currentView !== 'main') return;
+        this.mainCollapsed = !this.mainCollapsed;
+        this.requestUpdate();
     }
 
     async handleLayoutModeChange(layoutMode) {

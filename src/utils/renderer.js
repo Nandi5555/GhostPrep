@@ -761,6 +761,44 @@ async function getAllConversationSessions() {
     });
 }
 
+async function deleteConversationSessions(sessionIds) {
+    if (!conversationDB) {
+        await initConversationStorage();
+    }
+
+    const ids = Array.isArray(sessionIds) ? sessionIds : [sessionIds];
+    const transaction = conversationDB.transaction(['sessions'], 'readwrite');
+    const store = transaction.objectStore('sessions');
+
+    await Promise.all(
+        ids.map(
+            id =>
+                new Promise((resolve, reject) => {
+                    const request = store.delete(id);
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => resolve(true);
+                })
+        )
+    );
+
+    return true;
+}
+
+async function clearAllConversationSessions() {
+    if (!conversationDB) {
+        await initConversationStorage();
+    }
+
+    const transaction = conversationDB.transaction(['sessions'], 'readwrite');
+    const store = transaction.objectStore('sessions');
+
+    return new Promise((resolve, reject) => {
+        const request = store.clear();
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(true);
+    });
+}
+
 // Listen for conversation data from main process
 ipcRenderer.on('save-conversation-turn', async (event, data) => {
     try {
@@ -835,24 +873,26 @@ function handleShortcut(shortcutKey) {
     }
 }
 
-window.cheddar = {
-    initializeGemini,
-    startCapture,
-    stopCapture,
-    sendTextMessage,
+    window.cheddar = {
+        initializeGemini,
+        startCapture,
+        stopCapture,
+        sendTextMessage,
     setTranscriptionModeCached: mode => {
         transcriptionModeCached = (mode || 'auto').toLowerCase();
     },
     handleShortcut,
-    // Conversation history functions
-    getAllConversationSessions,
-    getConversationSession,
-    initConversationStorage,
-    // Content protection function
-    getContentProtection: () => {
-        // Read-only: use undetectableEnabled; fall back to legacy keys; default OFF
-        const undetectable = localStorage.getItem('undetectableEnabled');
-        if (undetectable !== null) return undetectable === 'true';
+        // Conversation history functions
+        getAllConversationSessions,
+        getConversationSession,
+        initConversationStorage,
+        deleteConversationSessions,
+        clearAllConversationSessions,
+        // Content protection function
+        getContentProtection: () => {
+            // Read-only: use undetectableEnabled; fall back to legacy keys; default OFF
+            const undetectable = localStorage.getItem('undetectableEnabled');
+            if (undetectable !== null) return undetectable === 'true';
         const legacyCP = localStorage.getItem('contentProtection');
         if (legacyCP !== null) return legacyCP === 'true';
         const legacyToggle = localStorage.getItem('undetectableTEnabled');

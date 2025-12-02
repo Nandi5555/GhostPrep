@@ -71,19 +71,34 @@ export class MainView extends LitElement {
             }
         }
 
-        .start-button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); padding: 8px 16px; border-radius: 12px; font-size: 13px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease; }
+        .start-button {
+            color: var(--primary-button-text, #ffffff);
+            padding: 9px 20px;
+            border-radius: 999px;
+            font-size: 15px;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: transform 0.12s ease, filter 0.2s ease;
+            letter-spacing: 0.2px;
+            white-space: nowrap;
+            backdrop-filter: blur(8px);
+        }
 
-        .start-button:hover { background: var(--glass-hover-bg); }
+        .start-button:hover { filter: brightness(1.06); }
         .start-button:active { transform: translateY(1px); }
 
         .start-button.initializing {
             opacity: 0.5;
         }
 
-        .start-button.initializing:hover {
-            background: var(--start-button-background);
-            border-color: var(--start-button-border);
-        }
+        .start-button.initializing:hover { filter: brightness(1.0); }
 
         .shortcut-icons {
             display: flex;
