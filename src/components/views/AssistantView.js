@@ -1070,12 +1070,14 @@ export class AssistantView extends LitElement {
             if (this.useScreen) {
                 const interval = localStorage.getItem('selectedScreenshotInterval') || '5';
                 const quality = localStorage.getItem('selectedImageQuality') || 'medium';
-                if (window.cheddar && typeof window.cheddar.startCapture === 'function') {
+                if (window.cheddar && typeof window.cheddar.startScreenCaptureScheduling === 'function') {
+                    window.cheddar.startScreenCaptureScheduling(interval, quality);
+                } else if (window.cheddar && typeof window.cheddar.startCapture === 'function') {
                     window.cheddar.startCapture(interval, quality);
                 }
             } else {
-                if (window.cheddar && typeof window.cheddar.stopCapture === 'function') {
-                    window.cheddar.stopCapture();
+                if (window.cheddar && typeof window.cheddar.stopScreenCapture === 'function') {
+                    window.cheddar.stopScreenCapture();
                 }
             }
         } catch (_) {}

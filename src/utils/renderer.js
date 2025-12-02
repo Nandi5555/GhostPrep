@@ -343,20 +343,40 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
         // MediaStream obtained
 
-        // Start capturing screenshots - check if manual mode
-        if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
-            // Don't start automatic capture in manual mode
-        } else {
-            const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
-            screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
+        // Start capturing screenshots only if Use Screen is enabled
+        const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+        if (useScreen) {
+            // check if manual mode
+            if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
+                // Don't start automatic capture in manual mode
+            } else {
+                const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
+                screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
 
-            // Capture first screenshot immediately
-            setTimeout(() => captureScreenshot(imageQuality), 100);
+                // Capture first screenshot immediately
+                setTimeout(() => captureScreenshot(imageQuality), 100);
+            }
         }
     } catch (err) {
         console.error('Error starting capture:', err);
         cheddar.e().setStatus('error');
     }
+}
+
+function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
+    if (!window.__geminiLiveReady) return;
+    const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+    if (!useScreen) return;
+    if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
+        return;
+    }
+    const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
+    if (screenshotInterval) {
+        try { clearInterval(screenshotInterval); } catch (_) {}
+        screenshotInterval = null;
+    }
+    screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
+    setTimeout(() => captureScreenshot(imageQuality), 100);
 }
 
 // Expose renderer utilities to app shell
@@ -660,6 +680,21 @@ function stopCapture() {
     offscreenContext = null;
 }
 
+function stopScreenCapture() {
+    if (screenshotInterval) {
+        clearInterval(screenshotInterval);
+        screenshotInterval = null;
+    }
+
+    if (hiddenVideo) {
+        try { hiddenVideo.pause(); } catch (_) {}
+        hiddenVideo.srcObject = null;
+        hiddenVideo = null;
+    }
+    offscreenCanvas = null;
+    offscreenContext = null;
+}
+
 // Send text message to Gemini
 async function sendTextMessage(text) {
     if (!text || text.trim().length === 0) {
@@ -879,6 +914,8 @@ function handleShortcut(shortcutKey) {
         initializeGemini,
         startCapture,
         stopCapture,
+        startScreenCaptureScheduling,
+        stopScreenCapture,
         sendTextMessage,
     setTranscriptionModeCached: mode => {
         transcriptionModeCached = (mode || 'auto').toLowerCase();
