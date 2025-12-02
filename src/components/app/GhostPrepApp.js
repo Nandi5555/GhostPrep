@@ -60,7 +60,7 @@ export class GhostPrepApp extends LitElement {
             border: 1px solid var(--border-color);
         }
 
-        .main-content.assistant-view { padding: 10px; border: 1px solid var(--border-color); }
+        .main-content.assistant-view { padding: 10px; border: none; }
 
         .main-content.onboarding-view {
             padding: 0;
@@ -129,6 +129,7 @@ export class GhostPrepApp extends LitElement {
         selectedLanguage: { type: String },
         responses: { type: Array },
         currentResponseIndex: { type: Number },
+        questions: { type: Array },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
@@ -159,6 +160,7 @@ export class GhostPrepApp extends LitElement {
         this.advancedMode = localStorage.getItem('advancedMode') === 'true';
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.questions = [];
         this._viewInstances = new Map();
         this._isClickThrough = false;
         this.promptPanelOpen = false;
@@ -313,6 +315,9 @@ export class GhostPrepApp extends LitElement {
             if (!this._isStreaming) {
                 this._isStreaming = true;
                 this._streamCumulativeTarget = partial;
+                if ((this.questions || []).length < (this.responses || []).length + 1) {
+                    this.questions = [...(this.questions || []), ''];
+                }
                 this.responses.push('');
                 this.currentResponseIndex = this.responses.length - 1;
                 // Signal new stream session to AssistantView
@@ -464,6 +469,7 @@ export class GhostPrepApp extends LitElement {
         }
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.questions = [];
         this.transcriptText = '';
         this.startTime = Date.now();
         this.currentView = 'assistant';
@@ -516,6 +522,7 @@ export class GhostPrepApp extends LitElement {
     // Assistant view event handlers
     async handleSendText(message) {
         if (window.cheddar) {
+            try { this.questions.push(message); this.currentResponseIndex = this.questions.length - 1; } catch (_) {}
             const result = await window.cheddar.sendTextMessage(message);
 
             if (!result.success) {
@@ -648,6 +655,7 @@ export class GhostPrepApp extends LitElement {
                     <assistant-view
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
+                        .questions=${this.questions}
                         .selectedProfile=${this.selectedProfile}
                         .selectedLanguage=${this.selectedLanguage}
                         .statusText=${this.statusText}

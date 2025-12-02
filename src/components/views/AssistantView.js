@@ -26,6 +26,44 @@ export class AssistantView extends LitElement {
             border: 1px solid var(--border-color);
         }
 
+        .response-container.chat {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+        }
+
+        .chat-row {
+            display: flex;
+            width: 100%;
+            margin: 8px 0;
+        }
+        .chat-row.right { justify-content: flex-end; }
+        .chat-row.left { justify-content: flex-start; }
+        .bubble {
+            max-width: 78%;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+        .bubble.user {
+            background: var(--glass-bg);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .bubble.user.multiline {
+            border-radius: 14px;
+        }
+        .bubble.ai {
+            background: var(--main-content-background);
+        }
+
+        .answer-block {
+            max-width: 100%;
+            margin: 8px 0;
+        }
+
         /* Markdown styling */
         .response-container h1,
         .response-container h2,
@@ -582,6 +620,7 @@ export class AssistantView extends LitElement {
     static properties = {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
+        questions: { type: Array },
         selectedProfile: { type: String },
         selectedLanguage: { type: String },
         statusText: { type: String },
@@ -602,6 +641,7 @@ export class AssistantView extends LitElement {
         super();
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.questions = [];
         this.selectedProfile = 'interview';
         this.selectedLanguage = 'en-US';
         this.statusText = '';
@@ -634,6 +674,7 @@ export class AssistantView extends LitElement {
         this._typingLastTs = 0;
         this._typingCharsPerSecond = 300;
         this._finalEventEmitted = false;
+        this._lastRenderedCount = 0;
     }
 
     getProfileNames() {
@@ -651,6 +692,12 @@ export class AssistantView extends LitElement {
         return this.responses.length > 0 && this.currentResponseIndex >= 0
             ? this.responses[this.currentResponseIndex]
             : `Hey, Im listening to your ${profileNames[this.selectedProfile] || 'session'}?`;
+    }
+
+    getCurrentQuestion() {
+        return this.questions && this.currentResponseIndex >= 0 && this.currentResponseIndex < this.questions.length
+            ? (this.questions[this.currentResponseIndex] || '')
+            : '';
     }
 
     renderMarkdown(content, light = false) {
@@ -945,12 +992,33 @@ export class AssistantView extends LitElement {
     }
 
     scrollToBottom(containerId) {
-        setTimeout(() => {
+        const doScroll = () => {
             const container = this.shadowRoot.querySelector(`#${containerId}`);
-            if (container) {
+            if (!container) return;
+            const target = container.lastElementChild || container;
+            try {
+                container.scrollTop = container.scrollHeight;
+                target.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            } catch (_) {
                 container.scrollTop = container.scrollHeight;
             }
-        }, 0);
+
+            try {
+                let host = this.getRootNode()?.host;
+                let anc = host;
+                while (anc && anc.parentElement) {
+                    anc = anc.parentElement;
+                    const cs = getComputedStyle(anc);
+                    const overflowY = cs.overflowY;
+                    if ((overflowY === 'auto' || overflowY === 'scroll') && anc.scrollHeight > anc.clientHeight) {
+                        anc.scrollTop = anc.scrollHeight;
+                        break;
+                    }
+                }
+            } catch (_) {}
+        };
+        requestAnimationFrame(doScroll);
+        setTimeout(doScroll, 16);
     }
 
     firstUpdated() {
@@ -965,7 +1033,8 @@ export class AssistantView extends LitElement {
         if (
             changedProperties.has('responses') ||
             changedProperties.has('currentResponseIndex') ||
-            changedProperties.has('isStreaming')
+            changedProperties.has('isStreaming') ||
+            changedProperties.has('questions')
         ) {
             this.updateResponseContent();
         }
@@ -994,10 +1063,35 @@ export class AssistantView extends LitElement {
     updateResponseContent() {
         const container = this.shadowRoot.querySelector('#responseContainer');
         if (container) {
-            const currentResponse = this.getCurrentResponse();
-            const contentToRender = this.isStreaming ? this._streamTypedText : currentResponse;
-            const renderedResponse = this.renderMarkdown(contentToRender, this.isStreaming);
-            container.innerHTML = renderedResponse;
+            const escape = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const maxLen = Math.max((this.questions || []).length, (this.responses || []).length);
+            let htmlStr = '';
+            for (let i = 0; i < maxLen; i++) {
+                const q = (this.questions || [])[i] || '';
+                const isCurrent = i === this.currentResponseIndex;
+                const ansText = isCurrent && this.isStreaming ? this._streamTypedText : ((this.responses || [])[i] || '');
+                const ansRendered = this.renderMarkdown(ansText, isCurrent && this.isStreaming);
+                if (q && q.trim()) {
+                    htmlStr += `<div class="chat-row right"><div class="bubble user">${escape(q)}</div></div>`;
+                }
+                if (ansText && ansText.trim()) {
+                    htmlStr += `<div class="chat-row left"><div class="answer-block">${ansRendered}</div></div>`;
+                }
+            }
+            container.innerHTML = htmlStr || '';
+            this._lastRenderedCount = maxLen;
+
+            try {
+                container.querySelectorAll('.bubble.user').forEach(el => {
+                    const cs = getComputedStyle(el);
+                    const lh = parseFloat(cs.lineHeight) || 18;
+                    const pt = parseFloat(cs.paddingTop) || 0;
+                    const pb = parseFloat(cs.paddingBottom) || 0;
+                    const contentH = (el.clientHeight || 0) - pt - pb; // exclude padding
+                    const isMulti = contentH > lh * 1.25; // more than ~1 line
+                    if (isMulti) el.classList.add('multiline'); else el.classList.remove('multiline');
+                });
+            } catch (_) {}
 
             // Highlight code blocks only after stream completes (skip during streaming)
             if (this.hljs && !this.isStreaming) {
@@ -1039,6 +1133,15 @@ export class AssistantView extends LitElement {
         this._streamTargetText = '';
         this._finalEventEmitted = false;
         this._typingLastTs = performance.now();
+        try {
+            const container = this.shadowRoot.querySelector('#responseContainer');
+            if (container && !this._scrollObserver) {
+                this._scrollObserver = new MutationObserver(() => {
+                    if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
+                });
+                this._scrollObserver.observe(container, { childList: true, subtree: true });
+            }
+        } catch (_) {}
         const loop = (ts) => {
             if (!this.isStreaming) return;
             const delta = ts - (this._typingLastTs || ts);
@@ -1069,6 +1172,12 @@ export class AssistantView extends LitElement {
             cancelAnimationFrame(this._typingRaf);
             this._typingRaf = null;
         }
+        try {
+            if (this._scrollObserver) {
+                this._scrollObserver.disconnect();
+                this._scrollObserver = null;
+            }
+        } catch (_) {}
         // After stream ends, the final response will be rendered from responses[]
         this._streamTypedText = '';
         this._streamTargetText = '';
@@ -1088,6 +1197,7 @@ export class AssistantView extends LitElement {
             this._streamTargetText += delta;
             // Trigger fast update to keep flow smooth
             this.updateResponseContent();
+            if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
         }
     }
 
@@ -1252,7 +1362,7 @@ export class AssistantView extends LitElement {
                 <button class="tab-btn ${this.activeTab==='chat'?'active':''}" @click=${() => { this.activeTab='chat'; this.onTabChange('chat'); this.requestUpdate(); }}>Chat</button>
                 <button class="tab-btn ${this.activeTab==='transcript'?'active':''}" @click=${() => { this.activeTab='transcript'; this.onTabChange('transcript'); this.requestUpdate(); }}>Transcript</button>
             </div>
-            <div class="response-container" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
+            <div class="response-container chat" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
             <div class="response-container" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
 
             <div class="text-input-container">
@@ -1388,7 +1498,7 @@ export class AssistantView extends LitElement {
         ev.preventDefault();
         const dx = ev.clientX - (this._resizeStartX || 0);
         const dy = ev.clientY - (this._resizeStartY || 0);
-        const b = this._resizeStartBounds || { x: 0, y: 0, width: 600, height: 400 };
+        const b = this._resizeStartBounds || { x: 0, y: 0, width: 600, height: 200 };
         let x = b.x;
         let y = b.y;
         let width = b.width;

@@ -5,6 +5,10 @@ let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
+const MIN_ASSISTANT_W = 450;
+const MIN_ASSISTANT_H = 330;
+const MAX_ASSISTANT_W = 800;
+const MAX_ASSISTANT_H = 550;
 
 function createWindow(sendToRenderer, geminiSessionRef) {
     // Get layout preference (default to 'normal')
@@ -364,6 +368,10 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         // Enable full-window resizing when Assistant view is active
         if (view === 'assistant') {
             mainWindow.setResizable(true);
+            try {
+                mainWindow.setMinimumSize(MIN_ASSISTANT_W, MIN_ASSISTANT_H);
+                mainWindow.setMaximumSize(MAX_ASSISTANT_W, MAX_ASSISTANT_H);
+            } catch (_) {}
         } else {
             mainWindow.setResizable(false);
         }
@@ -448,11 +456,13 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
             let width = Math.floor(Number(bounds.width));
             let height = Math.floor(Number(bounds.height));
 
-            const minW = 200;
-            const minH = 200;
+            const minW = MIN_ASSISTANT_W;
+            const minH = MIN_ASSISTANT_H;
+            const maxW = Math.min(workArea.width, MAX_ASSISTANT_W);
+            const maxH = Math.min(workArea.height, MAX_ASSISTANT_H);
 
-            width = Math.max(minW, Math.min(workArea.width, width));
-            height = Math.max(minH, Math.min(workArea.height, height));
+            width = Math.max(minW, Math.min(maxW, width));
+            height = Math.max(minH, Math.min(maxH, height));
 
             x = Math.max(workArea.x, Math.min(workArea.x + workArea.width - width, x));
             y = Math.max(workArea.y, Math.min(workArea.y + workArea.height - height, y));
@@ -471,8 +481,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 return { success: false, error: 'Window has been destroyed' };
             }
             const { workAreaSize } = screen.getPrimaryDisplay();
-            const clampedWidth = Math.max(200, Math.min(workAreaSize.width, Math.floor(Number(width)) || 0));
-            const clampedHeight = Math.max(200, Math.min(workAreaSize.height, Math.floor(Number(height)) || 0));
+            const clampedWidth = Math.max(MIN_ASSISTANT_W, Math.min(Math.min(workAreaSize.width, MAX_ASSISTANT_W), Math.floor(Number(width)) || 0));
+            const clampedHeight = Math.max(MIN_ASSISTANT_H, Math.min(Math.min(workAreaSize.height, MAX_ASSISTANT_H), Math.floor(Number(height)) || 0));
             mainWindow.setSize(clampedWidth, clampedHeight);
             return { success: true, width: clampedWidth, height: clampedHeight };
         } catch (error) {
@@ -618,8 +628,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                     break;
                 case 'assistant':
                     // Always open Assistant in expanded default size, regardless of compact setting
-                    targetWidth = 800;
-                    targetHeight = 500;
+                    targetWidth = 650;
+                    targetHeight = 450;
                     break;
                 case 'main':
                 case 'onboarding':
