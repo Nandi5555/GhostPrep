@@ -260,13 +260,19 @@ export class AssistantView extends LitElement {
 
         .text-input-container {
             display: flex;
-            gap: 10px;
+            flex-direction: column;
+            gap: 6px;
             margin-top: 10px;
-            align-items: center;
-            background: var(--input-background);
-            border: 1px solid var(--button-border);
+            background: transparent;
+            border: none;
             border-radius: 12px;
-            padding: 8px;
+            padding: 0;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
         }
 
         .text-input-container input {
@@ -293,22 +299,23 @@ export class AssistantView extends LitElement {
         /* Textarea styling for multiline input with hidden scrollbars */
         .text-input-container textarea {
             flex: 1;
-            background: var(--input-background);
+            background: transparent;
             color: var(--text-color);
-            border: 1px solid var(--button-border);
-            padding: 6px 10px; /* tighter for a smaller initial footprint */
-            border-radius: 15px; /* more rounded corners */
+            border: 1px solid var(--glass-border);
+            padding: 8px 12px;
+            border-radius: 16px;
             font-size: 14px;
             line-height: 1.2;
-            height: 36px; /* initial single-line size */
+            height: 36px;
             min-height: 36px;
-            max-height: 80px; /* keep growth modest */
+            max-height: 80px;
             overflow-y: auto;
             resize: none;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none; /* IE/Edge legacy */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
             scroll-behavior: smooth;
-            transition: height 0.12s ease;
+            transition: height 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+            box-shadow: 0 0 0 1px var(--glass-border), inset 0 1px var(--glass-highlight);
         }
 
         .text-input-container textarea:focus {
@@ -316,6 +323,13 @@ export class AssistantView extends LitElement {
             border-color: var(--focus-border-color);
             box-shadow: 0 0 0 3px var(--focus-box-shadow);
             background: var(--input-focus-background);
+        }
+
+        .text-input-container:focus-within textarea {
+            height: 60px;
+            max-height: 120px;
+            border-color: var(--focus-border-color);
+            box-shadow: 0 0 0 2px var(--focus-box-shadow), inset 0 1px var(--glass-highlight);
         }
 
         .text-input-container textarea::placeholder {
@@ -354,6 +368,39 @@ export class AssistantView extends LitElement {
         .text-input-container .nav-button:hover {
             background: var(--text-input-button-hover);
         }
+
+        .input-actions {
+            display: none;
+            padding: 8px;
+            border-top: 1px solid var(--button-border);
+            background: var(--screen-option-background, rgba(0,0,0,0.4));
+            border-radius: 10px;
+            align-items: center;
+            gap: 8px;
+        }
+        .text-input-container:focus-within .input-actions { display: flex; }
+
+        .use-screen-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            font-size: 12px;
+        }
+        .use-screen-btn.active {
+            color: var(--primary-button-text, #ffffff);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+        }
+
+        .input-actions .send-button { margin-left: auto; }
 
         .nav-button {
             background: rgba(255, 255, 255, 0.06);
@@ -694,6 +741,8 @@ export class AssistantView extends LitElement {
         this._typingCharsPerSecond = 300;
         this._finalEventEmitted = false;
         this._lastRenderedCount = 0;
+        this.useScreen = false;
+        this.inputFocused = false;
     }
 
     getProfileNames() {
@@ -1008,6 +1057,25 @@ export class AssistantView extends LitElement {
         el.style.height = 'auto';
         const newHeight = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight);
         el.style.height = `${newHeight}px`;
+    }
+
+    toggleUseScreen() {
+        this.useScreen = !this.useScreen;
+        this.requestUpdate();
+    }
+
+    handleInputFocus() {
+        this.inputFocused = true;
+        this.requestUpdate();
+    }
+
+    handleInputBlur() {
+        const container = this.shadowRoot?.querySelector('.text-input-container');
+        setTimeout(() => {
+            const open = container ? container.matches(':focus-within') : false;
+            this.inputFocused = !!open;
+            this.requestUpdate();
+        }, 10);
     }
 
     scrollToBottom(containerId) {
@@ -1385,12 +1453,28 @@ export class AssistantView extends LitElement {
             <div class="response-container" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
 
             <div class="text-input-container">
-                <textarea id="textInput" rows="1" placeholder="Type a message to the AI..." @keydown=${this.handleTextKeydown} @input=${this.handleTextInput} @paste=${this.handleTextInput}></textarea>
-                <button class="send-button" @click=${() => this.handleSendText()}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
+                <div class="input-row">
+                    <textarea id="textInput" rows="1" placeholder="Type a message to the AI..." @focus=${() => this.handleInputFocus()} @blur=${() => this.handleInputBlur()} @keydown=${this.handleTextKeydown} @input=${this.handleTextInput} @paste=${this.handleTextInput}></textarea>
+                    ${this.inputFocused ? '' : html`<button class="send-button" @click=${() => this.handleSendText()}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>`}
+                </div>
+                <div class="input-actions">
+                    <button class="use-screen-btn ${this.useScreen ? 'active' : ''}" @click=${() => this.toggleUseScreen()}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.8" />
+                            <path d="M8 13l2.5-3 3 4 3.5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span>Use Screen</span>
+                    </button>
+                    ${this.inputFocused ? html`<button class="send-button" @click=${() => this.handleSendText()}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>` : ''}
+                </div>
             </div>
             <div class="assistant-toggles">
                 <label class="assistant-toggle-label">
