@@ -33,6 +33,47 @@ export class AssistantView extends LitElement {
             padding: 0;
         }
 
+        .response-container.transcript {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+        }
+
+        .transcript-row {
+            display: flex;
+            width: 100%;
+            margin: 8px 0;
+        }
+        .transcript-row.right { justify-content: flex-end; }
+        .transcript-row.left { justify-content: flex-start; }
+
+        .transcript-bubble {
+            max-width: 88%;
+            font-size: var(--response-font-size, 18px);
+            line-height: 1.6;
+        }
+        .transcript-bubble.user {
+            color: var(--primary-button-text, #ffffff);
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+            backdrop-filter: blur(8px);
+            white-space: pre-wrap;
+        }
+        .transcript-bubble.interviewer {
+            background: transparent;
+            border: none;
+            padding: 0;
+            border-radius: 0;
+            color: var(--text-color);
+            white-space: pre-wrap;
+        }
+
         .chat-row {
             display: flex;
             width: 100%;
@@ -738,6 +779,7 @@ export class AssistantView extends LitElement {
         this.activeTab = 'chat';
         this.transcriptText = '';
         this.onTabChange = () => {};
+        this.audioMode = (localStorage.getItem('selectedAudioMode') || 'speaker');
 
         // Internal streaming state (typewriter engine)
         this._streamTypedText = '';
@@ -973,6 +1015,13 @@ scrollToTop() {
         this._snapToActivePending = true;
         this.requestUpdate();
     });
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'selectedAudioMode') {
+                this.audioMode = (e.newValue || 'speaker');
+                if (this.activeTab === 'transcript') this.updateTranscriptContent();
+            }
+        });
 
     }
 
@@ -1317,7 +1366,18 @@ for (let i = 0; i < maxLen; i++) {
     updateTranscriptContent() {
         const container = this.shadowRoot?.querySelector('#transcriptContainer');
         if (!container) return;
-        container.textContent = this.transcriptText || '';
+        const mode = (this.audioMode || localStorage.getItem('selectedAudioMode') || 'speaker').toLowerCase();
+        const isUser = mode === 'mic';
+        const escape = (s) => String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        const lines = String(this.transcriptText || '').split('\n').filter(l => l.trim().length > 0);
+        let html = '';
+        for (const line of lines) {
+            html += `<div class="transcript-row ${isUser ? 'right' : 'left'}"><div class="transcript-bubble ${isUser ? 'user' : 'interviewer'}">${escape(line)}</div></div>`;
+        }
+        container.innerHTML = html;
     }
 
     // --- Streaming engine (typewriter) ---
@@ -1560,7 +1620,7 @@ for (let i = 0; i < maxLen; i++) {
                 <button class="tab-btn ${this.activeTab==='transcript'?'active':''}" @click=${() => { this.activeTab='transcript'; this.onTabChange('transcript'); this.requestUpdate(); }}>Transcript</button>
             </div>
             <div class="response-container chat" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
-            <div class="response-container" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
+            <div class="response-container transcript" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
 
             <div class="text-input-container">
                 <div class="input-row">
