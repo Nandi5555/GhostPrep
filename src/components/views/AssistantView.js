@@ -81,6 +81,7 @@ export class AssistantView extends LitElement {
         }
         .chat-row.right { justify-content: flex-end; }
         .chat-row.left { justify-content: flex-start; }
+        .chat-row.actions { margin-top: 2px; margin-bottom: 0; }
         .bubble {
             max-width: 78%;
             padding: 10px 12px;
@@ -100,10 +101,38 @@ export class AssistantView extends LitElement {
             background: var(--main-content-background);
         }
 
+        .copy-btn {
+            background: transparent;
+            color: var(--description-color, #9aa6b2);
+            border: none;
+            padding: 6px;
+            border-radius: 10px;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            margin: 0 6px 0 0;
+            box-shadow: none;
+            backdrop-filter: none;
+        }
+        .copy-btn:hover { background: transparent; }
+        .copy-btn:active { transform: translateY(1px); }
+
+        .answer-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 0;
+        }
+
         .answer-block {
             max-width: 100%;
-            margin: 8px 0;
+            margin: 8px 0 0 0;
         }
+        .answer-block > *:last-child { margin-bottom: 0 !important; }
+        .message-block .chat-row.right { margin-bottom: 0; }
+        .chat-row.actions { margin-top: 0; margin-bottom: 0; }
 
         .answer-block.placeholder {
             min-height: var(--answer-placeholder-height, 120px);
@@ -826,6 +855,53 @@ scrollToTop() {
             : '';
     }
 
+    async copyQuestion(index) {
+        try {
+            const q = ((this.questions || [])[index] || '').trim();
+            if (!q) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(q);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = q;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+        } catch (_) {}
+    }
+
+    async copyAnswer(index) {
+        try {
+            const container = this.shadowRoot?.querySelector('#responseContainer');
+            const el = container?.querySelector(`#answer-${index}`);
+            if (!el) return;
+            const html = el.innerHTML;
+            const text = el.innerText;
+            if (navigator.clipboard && navigator.clipboard.write) {
+                const item = new ClipboardItem({
+                    'text/html': new Blob([html], { type: 'text/html' }),
+                    'text/plain': new Blob([text], { type: 'text/plain' }),
+                });
+                await navigator.clipboard.write([item]);
+            } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+        } catch (_) {}
+    }
+
     renderMarkdown(content, light = false) {
         // Check if marked is available
         if (typeof window !== 'undefined' && window.marked) {
@@ -1273,9 +1349,9 @@ updateResponseContent() {
 
     let htmlStr = '';
 
-for (let i = 0; i < maxLen; i++) {
-    const q = (this.questions || [])[i] || '';
-    const isCurrent = i === this.currentResponseIndex;
+    for (let i = 0; i < maxLen; i++) {
+        const q = (this.questions || [])[i] || '';
+        const isCurrent = i === this.currentResponseIndex;
 
     const ansText =
         isCurrent && this.isStreaming
@@ -1290,19 +1366,39 @@ for (let i = 0; i < maxLen; i++) {
     const isLatest = i === maxLen - 1;
 
     // NEW FIX: wrap EVERY block, and only mark the last one as active
-    htmlStr += `<div class="message-block ${isLatest ? 'active-block' : ''}" id="${isLatest ? 'active-block' : ''}">`;
+    htmlStr += `<div class="message-block ${isLatest ? 'active-block' : ''}" id="${isLatest ? 'active-block' : ''}" data-index="${i}">`;
 
     if (q && q.trim()) {
         htmlStr += `
-            <div class="chat-row right">
+            <div class="chat-row right" style="margin-bottom:0">
                 <div class="bubble user">${escape(q)}</div>
+            </div>
+            <div class="chat-row right actions">
+                <div class="question-actions">
+                    <button class="copy-btn" data-type="question" data-index="${i}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                            <rect x="5" y="5" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                        </svg>
+                    </button>
+                </div>
             </div>`;
     }
 
     if (ansText && ansText.trim()) {
         htmlStr += `
-            <div class="chat-row left">
-                <div class="answer-block">${ansRendered}</div>
+            <div class="chat-row left" style="margin-bottom:0">
+                <div class="answer-block" id="answer-${i}">${ansRendered}</div>
+            </div>
+            <div class="chat-row left actions">
+                <div class="answer-actions">
+                    <button class="copy-btn" data-type="answer" data-index="${i}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                            <rect x="5" y="5" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                        </svg>
+                    </button>
+                </div>
             </div>`;
     } else if (isCurrent) {
         htmlStr += `
@@ -1317,6 +1413,21 @@ for (let i = 0; i < maxLen; i++) {
 
     container.innerHTML = htmlStr || '';
     this._lastRenderedCount = maxLen;
+
+    if (!this._copyHandlerBound) {
+        this._copyHandlerBound = true;
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('.copy-btn');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-index'), 10);
+            const type = btn.getAttribute('data-type');
+            if (type === 'question') {
+                this.copyQuestion(idx);
+            } else if (type === 'answer') {
+                this.copyAnswer(idx);
+            }
+        });
+    }
 
     // Detect multiline user bubbles
     try {
