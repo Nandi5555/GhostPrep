@@ -7,8 +7,8 @@ let audioContext = null;
 let audioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
-  const AUDIO_CHUNK_DURATION = 0.025;
-  const BUFFER_SIZE = 512;
+  const AUDIO_CHUNK_DURATION = 0.01;
+  const BUFFER_SIZE = 256;
   let audioPauseUntil = 0;
   // Simple VAD config for auto end-of-speech detection
   let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '600', 10);
@@ -26,6 +26,7 @@ let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode')
 let audioHealthInterval = null;
 let lastAudioProcessTs = 0;
 let audioModeCurrent = 'speaker';
+let vadSpeaking = false;
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
@@ -422,6 +423,12 @@ function setupLinuxMicProcessing(micStream) {
                 }
                 const rms = Math.sqrt(sum / (inputData.length / 4));
                 const now = Date.now();
+                if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
+                    vadSpeaking = true;
+                    try { ipcRenderer.send('speech-start'); } catch (_) {}
+                } else if (rms < vadAmplitudeThreshold) {
+                    vadSpeaking = false;
+                }
 
                 // If below threshold for configured duration and cooldown passed, trigger transcription send
                 if (rms < vadAmplitudeThreshold) {
@@ -498,6 +505,12 @@ function setupWindowsLoopbackProcessing() {
                 }
                 const rms = Math.sqrt(sum / (inputData.length / 4));
                 const now = Date.now();
+                if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
+                    vadSpeaking = true;
+                    try { ipcRenderer.send('speech-start'); } catch (_) {}
+                } else if (rms < vadAmplitudeThreshold) {
+                    vadSpeaking = false;
+                }
 
                 if (rms < vadAmplitudeThreshold) {
                     const silenceStart = (audioProcessor._silenceStart || now);

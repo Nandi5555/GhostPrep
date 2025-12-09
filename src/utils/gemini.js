@@ -337,12 +337,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         return;
                     }
 
-                    try {
-                        if (audioFlushInterval) {
-                            clearInterval(audioFlushInterval);
-                            audioFlushInterval = null;
-                        }
-                    } catch (_) {}
+                    try {} catch (_) {}
 
                     // Attempt automatic reconnection for server-side closures
                     if (lastSessionParams && reconnectionAttempts < maxReconnectionAttempts) {
@@ -531,8 +526,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     // Audio send queue to prevent overlapping sends and reduce IPC backpressure
     let audioSendQueue = [];
     let audioSending = false;
-    let audioFlushInterval = null;
-    const AUDIO_QUEUE_MAX = 200;
+    const AUDIO_QUEUE_MAX = 50;
 
     async function flushAudioQueue() {
         if (audioSending) return;
@@ -573,12 +567,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             console.error('Error queuing audio:', error);
         }
     });
-    try {
-        if (audioFlushInterval) clearInterval(audioFlushInterval);
-        audioFlushInterval = setInterval(() => {
-            try { flushAudioQueue(); } catch (_) {}
-        }, 10);
-    } catch (_) {}
+    ipcMain.on('speech-start', () => {
+        try { sendToRenderer('update-status', 'Transcribing...'); } catch (_) {}
+    });
+    
 
     ipcMain.handle('send-image-content', async (event, { data, debug }) => {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
