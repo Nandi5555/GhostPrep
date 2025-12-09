@@ -6,10 +6,6 @@ const clarityStyle = `**WRITING STYLE — CLARITY & SIMPLICITY**
 - Include a short example or analogy when it helps understanding
 - Be concise yet complete: cover what matters, skip fluff`;
 
-const mainPointRules = `**MAIN POINT HIGHLIGHTING**
-- Begin every answer with: Main Point: **<short key sentence>**
-- Bold only the exact words the user should say first
-- Keep the main point under 12 words and place it on the first line`;
 
 const profilePrompts = {
     interview: {
@@ -176,7 +172,7 @@ Provide only the exact words to say in **markdown format**. Focus on finding win
 };
 
 function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true) {
-    const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements, '\n\n', clarityStyle, '\n\n', mainPointRules];
+    const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements, '\n\n', clarityStyle];
 
     // Only add search usage section if Google Search is enabled
     if (googleSearchEnabled) {
