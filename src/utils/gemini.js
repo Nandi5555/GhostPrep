@@ -337,6 +337,8 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         return;
                     }
 
+                    try {} catch (_) {}
+
                     // Attempt automatic reconnection for server-side closures
                     if (lastSessionParams && reconnectionAttempts < maxReconnectionAttempts) {
                         attemptReconnection();
@@ -521,10 +523,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
         return false;
     });
-    // this 
     // Audio send queue to prevent overlapping sends and reduce IPC backpressure
     let audioSendQueue = [];
     let audioSending = false;
+    const AUDIO_QUEUE_MAX = 50;
 
     async function flushAudioQueue() {
         if (audioSending) return;
@@ -541,8 +543,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     }
 
-    ipcMain.handle('send-audio-content', async (event, payload) => {
-        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
+    ipcMain.on('audio-chunk', (event, payload) => {
+        if (!geminiSessionRef.current) return;
         try {
             process.stdout.write('.')
             let audioPart;
@@ -553,18 +555,22 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 const base64 = buf.toString('base64');
                 audioPart = { data: base64, mimeType: payload.mimeType };
             } else {
-                return { success: false, error: 'Invalid audio payload' };
+                return;
             }
 
             audioSendQueue.push(audioPart);
-            // Flush asynchronously; do not await per chunk to keep renderer responsive
+            if (audioSendQueue.length > AUDIO_QUEUE_MAX) {
+                audioSendQueue.splice(0, audioSendQueue.length - AUDIO_QUEUE_MAX);
+            }
             setImmediate(flushAudioQueue);
-            return { success: true };
         } catch (error) {
             console.error('Error queuing audio:', error);
-            return { success: false, error: error.message };
         }
     });
+    ipcMain.on('speech-start', () => {
+        try { sendToRenderer('update-status', 'Transcribing...'); } catch (_) {}
+    });
+    
 
     ipcMain.handle('send-image-content', async (event, { data, debug }) => {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };

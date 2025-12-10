@@ -5,10 +5,10 @@ let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
-const MIN_ASSISTANT_W = 450;
-const MIN_ASSISTANT_H = 330;
-const MAX_ASSISTANT_W = 800;
-const MAX_ASSISTANT_H = 550;
+const MIN_ASSISTANT_W = 635;
+const MIN_ASSISTANT_H = 450;
+const MAX_ASSISTANT_W = 635;
+const MAX_ASSISTANT_H = 635;
 
 function createWindow(sendToRenderer, geminiSessionRef) {
     // Get layout preference (default to 'normal')
@@ -345,7 +345,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         if (mainWindow.isDestroyed()) return;
         // Enable full-window resizing when Assistant view is active
         if (view === 'assistant') {
-            mainWindow.setResizable(true);
+            mainWindow.setResizable(false);
             try {
                 mainWindow.setMinimumSize(MIN_ASSISTANT_W, MIN_ASSISTANT_H);
                 mainWindow.setMaximumSize(MAX_ASSISTANT_W, MAX_ASSISTANT_H);
@@ -606,8 +606,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                     break;
                 case 'assistant':
                     // Always open Assistant in expanded default size, regardless of compact setting
-                    targetWidth = 650;
-                    targetHeight = 450;
+                    targetWidth = 635;
+                    targetHeight = 500;
                     break;
                 case 'main':
                 case 'onboarding':
@@ -628,7 +628,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 targetWidth,
                 targetHeight,
                 `${viewName} view (${layoutMode})`,
-                viewName === 'assistant' || !!isPromptLibraryOpen
+                viewName === 'assistant' ? false : !!isPromptLibraryOpen
             );
 
             return { success: true };

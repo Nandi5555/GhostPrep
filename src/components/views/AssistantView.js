@@ -33,6 +33,47 @@ export class AssistantView extends LitElement {
             padding: 0;
         }
 
+        .response-container.transcript {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+        }
+
+        .transcript-row {
+            display: flex;
+            width: 100%;
+            margin: 8px 0;
+        }
+        .transcript-row.right { justify-content: flex-end; }
+        .transcript-row.left { justify-content: flex-start; }
+
+        .transcript-bubble {
+            max-width: 88%;
+            font-size: var(--response-font-size, 18px);
+            line-height: 1.6;
+        }
+        .transcript-bubble.user {
+            color: var(--primary-button-text, #ffffff);
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+            backdrop-filter: blur(8px);
+            white-space: pre-wrap;
+        }
+        .transcript-bubble.interviewer {
+            background: transparent;
+            border: none;
+            padding: 0;
+            border-radius: 0;
+            color: var(--text-color);
+            white-space: pre-wrap;
+        }
+
         .chat-row {
             display: flex;
             width: 100%;
@@ -40,6 +81,7 @@ export class AssistantView extends LitElement {
         }
         .chat-row.right { justify-content: flex-end; }
         .chat-row.left { justify-content: flex-start; }
+        .chat-row.actions { margin-top: 2px; margin-bottom: 0; }
         .bubble {
             max-width: 78%;
             padding: 10px 12px;
@@ -59,9 +101,41 @@ export class AssistantView extends LitElement {
             background: var(--main-content-background);
         }
 
+        .copy-btn {
+            background: transparent;
+            color: var(--description-color, #9aa6b2);
+            border: none;
+            padding: 6px;
+            border-radius: 10px;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            margin: 0 6px 0 0;
+            box-shadow: none;
+            backdrop-filter: none;
+        }
+        .copy-btn:hover { background: transparent; }
+        .copy-btn:active { transform: translateY(1px); }
+
+        .answer-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 0;
+        }
+
         .answer-block {
             max-width: 100%;
-            margin: 8px 0;
+            margin: 8px 0 0 0;
+        }
+        .answer-block > *:last-child { margin-bottom: 0 !important; }
+        .message-block .chat-row.right { margin-bottom: 0; }
+        .chat-row.actions { margin-top: 0; margin-bottom: 0; }
+
+        .answer-block.placeholder {
+            min-height: var(--answer-placeholder-height, 120px);
         }
 
         /* Markdown styling */
@@ -260,13 +334,19 @@ export class AssistantView extends LitElement {
 
         .text-input-container {
             display: flex;
-            gap: 10px;
+            flex-direction: column;
+            gap: 6px;
             margin-top: 10px;
-            align-items: center;
-            background: var(--input-background);
-            border: 1px solid var(--button-border);
+            background: transparent;
+            border: none;
             border-radius: 12px;
-            padding: 8px;
+            padding: 0;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
         }
 
         .text-input-container input {
@@ -293,22 +373,23 @@ export class AssistantView extends LitElement {
         /* Textarea styling for multiline input with hidden scrollbars */
         .text-input-container textarea {
             flex: 1;
-            background: var(--input-background);
+            background: transparent;
             color: var(--text-color);
-            border: 1px solid var(--button-border);
-            padding: 6px 10px; /* tighter for a smaller initial footprint */
-            border-radius: 15px; /* more rounded corners */
+            border: 1px solid var(--glass-border);
+            padding: 8px 12px;
+            border-radius: 16px;
             font-size: 14px;
             line-height: 1.2;
-            height: 36px; /* initial single-line size */
+            height: 36px;
             min-height: 36px;
-            max-height: 80px; /* keep growth modest */
+            max-height: 80px;
             overflow-y: auto;
             resize: none;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none; /* IE/Edge legacy */
+            scrollbar-width: none;
+            -ms-overflow-style: none;
             scroll-behavior: smooth;
-            transition: height 0.12s ease;
+            transition: height 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+            box-shadow: 0 0 0 1px var(--glass-border), inset 0 1px var(--glass-highlight);
         }
 
         .text-input-container textarea:focus {
@@ -316,6 +397,13 @@ export class AssistantView extends LitElement {
             border-color: var(--focus-border-color);
             box-shadow: 0 0 0 3px var(--focus-box-shadow);
             background: var(--input-focus-background);
+        }
+
+        .text-input-container:focus-within textarea {
+            height: 60px;
+            max-height: 120px;
+            border-color: var(--focus-border-color);
+            box-shadow: 0 0 0 2px var(--focus-box-shadow), inset 0 1px var(--glass-highlight);
         }
 
         .text-input-container textarea::placeholder {
@@ -354,6 +442,39 @@ export class AssistantView extends LitElement {
         .text-input-container .nav-button:hover {
             background: var(--text-input-button-hover);
         }
+
+        .input-actions {
+            display: none;
+            padding: 8px;
+            border-top: 1px solid var(--button-border);
+            background: var(--screen-option-background, rgba(0,0,0,0.4));
+            border-radius: 10px;
+            align-items: center;
+            gap: 8px;
+        }
+        .text-input-container:focus-within .input-actions { display: flex; }
+
+        .use-screen-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--button-background);
+            color: var(--text-color);
+            border: 1px solid var(--button-border);
+            font-size: 12px;
+        }
+        .use-screen-btn.active {
+            color: var(--primary-button-text, #ffffff);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background:
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+        }
+
+        .input-actions .send-button { margin-left: auto; }
 
         .nav-button {
             background: rgba(255, 255, 255, 0.06);
@@ -620,6 +741,12 @@ export class AssistantView extends LitElement {
             pointer-events: none;
             z-index: 9999;
         }
+        .message-block {
+            min-height: 100%;
+            display: block;
+            width: 100%;
+        }
+
         .resize-handle {
             position: fixed;
             background: transparent;
@@ -681,6 +808,7 @@ export class AssistantView extends LitElement {
         this.activeTab = 'chat';
         this.transcriptText = '';
         this.onTabChange = () => {};
+        this.audioMode = (localStorage.getItem('selectedAudioMode') || 'speaker');
 
         // Internal streaming state (typewriter engine)
         this._streamTypedText = '';
@@ -694,7 +822,15 @@ export class AssistantView extends LitElement {
         this._typingCharsPerSecond = 300;
         this._finalEventEmitted = false;
         this._lastRenderedCount = 0;
+        this.useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+        this.inputFocused = false;
+        this._snapToActivePending = false;
     }
+
+scrollToTop() {
+    // Disabled (no auto-scroll should ever happen)
+}
+
 
     getProfileNames() {
         return {
@@ -717,6 +853,53 @@ export class AssistantView extends LitElement {
         return this.questions && this.currentResponseIndex >= 0 && this.currentResponseIndex < this.questions.length
             ? (this.questions[this.currentResponseIndex] || '')
             : '';
+    }
+
+    async copyQuestion(index) {
+        try {
+            const q = ((this.questions || [])[index] || '').trim();
+            if (!q) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(q);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = q;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+        } catch (_) {}
+    }
+
+    async copyAnswer(index) {
+        try {
+            const container = this.shadowRoot?.querySelector('#responseContainer');
+            const el = container?.querySelector(`#answer-${index}`);
+            if (!el) return;
+            const html = el.innerHTML;
+            const text = el.innerText;
+            if (navigator.clipboard && navigator.clipboard.write) {
+                const item = new ClipboardItem({
+                    'text/html': new Blob([html], { type: 'text/html' }),
+                    'text/plain': new Blob([text], { type: 'text/plain' }),
+                });
+                await navigator.clipboard.write([item]);
+            } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+        } catch (_) {}
     }
 
     renderMarkdown(content, light = false) {
@@ -902,6 +1085,20 @@ export class AssistantView extends LitElement {
                 ipcRenderer.send('view-changed', 'assistant');
             }
         } catch (_) {}
+
+        window.addEventListener('resize', () => {
+        this.fitActiveViewport();
+        this._snapToActivePending = true;
+        this.requestUpdate();
+    });
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'selectedAudioMode') {
+                this.audioMode = (e.newValue || 'speaker');
+                if (this.activeTab === 'transcript') this.updateTranscriptContent();
+            }
+        });
+
     }
 
     disconnectedCallback() {
@@ -933,11 +1130,18 @@ export class AssistantView extends LitElement {
         const textInput = this.shadowRoot.querySelector('#textInput');
         if (textInput && textInput.value.trim()) {
             const message = textInput.value.trim();
-            textInput.value = ''; // Clear input
-            this.adjustTextareaHeight(textInput); // Reset height to min after sending
+            textInput.value = ''; 
+            this.adjustTextareaHeight(textInput);
+
+            this._snapToActivePending = true;
+
+            this.requestUpdate(); 
+
             await this.onSendText(message);
         }
     }
+
+    
 
     handleTextKeydown(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -947,15 +1151,19 @@ export class AssistantView extends LitElement {
             if (hasText) {
                 this.handleSendText();
             } else {
-                // No text: trigger screen + audio analysis using existing manual screenshot flow
-                try {
-                    if (window.captureManualScreenshot) {
-                        window.captureManualScreenshot();
-                    } else {
-                        console.warn('captureManualScreenshot not available');
-                    }
-                } catch (err) {
-                    console.warn('Failed to trigger manual screenshot analysis:', err);
+                if (this.useScreen) {
+                    try {
+                        if (window.captureManualScreenshot) {
+                            window.captureManualScreenshot();
+                        }
+                    } catch (_) {}
+                } else {
+                    try {
+                        if (window.require) {
+                            const { ipcRenderer } = window.require('electron');
+                            ipcRenderer.invoke('send-current-transcription');
+                        }
+                    } catch (_) {}
                 }
             }
         }
@@ -1010,41 +1218,58 @@ export class AssistantView extends LitElement {
         el.style.height = `${newHeight}px`;
     }
 
-    scrollToBottom(containerId) {
-        const doScroll = () => {
-            const container = this.shadowRoot.querySelector(`#${containerId}`);
-            if (!container) return;
-            const target = container.lastElementChild || container;
-            try {
-                container.scrollTop = container.scrollHeight;
-                target.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            } catch (_) {
-                container.scrollTop = container.scrollHeight;
-            }
-
-            try {
-                let host = this.getRootNode()?.host;
-                let anc = host;
-                while (anc && anc.parentElement) {
-                    anc = anc.parentElement;
-                    const cs = getComputedStyle(anc);
-                    const overflowY = cs.overflowY;
-                    if ((overflowY === 'auto' || overflowY === 'scroll') && anc.scrollHeight > anc.clientHeight) {
-                        anc.scrollTop = anc.scrollHeight;
-                        break;
-                    }
+    toggleUseScreen() {
+        this.useScreen = !this.useScreen;
+        try {
+            localStorage.setItem('assistantUseScreen', this.useScreen ? 'true' : 'false');
+            if (this.useScreen) {
+                const interval = localStorage.getItem('selectedScreenshotInterval') || '5';
+                const quality = localStorage.getItem('selectedImageQuality') || 'medium';
+                if (window.cheddar && typeof window.cheddar.startScreenCaptureScheduling === 'function') {
+                    window.cheddar.startScreenCaptureScheduling(interval, quality);
+                } else if (window.cheddar && typeof window.cheddar.startCapture === 'function') {
+                    window.cheddar.startCapture(interval, quality);
                 }
-            } catch (_) {}
-        };
-        requestAnimationFrame(doScroll);
-        setTimeout(doScroll, 16);
+            } else {
+                if (window.cheddar && typeof window.cheddar.stopScreenCapture === 'function') {
+                    window.cheddar.stopScreenCapture();
+                }
+            }
+        } catch (_) {}
+        this.requestUpdate();
     }
+
+    handleInputFocus() {
+        this.inputFocused = true;
+        this.requestUpdate();
+    }
+
+    handleInputBlur() {
+        const container = this.shadowRoot?.querySelector('.text-input-container');
+        setTimeout(() => {
+            const open = container ? container.matches(':focus-within') : false;
+            this.inputFocused = !!open;
+            this.requestUpdate();
+        }, 10);
+    }
+
+scrollToBottom() {
+    // Disabled (no auto-scroll to bottom)
+}
+
 
     firstUpdated() {
         super.firstUpdated();
         this.updateResponseContent();
         this.updateTranscriptContent();
         // Do not auto-resize on first render; keep compact initial height.
+        try {
+            const container = this.shadowRoot?.querySelector('#responseContainer');
+            if (container && !this._resizeObserver) {
+                this._resizeObserver = new ResizeObserver(() => this.fitActiveViewport());
+                this._resizeObserver.observe(container);
+            }
+        } catch (_) {}
     }
 
     updated(changedProperties) {
@@ -1057,6 +1282,11 @@ export class AssistantView extends LitElement {
         ) {
             this.updateResponseContent();
         }
+if (changedProperties.has('currentResponseIndex')) {
+    // Mark that the next render should snap to the new question
+    this._snapToActivePending = true;
+}
+
         // Streaming coordination
         if (changedProperties.has('streamSession')) {
             this._handleStreamSessionChange();
@@ -1079,62 +1309,186 @@ export class AssistantView extends LitElement {
         }
     }
 
-    updateResponseContent() {
-        const container = this.shadowRoot.querySelector('#responseContainer');
-        if (container) {
-            const escape = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const maxLen = Math.max((this.questions || []).length, (this.responses || []).length);
-            let htmlStr = '';
-            for (let i = 0; i < maxLen; i++) {
-                const q = (this.questions || [])[i] || '';
-                const isCurrent = i === this.currentResponseIndex;
-                const ansText = isCurrent && this.isStreaming ? this._streamTypedText : ((this.responses || [])[i] || '');
-                const ansRendered = this.renderMarkdown(ansText, isCurrent && this.isStreaming);
-                if (q && q.trim()) {
-                    htmlStr += `<div class="chat-row right"><div class="bubble user">${escape(q)}</div></div>`;
-                }
-                if (ansText && ansText.trim()) {
-                    htmlStr += `<div class="chat-row left"><div class="answer-block">${ansRendered}</div></div>`;
-                }
-            }
-            container.innerHTML = htmlStr || '';
-            this._lastRenderedCount = maxLen;
+ fitActiveViewport() {
+    const container = this.shadowRoot?.querySelector('#responseContainer');
+    if (!container) return;
 
-            try {
-                container.querySelectorAll('.bubble.user').forEach(el => {
-                    const cs = getComputedStyle(el);
-                    const lh = parseFloat(cs.lineHeight) || 18;
-                    const pt = parseFloat(cs.paddingTop) || 0;
-                    const pb = parseFloat(cs.paddingBottom) || 0;
-                    const contentH = (el.clientHeight || 0) - pt - pb; // exclude padding
-                    const isMulti = contentH > lh * 1.25; // more than ~1 line
-                    if (isMulti) el.classList.add('multiline'); else el.classList.remove('multiline');
-                });
-            } catch (_) {}
+    const active = container.querySelector('#active-block');
+    if (!active) return;
 
-            // Highlight code blocks only after stream completes (skip during streaming)
-            if (this.hljs && !this.isStreaming) {
-                container.querySelectorAll('pre:not(.output-block) code').forEach((el) => {
-                    try {
-                        this.hljs.highlightElement(el);
-                    } catch (e) {
-                        console.warn('highlightElement error:', e);
-                    }
-                });
-            }
+    // Get container padding
+    const cs = getComputedStyle(container);
+    const pt = parseFloat(cs.paddingTop) || 0;
+    const pb = parseFloat(cs.paddingBottom) || 0;
 
-            // Keep the latest content visible during streaming
-            if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
-        } else {
+    // The visible height of the container
+    const visibleHeight = container.clientHeight - pt - pb;
+
+    // Set a minimum height so active block always occupies the whole visible pane
+    active.style.minHeight = `${visibleHeight}px`;
+}
+
+
+updateResponseContent() {
+    const container = this.shadowRoot.querySelector('#responseContainer');
+    if (!container) {
         console.warn('Response container not found');
-        }
+        return;
     }
+
+    const escape = (s) =>
+        String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+    const maxLen = Math.max(
+        (this.questions || []).length,
+        (this.responses || []).length
+    );
+
+    let htmlStr = '';
+
+    for (let i = 0; i < maxLen; i++) {
+        const q = (this.questions || [])[i] || '';
+        const isCurrent = i === this.currentResponseIndex;
+
+    const ansText =
+        isCurrent && this.isStreaming
+            ? this._streamTypedText
+            : ((this.responses || [])[i] || '');
+
+    const ansRendered = this.renderMarkdown(
+        ansText,
+        isCurrent && this.isStreaming
+    );
+
+    const isLatest = i === maxLen - 1;
+
+    // NEW FIX: wrap EVERY block, and only mark the last one as active
+    htmlStr += `<div class="message-block ${isLatest ? 'active-block' : ''}" id="${isLatest ? 'active-block' : ''}" data-index="${i}">`;
+
+    if (q && q.trim()) {
+        htmlStr += `
+            <div class="chat-row right" style="margin-bottom:0">
+                <div class="bubble user">${escape(q)}</div>
+            </div>
+            <div class="chat-row right actions">
+                <div class="question-actions">
+                    <button class="copy-btn" data-type="question" data-index="${i}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                            <rect x="5" y="5" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                        </svg>
+                    </button>
+                </div>
+            </div>`;
+    }
+
+    if (ansText && ansText.trim()) {
+        htmlStr += `
+            <div class="chat-row left" style="margin-bottom:0">
+                <div class="answer-block" id="answer-${i}">${ansRendered}</div>
+            </div>
+            <div class="chat-row left actions">
+                <div class="answer-actions">
+                    <button class="copy-btn" data-type="answer" data-index="${i}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                            <rect x="5" y="5" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8" />
+                        </svg>
+                    </button>
+                </div>
+            </div>`;
+    } else if (isCurrent) {
+        htmlStr += `
+            <div class="chat-row left">
+                <div class="answer-block placeholder">&nbsp;</div>
+            </div>`;
+    }
+
+    htmlStr += `</div>`; // close message-block
+}
+
+
+    container.innerHTML = htmlStr || '';
+    this._lastRenderedCount = maxLen;
+
+    if (!this._copyHandlerBound) {
+        this._copyHandlerBound = true;
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('.copy-btn');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-index'), 10);
+            const type = btn.getAttribute('data-type');
+            if (type === 'question') {
+                this.copyQuestion(idx);
+            } else if (type === 'answer') {
+                this.copyAnswer(idx);
+            }
+        });
+    }
+
+    // Detect multiline user bubbles
+    try {
+        container.querySelectorAll('.bubble.user').forEach(el => {
+            const cs = getComputedStyle(el);
+            const lh = parseFloat(cs.lineHeight) || 18;
+            const pt = parseFloat(cs.paddingTop) || 0;
+            const pb = parseFloat(cs.paddingBottom) || 0;
+            const contentH = (el.clientHeight || 0) - pt - pb;
+
+            const isMulti = contentH > lh * 1.25;
+            if (isMulti) el.classList.add('multiline');
+            else el.classList.remove('multiline');
+        });
+    } catch (_) {}
+
+    // Highlight code blocks (only when not streaming)
+    if (this.hljs && !this.isStreaming) {
+        container
+            .querySelectorAll('pre:not(.output-block) code')
+            .forEach(el => {
+                try {
+                    this.hljs.highlightElement(el);
+                } catch (e) {
+                    console.warn('highlightElement error:', e);
+                }
+            });
+    }
+
+    // Adjust layout height
+    this.fitActiveViewport();
+
+    // --- Scroll newest question to TOP (ONCE ONLY) ---
+  if (this._snapToActivePending) {
+    try {
+        const active = container.querySelector('#active-block');
+        if (active) container.scrollTop = active.offsetTop;
+    } catch (_) {}
+    this._snapToActivePending = false;
+}
+
+    // IMPORTANT: ❌ REMOVE THE SECOND SCROLL BLOCK
+}
+
+
 
     updateTranscriptContent() {
         const container = this.shadowRoot?.querySelector('#transcriptContainer');
         if (!container) return;
-        container.textContent = this.transcriptText || '';
-        if (this.autoScrollEnabled) this.scrollToBottom('transcriptContainer');
+        const mode = (this.audioMode || localStorage.getItem('selectedAudioMode') || 'speaker').toLowerCase();
+        const isUser = mode === 'mic';
+        const escape = (s) => String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        const lines = String(this.transcriptText || '').split('\n').filter(l => l.trim().length > 0);
+        let html = '';
+        for (const line of lines) {
+            html += `<div class="transcript-row ${isUser ? 'right' : 'left'}"><div class="transcript-bubble ${isUser ? 'user' : 'interviewer'}">${escape(line)}</div></div>`;
+        }
+        container.innerHTML = html;
     }
 
     // --- Streaming engine (typewriter) ---
@@ -1154,12 +1508,8 @@ export class AssistantView extends LitElement {
         this._typingLastTs = performance.now();
         try {
             const container = this.shadowRoot.querySelector('#responseContainer');
-            if (container && !this._scrollObserver) {
-                this._scrollObserver = new MutationObserver(() => {
-                    if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
-                });
-                this._scrollObserver.observe(container, { childList: true, subtree: true });
-            }
+            // Disable auto-scroll during streaming
+            this._scrollObserver = null;
         } catch (_) {}
         const loop = (ts) => {
             if (!this.isStreaming) return;
@@ -1214,9 +1564,7 @@ export class AssistantView extends LitElement {
         const delta = this.streamDelta || '';
         if (this.isStreaming && delta) {
             this._streamTargetText += delta;
-            // Trigger fast update to keep flow smooth
             this.updateResponseContent();
-            if (this.autoScrollEnabled) this.scrollToBottom('responseContainer');
         }
     }
 
@@ -1255,9 +1603,6 @@ export class AssistantView extends LitElement {
         try {
             localStorage.setItem('assistantAutoScroll', checked ? 'true' : 'false');
         } catch (_) {}
-        if (checked) {
-            this.scrollToBottom(this.activeTab==='transcript'?'transcriptContainer':'responseContainer');
-        }
     }
 
     // --- Prompt buttons logic ---
@@ -1271,7 +1616,11 @@ export class AssistantView extends LitElement {
                     const defaults = [
                         {
                             name: 'Assist',
-                            text: 'Listen and check the screen to see what is being asked. Carefully review any code shown and analyze it thoroughly before giving an answer.\n\nIf the question is an output-prediction type, examine the code very closely and provide the exact output. Also include an explanation showing how you arrived at that answer and your reasoning steps.',
+                            text: 'Assist!',
+                        },
+                         {
+                            name: 'What should I say?',
+                            text: 'What should I say?',
                         },
                         {
                             name: 'Code Assistance',
@@ -1382,15 +1731,31 @@ export class AssistantView extends LitElement {
                 <button class="tab-btn ${this.activeTab==='transcript'?'active':''}" @click=${() => { this.activeTab='transcript'; this.onTabChange('transcript'); this.requestUpdate(); }}>Transcript</button>
             </div>
             <div class="response-container chat" id="responseContainer" style="display:${this.activeTab==='chat'?'block':'none'}"></div>
-            <div class="response-container" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
+            <div class="response-container transcript" id="transcriptContainer" style="white-space:pre-wrap;display:${this.activeTab==='transcript'?'block':'none'}"></div>
 
             <div class="text-input-container">
-                <textarea id="textInput" rows="1" placeholder="Type a message to the AI..." @keydown=${this.handleTextKeydown} @input=${this.handleTextInput} @paste=${this.handleTextInput}></textarea>
-                <button class="send-button" @click=${() => this.handleSendText()}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
+                <div class="input-row">
+                    <textarea id="textInput" rows="1" placeholder="Type a message to the AI..." @focus=${() => this.handleInputFocus()} @blur=${() => this.handleInputBlur()} @keydown=${this.handleTextKeydown} @input=${this.handleTextInput} @paste=${this.handleTextInput}></textarea>
+                    ${this.inputFocused ? '' : html`<button class="send-button" @click=${() => this.handleSendText()}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>`}
+                </div>
+                <div class="input-actions">
+                    <button class="use-screen-btn ${this.useScreen ? 'active' : ''}" @click=${() => this.toggleUseScreen()}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="5" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.8" />
+                            <path d="M8 13l2.5-3 3 4 3.5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span>Use Screen</span>
+                    </button>
+                    ${this.inputFocused ? html`<button class="send-button" @click=${() => this.handleSendText()}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>` : ''}
+                </div>
             </div>
             <div class="assistant-toggles">
                 <label class="assistant-toggle-label">
@@ -1440,16 +1805,8 @@ export class AssistantView extends LitElement {
                   `
                 : ''}
 
-            <!-- Resize overlay on all edges and corners -->
             <div class="resize-overlay">
-                <div class="resize-handle top" @pointerdown=${e => this._startResize(e, 'top')}></div>
-                <div class="resize-handle right" @pointerdown=${e => this._startResize(e, 'right')}></div>
                 <div class="resize-handle bottom" @pointerdown=${e => this._startResize(e, 'bottom')}></div>
-                <div class="resize-handle left" @pointerdown=${e => this._startResize(e, 'left')}></div>
-                <div class="resize-handle tl" @pointerdown=${e => this._startResize(e, 'top-left')}></div>
-                <div class="resize-handle tr" @pointerdown=${e => this._startResize(e, 'top-right')}></div>
-                <div class="resize-handle bl" @pointerdown=${e => this._startResize(e, 'bottom-left')}></div>
-                <div class="resize-handle br" @pointerdown=${e => this._startResize(e, 'bottom-right')}></div>
             </div>
         `;
     }

@@ -7,8 +7,8 @@ let audioContext = null;
 let audioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
-  const AUDIO_CHUNK_DURATION = 0.025;
-  const BUFFER_SIZE = 512;
+  const AUDIO_CHUNK_DURATION = 0.01;
+  const BUFFER_SIZE = 256;
   let audioPauseUntil = 0;
   // Simple VAD config for auto end-of-speech detection
   let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '600', 10);
@@ -22,6 +22,11 @@ let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
 
 let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode') || 'auto').toLowerCase();
+
+let audioHealthInterval = null;
+let lastAudioProcessTs = 0;
+let audioModeCurrent = 'speaker';
+let vadSpeaking = false;
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
@@ -209,6 +214,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
     try {
         const audioMode = (localStorage.getItem('selectedAudioMode') || 'speaker').toLowerCase();
+        audioModeCurrent = audioMode;
         if (isMacOS) {
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             if (audioMode === 'speaker') {
@@ -343,20 +349,44 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
         // MediaStream obtained
 
-        // Start capturing screenshots - check if manual mode
-        if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
-            // Don't start automatic capture in manual mode
-        } else {
-            const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
-            screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
+        // Start capturing screenshots only if Use Screen is enabled
+        const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+        if (useScreen) {
+            // check if manual mode
+            if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
+                // Don't start automatic capture in manual mode
+            } else {
+                const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
+                screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
 
-            // Capture first screenshot immediately
-            setTimeout(() => captureScreenshot(imageQuality), 100);
+                // Capture first screenshot immediately
+                setTimeout(() => captureScreenshot(imageQuality), 100);
+            }
         }
     } catch (err) {
         console.error('Error starting capture:', err);
         cheddar.e().setStatus('error');
     }
+
+    try {
+        startAudioHealthMonitor();
+    } catch (_) {}
+}
+
+function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
+    if (!window.__geminiLiveReady) return;
+    const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+    if (!useScreen) return;
+    if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
+        return;
+    }
+    const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
+    if (screenshotInterval) {
+        try { clearInterval(screenshotInterval); } catch (_) {}
+        screenshotInterval = null;
+    }
+    screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
+    setTimeout(() => captureScreenshot(imageQuality), 100);
 }
 
 // Expose renderer utilities to app shell
@@ -372,10 +402,11 @@ function setupLinuxMicProcessing(micStream) {
     const micSource = micAudioContext.createMediaStreamSource(micStream);
     const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
-    let audioBuffer = [];
+    audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
     micProcessor.onaudioprocess = async e => {
+        lastAudioProcessTs = Date.now();
         if (audioPauseUntil && Date.now() < audioPauseUntil) {
             return;
         }
@@ -392,6 +423,12 @@ function setupLinuxMicProcessing(micStream) {
                 }
                 const rms = Math.sqrt(sum / (inputData.length / 4));
                 const now = Date.now();
+                if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
+                    vadSpeaking = true;
+                    try { ipcRenderer.send('speech-start'); } catch (_) {}
+                } else if (rms < vadAmplitudeThreshold) {
+                    vadSpeaking = false;
+                }
 
                 // If below threshold for configured duration and cooldown passed, trigger transcription send
                 if (rms < vadAmplitudeThreshold) {
@@ -425,10 +462,12 @@ function setupLinuxMicProcessing(micStream) {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const raw = new Uint8Array(pcmData16.buffer);
 
-            ipcRenderer.invoke('send-audio-content', {
-                raw,
-                mimeType: 'audio/pcm;rate=24000',
-            }).catch(() => {});
+            try {
+                ipcRenderer.send('audio-chunk', {
+                    raw,
+                    mimeType: 'audio/pcm;rate=24000',
+                });
+            } catch (_) {}
         }
     };
 
@@ -445,10 +484,11 @@ function setupWindowsLoopbackProcessing() {
     const source = audioContext.createMediaStreamSource(mediaStream);
     audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
-    let audioBuffer = [];
+    audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
 
     audioProcessor.onaudioprocess = async e => {
+        lastAudioProcessTs = Date.now();
         if (audioPauseUntil && Date.now() < audioPauseUntil) {
             return;
         }
@@ -465,6 +505,12 @@ function setupWindowsLoopbackProcessing() {
                 }
                 const rms = Math.sqrt(sum / (inputData.length / 4));
                 const now = Date.now();
+                if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
+                    vadSpeaking = true;
+                    try { ipcRenderer.send('speech-start'); } catch (_) {}
+                } else if (rms < vadAmplitudeThreshold) {
+                    vadSpeaking = false;
+                }
 
                 if (rms < vadAmplitudeThreshold) {
                     const silenceStart = (audioProcessor._silenceStart || now);
@@ -496,15 +542,38 @@ function setupWindowsLoopbackProcessing() {
             const pcmData16 = convertFloat32ToInt16(chunk);
             const raw = new Uint8Array(pcmData16.buffer);
 
-            ipcRenderer.invoke('send-audio-content', {
-                raw,
-                mimeType: 'audio/pcm;rate=24000',
-            }).catch(() => {});
+            try {
+                ipcRenderer.send('audio-chunk', {
+                    raw,
+                    mimeType: 'audio/pcm;rate=24000',
+                });
+            } catch (_) {}
         }
     };
 
     source.connect(audioProcessor);
     audioProcessor.connect(audioContext.destination);
+}
+
+function startAudioHealthMonitor() {
+    if (audioHealthInterval) {
+        try { clearInterval(audioHealthInterval); } catch (_) {}
+    }
+    audioHealthInterval = setInterval(() => {
+        try {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().catch(() => {});
+            }
+            if (lastAudioProcessTs && Date.now() - lastAudioProcessTs > 800) {
+                if (audioContext) {
+                    audioContext.resume().catch(() => {});
+                }
+                if (!isLinux && mediaStream) {
+                    setupWindowsLoopbackProcessing();
+                }
+            }
+        } catch (_) {}
+    }, 1000);
 }
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
@@ -653,6 +722,26 @@ function stopCapture() {
     // Clean up hidden elements
     if (hiddenVideo) {
         hiddenVideo.pause();
+        hiddenVideo.srcObject = null;
+        hiddenVideo = null;
+    }
+    offscreenCanvas = null;
+    offscreenContext = null;
+
+    if (audioHealthInterval) {
+        try { clearInterval(audioHealthInterval); } catch (_) {}
+        audioHealthInterval = null;
+    }
+}
+
+function stopScreenCapture() {
+    if (screenshotInterval) {
+        clearInterval(screenshotInterval);
+        screenshotInterval = null;
+    }
+
+    if (hiddenVideo) {
+        try { hiddenVideo.pause(); } catch (_) {}
         hiddenVideo.srcObject = null;
         hiddenVideo = null;
     }
@@ -841,8 +930,10 @@ function handleShortcut(shortcutKey) {
                 }
             }
         } else {
-            // In other views, take manual screenshot and send current transcription
-            captureManualScreenshot();
+            const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+            if (useScreen) {
+                captureManualScreenshot();
+            }
             audioPauseUntil = Date.now() + 120;
             ipcRenderer
                 .invoke('send-current-transcription')
@@ -877,6 +968,8 @@ function handleShortcut(shortcutKey) {
         initializeGemini,
         startCapture,
         stopCapture,
+        startScreenCaptureScheduling,
+        stopScreenCapture,
         sendTextMessage,
     setTranscriptionModeCached: mode => {
         transcriptionModeCached = (mode || 'auto').toLowerCase();
