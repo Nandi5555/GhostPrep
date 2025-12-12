@@ -7,12 +7,14 @@ let audioContext = null;
 let audioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
-  // 20ms chunks are more stable for streaming ASR than 10ms in many environments.
-  const AUDIO_CHUNK_DURATION = 0.08;
+  // Smaller chunks reduce end-to-end latency for very short questions (more IPC overhead, but still light).
+  const AUDIO_CHUNK_DURATION = 0.03;
   const BUFFER_SIZE = 512;
   let audioPauseUntil = 0;
   // Simple VAD config for auto end-of-speech detection
-  let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '600', 10);
+  // Lower default silence improves "speak then immediately Ctrl+Enter" responsiveness.
+  // If this feels too aggressive in noisy rooms, increase via localStorage: vadSilenceMs.
+  let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '350', 10);
   let vadAmplitudeThreshold = parseFloat(localStorage.getItem('vadThreshold') || '0.02');
   let vadCooldownMs = parseInt(localStorage.getItem('vadCooldownMs') || '2000', 10);
   let vadLastTriggerAt = 0;
@@ -29,6 +31,8 @@ let audioHealthInterval = null;
 let lastAudioProcessTs = 0;
 let audioModeCurrent = 'speaker';
 let vadSpeaking = false;
+let vadLastVoiceAt = 0;
+let vadLastEndAt = 0;
 
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
@@ -418,7 +422,8 @@ function setupLinuxMicProcessing(micStream) {
         }
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // Voice activity detection (Linux mic) - used only for UI indicators, never for auto-submit
+        // Voice activity detection (Linux mic) - used for UI indicators and to signal end-of-speech;
+        // never auto-submits to the model.
         try {
             // Compute RMS amplitude (stride 4 for lower CPU)
             let sum = 0;
@@ -427,11 +432,19 @@ function setupLinuxMicProcessing(micStream) {
                 sum += v * v;
             }
             const rms = Math.sqrt(sum / (inputData.length / 4));
-            if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
-                vadSpeaking = true;
-                try { ipcRenderer.send('speech-start'); } catch (_) {}
-            } else if (rms < vadAmplitudeThreshold) {
-                vadSpeaking = false;
+            const now = Date.now();
+            if (rms >= vadAmplitudeThreshold) {
+                vadLastVoiceAt = now;
+                if (!vadSpeaking && (now - (vadLastEndAt || 0)) >= vadCooldownMs) {
+                    vadSpeaking = true;
+                    try { ipcRenderer.send('speech-start'); } catch (_) {}
+                }
+            } else {
+                if (vadSpeaking && vadLastVoiceAt && (now - vadLastVoiceAt) >= vadSilenceMsToTrigger) {
+                    vadSpeaking = false;
+                    vadLastEndAt = now;
+                    try { ipcRenderer.send('speech-end'); } catch (_) {}
+                }
             }
         } catch (_) {}
 
@@ -475,7 +488,8 @@ function setupWindowsLoopbackProcessing() {
         }
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // Voice activity detection (Windows loopback) - used only for UI indicators, never for auto-submit
+        // Voice activity detection (Windows loopback) - used for UI indicators and to signal end-of-speech;
+        // never auto-submits to the model.
         try {
             // Compute RMS amplitude (stride 4 for lower CPU)
             let sum = 0;
@@ -484,11 +498,19 @@ function setupWindowsLoopbackProcessing() {
                 sum += v * v;
             }
             const rms = Math.sqrt(sum / (inputData.length / 4));
-            if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
-                vadSpeaking = true;
-                try { ipcRenderer.send('speech-start'); } catch (_) {}
-            } else if (rms < vadAmplitudeThreshold) {
-                vadSpeaking = false;
+            const now = Date.now();
+            if (rms >= vadAmplitudeThreshold) {
+                vadLastVoiceAt = now;
+                if (!vadSpeaking && (now - (vadLastEndAt || 0)) >= vadCooldownMs) {
+                    vadSpeaking = true;
+                    try { ipcRenderer.send('speech-start'); } catch (_) {}
+                }
+            } else {
+                if (vadSpeaking && vadLastVoiceAt && (now - vadLastVoiceAt) >= vadSilenceMsToTrigger) {
+                    vadSpeaking = false;
+                    vadLastEndAt = now;
+                    try { ipcRenderer.send('speech-end'); } catch (_) {}
+                }
             }
         } catch (_) {}
 

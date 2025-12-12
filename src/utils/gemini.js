@@ -11,6 +11,11 @@ const { submitBufferedTranscript, buildHistoryForModel } = require('./transcript
  let currentTranscription = '';
  let conversationHistory = [];
  let isInitializingSession = false;
+ // Transcription timing (to avoid "submit before transcript arrives" races)
+ let lastTranscriptChunkAt = 0;
+ let lastTurnCompleteAt = 0;
+ let lastSpeechStartAt = 0;
+ let lastSpeechEndAt = 0;
 
 // Audio capture variables
  let systemAudioProc = null;
@@ -299,10 +304,12 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     if (message.serverContent?.inputTranscription?.text) {
                         const t = message.serverContent.inputTranscription.text;
                         currentTranscription += t;
+                        lastTranscriptChunkAt = Date.now();
                         try { sendToRenderer('update-transcript-stream', t); } catch (_) {}
                     }
 
                     if (message.serverContent?.turnComplete) {
+                        lastTurnCompleteAt = Date.now();
                         sendToRenderer('update-status', 'Listening...');
                         try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
                     }
@@ -387,9 +394,11 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         if (message.serverContent?.inputTranscription?.text) {
                             const t = message.serverContent.inputTranscription.text;
                             currentTranscription += t;
+                            lastTranscriptChunkAt = Date.now();
                             try { sendToRenderer('update-transcript-stream', t); } catch (_) {}
                         }
                         if (message.serverContent?.turnComplete) {
+                            lastTurnCompleteAt = Date.now();
                             sendToRenderer('update-status', 'Listening...');
                             try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
                         }
@@ -580,6 +589,64 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
     }
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait (bounded) for the streamed transcription buffer to "settle" so a quick
+ * Ctrl/Cmd+Enter right after speaking still submits the full question.
+ *
+ * We consider it settled when:
+ * - we have some text AND it has not changed for `quietMs`, OR
+ * - Gemini emits a turnComplete after we started waiting.
+ *
+ * If renderer VAD emits `speech-end`, we also prefer to wait until speech ends.
+ */
+async function waitForTranscriptionToSettle({
+    waitStartedAt,
+    maxWaitMs = 1000,
+    quietMs = 140,
+    pollMs = 20,
+} = {}) {
+    const start = waitStartedAt || Date.now();
+    const deadline = start + maxWaitMs;
+
+    let lastSeen = String(currentTranscription || '');
+    let lastChangeAt = Date.now();
+
+    while (Date.now() < deadline) {
+        const now = Date.now();
+
+        // If Gemini signaled turnComplete after we began waiting, we can stop early.
+        if (lastTurnCompleteAt && lastTurnCompleteAt >= start) {
+            break;
+        }
+
+        const cur = String(currentTranscription || '');
+        if (cur !== lastSeen) {
+            lastSeen = cur;
+            lastChangeAt = now;
+        }
+
+        const hasText = cur.trim().length > 0;
+        const quietFor = now - lastChangeAt;
+        const speechEndedSinceStart = lastSpeechEndAt && lastSpeechEndAt >= start;
+
+        // If we have text, prefer to wait until speech ends (when available),
+        // otherwise fall back to transcript quietness.
+        if (hasText) {
+            if (speechEndedSinceStart) {
+                if (quietFor >= quietMs) break;
+            } else {
+                if (quietFor >= quietMs) break;
+            }
+        }
+
+        await sleep(pollMs);
+    }
+}
+
 function setupGeminiIpcHandlers(geminiSessionRef) {
     // UI-controlled screen visibility gate
     ipcMain.handle('set-use-screen-enabled', async (_event, enabled) => {
@@ -656,7 +723,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
     ipcMain.on('speech-start', () => {
+        lastSpeechStartAt = Date.now();
         try { sendToRenderer('update-status', 'Transcribing...'); } catch (_) {}
+    });
+    ipcMain.on('speech-end', () => {
+        lastSpeechEndAt = Date.now();
+        // Do not force a status change here; Gemini may still be finalizing a turn.
     });
     
 
@@ -696,16 +768,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('send-current-transcription', async (event, payload) => {
         if (!modelAdapter) return { success: false, error: 'Model not initialized' };
         try {
-            // Try to use whatever we have; if empty, wait briefly for interim transcription
+            // Try to use whatever we have; if the user submits immediately after speaking,
+            // wait a short, bounded time for the streaming transcription to settle.
             process.stdout.write('!');
+            const waitStartedAt = Date.now();
+            await waitForTranscriptionToSettle({ waitStartedAt });
             let text = (currentTranscription || '').trim();
-            if (!text) {
-                const deadline = Date.now() + 100;
-                while (!text && Date.now() < deadline) {
-                    await new Promise(resolve => setTimeout(resolve, 25));
-                    text = (currentTranscription || '').trim();
-                }
-            }
 
             const actionName = (payload && payload.actionName) ? String(payload.actionName).trim() : '';
             const actionPrompt = (payload && payload.actionPrompt) ? String(payload.actionPrompt).trim() : '';
@@ -728,9 +796,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             let responseText = '';
             let rawTranscript = '';
             const includeScreenTurns = !!useScreenEnabled;
+            // IMPORTANT: keep this guard non-intrusive; otherwise it can cause irrelevant
+            // "I can't see the screen" answers even for normal spoken questions.
             const screenOffGuard = useScreenEnabled
                 ? ''
-                : 'Screen viewing is OFF. Do not use or rely on any previously described screen content. If the question requires screen details, respond that you cannot see the screen because Use Screen is OFF.';
+                : 'Use Screen is OFF. Only if the user explicitly asks about on-screen/visual content, say you cannot see the screen. Otherwise, ignore screen context and answer normally.';
 
             if (hasText) {
                 const combinedActionPrompt = screenOffGuard
