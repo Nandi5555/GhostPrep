@@ -906,6 +906,128 @@ scrollToTop() {
         // Check if marked is available
         if (typeof window !== 'undefined' && window.marked) {
             try {
+                const normalizeAndFenceCode = (raw) => {
+                    const input = String(raw || '').replace(/\r\n/g, '\n');
+                    if (!input.trim()) return input;
+
+                    // If the model emitted an odd number of fences, close it to avoid breaking parsing.
+                    const fenceCount = (input.match(/```/g) || []).length;
+                    const balanced = fenceCount % 2 === 0 ? input : (input + '\n```');
+
+                    const isCodeLine = (line) => {
+                        const l = String(line || '');
+                        if (!l.trim()) return false;
+                        // Skip obvious markdown bullets/headings
+                        if (/^\s*([-*]|\d+\.)\s+/.test(l)) return false;
+                        if (/^\s{0,3}#{1,6}\s+/.test(l)) return false;
+
+                        // Common code starters / tokens
+                        if (/^\s*(const|let|var|function|class|import|export|return|if|else|for|while|switch|case|try|catch|finally)\b/.test(l)) return true;
+                        if (/^\s*(def|class|import|from|return|if|elif|else|for|while|try|except|finally|with)\b/.test(l)) return true;
+                        if (/^\s*(public|private|protected|static|final)\b/.test(l)) return true;
+                        if (/^\s*<\w+[\s>]/.test(l)) return true; // html/xml-ish
+                        if (/[{};]/.test(l)) return true;
+                        if (/\=\>/.test(l)) return true;
+                        if (/\b(console\.log|System\.out\.println|printf|print)\b/.test(l)) return true;
+                        if (/^\s*\w+\s*\(.*\)\s*[{:]?\s*$/.test(l) && l.length > 6) return true; // function-ish
+                        if (/^\s*\w+\s*=\s*.+/.test(l)) return true; // assignment-ish
+                        return false;
+                    };
+
+                    const detectLang = (blockText) => {
+                        const t = String(blockText || '');
+                        const s = t.trim();
+                        if (!s) return '';
+                        if ((s.startsWith('{') || s.startsWith('[')) && /":\s*|':\s*|:\s*\d|:\s*true|:\s*false|null/.test(s)) return 'json';
+                        if (/^\s*<(!doctype|html|div|span|script|style)\b/i.test(s) || /<\/\w+>/.test(s)) return 'html';
+                        if (/\b(def|elif|except|None|True|False)\b/.test(t) && /:\s*$/.test(t.split('\n')[0] || '')) return 'python';
+                        if (/\b(function|const|let|var|=>)\b/.test(t)) return 'javascript';
+                        if (/\b(public|private|class)\b/.test(t) && /\bstatic\b/.test(t)) return 'java';
+                        return '';
+                    };
+
+                    const wrapOutsideFence = (outsideLines) => {
+                        const out = [];
+                        let buf = [];
+                        const flush = () => {
+                            if (buf.length === 0) return;
+                            const block = buf.join('\n');
+                            const nonEmpty = buf.filter(l => String(l || '').trim().length > 0);
+                            const codeHits = nonEmpty.reduce((n, l) => n + (isCodeLine(l) ? 1 : 0), 0);
+
+                            const looksCode =
+                                nonEmpty.length >= 2 &&
+                                (codeHits / Math.max(1, nonEmpty.length)) >= 0.5 &&
+                                // Require at least one "strong" code marker to avoid false positives.
+                                (/[{};=]/.test(block) || /\b(function|const|let|var|def|class|import|export)\b/.test(block) || /^\s{2,}\S/m.test(block));
+
+                            if (looksCode) {
+                                const lang = detectLang(block);
+                                out.push('```' + (lang ? lang : ''));
+                                out.push(block);
+                                out.push('```');
+                            } else {
+                                out.push(block);
+                            }
+                            buf = [];
+                        };
+
+                        for (const line of outsideLines) {
+                            if (String(line || '').trim() === '') {
+                                flush();
+                                out.push(''); // preserve blank line
+                            } else {
+                                buf.push(line);
+                            }
+                        }
+                        flush();
+                        return out.join('\n');
+                    };
+
+                    // Only transform outside fenced blocks, preserve fenced content verbatim.
+                    const lines = balanced.split('\n');
+                    let inFence = false;
+                    let seg = [];
+                    const out = [];
+
+                    const flushOutsideSeg = () => {
+                        if (seg.length === 0) return;
+                        out.push(wrapOutsideFence(seg));
+                        seg = [];
+                    };
+
+                    const flushInsideSeg = () => {
+                        if (seg.length === 0) return;
+                        out.push(seg.join('\n'));
+                        seg = [];
+                    };
+
+                    for (const line of lines) {
+                        const trimmed = String(line || '').trim();
+                        const isFenceLine = trimmed.startsWith('```');
+                        if (isFenceLine) {
+                            if (!inFence) {
+                                flushOutsideSeg();
+                                inFence = true;
+                            } else {
+                                flushInsideSeg();
+                                inFence = false;
+                            }
+                            out.push(line);
+                            continue;
+                        }
+                        seg.push(line);
+                    }
+                    if (inFence) {
+                        // If still inside fence, close it.
+                        flushInsideSeg();
+                        out.push('```');
+                    } else {
+                        flushOutsideSeg();
+                    }
+                    return out.join('\n');
+                };
+
                 const escapeHtml = (str) =>
                     str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -946,7 +1068,8 @@ scrollToTop() {
 
                 window.marked.use({ renderer });
 
-                const rendered = window.marked.parse(content);
+                const prepared = normalizeAndFenceCode(content);
+                const rendered = window.marked.parse(prepared);
                 return rendered;
             } catch (error) {
                 console.warn('Error parsing markdown:', error);
@@ -1154,14 +1277,21 @@ scrollToTop() {
                 if (this.useScreen) {
                     try {
                         if (window.captureManualScreenshot) {
-                            window.captureManualScreenshot();
+                            window.captureManualScreenshot().then(() => {
+                                try {
+                                    if (window.require) {
+                                        const { ipcRenderer } = window.require('electron');
+                                        ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!' });
+                                    }
+                                } catch (_) {}
+                            });
                         }
                     } catch (_) {}
                 } else {
                     try {
                         if (window.require) {
                             const { ipcRenderer } = window.require('electron');
-                            ipcRenderer.invoke('send-current-transcription');
+                            ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!' });
                         }
                     } catch (_) {}
                 }
@@ -1218,21 +1348,30 @@ scrollToTop() {
         el.style.height = `${newHeight}px`;
     }
 
-    toggleUseScreen() {
+    async toggleUseScreen() {
         this.useScreen = !this.useScreen;
         try {
             localStorage.setItem('assistantUseScreen', this.useScreen ? 'true' : 'false');
+
+            // IMPORTANT: await main-process gate update to avoid races where screenshots are ignored.
+            try {
+                if (window.require) {
+                    const { ipcRenderer } = window.require('electron');
+                    await ipcRenderer.invoke('set-use-screen-enabled', this.useScreen);
+                }
+            } catch (_) {}
+
             if (this.useScreen) {
                 const interval = localStorage.getItem('selectedScreenshotInterval') || '5';
                 const quality = localStorage.getItem('selectedImageQuality') || 'medium';
                 if (window.cheddar && typeof window.cheddar.startScreenCaptureScheduling === 'function') {
-                    window.cheddar.startScreenCaptureScheduling(interval, quality);
+                    await window.cheddar.startScreenCaptureScheduling(interval, quality);
                 } else if (window.cheddar && typeof window.cheddar.startCapture === 'function') {
-                    window.cheddar.startCapture(interval, quality);
+                    await window.cheddar.startCapture(interval, quality);
                 }
             } else {
                 if (window.cheddar && typeof window.cheddar.stopScreenCapture === 'function') {
-                    window.cheddar.stopScreenCapture();
+                    await window.cheddar.stopScreenCapture();
                 }
             }
         } catch (_) {}
@@ -1616,11 +1755,11 @@ updateResponseContent() {
                     const defaults = [
                         {
                             name: 'Assist',
-                            text: 'Assist!',
+                            text: 'Answer the question directly. Treat the transcript as an interviewer question and assume it may contain minor speech-to-text errors. Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.',
                         },
-                         {
-                            name: 'What should I say?',
-                            text: 'What should I say?',
+                        {
+                            name: 'What should I say next?',
+                            text: 'Give me the exact next thing to say (ready to speak). Assume the transcript may have minor speech-to-text errors; silently correct them and respond without mentioning it.',
                         },
                         {
                             name: 'Code Assistance',
@@ -1692,6 +1831,26 @@ updateResponseContent() {
         this.closePromptPanel();
     }
 
+    async submitBufferedTranscriptAction(actionName, actionPrompt) {
+        try {
+            if (!window.require) return;
+            const { ipcRenderer } = window.require('electron');
+            // If Use Screen is enabled, allow screen-only submissions by capturing first.
+            try {
+                const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+                if (useScreen && typeof window.captureManualScreenshot === 'function') {
+                    await window.captureManualScreenshot();
+                }
+            } catch (_) {}
+            await ipcRenderer.invoke('send-current-transcription', {
+                actionName: String(actionName || '').trim(),
+                actionPrompt: String(actionPrompt || '').trim(),
+            });
+        } catch (error) {
+            console.warn('Failed to submit buffered transcript action:', error?.message || error);
+        }
+    }
+
     handlePromptButtonClick(e, idx) {
         const now = Date.now();
         if (now - (this._lastPromptClickTs || 0) < 1000) return; // debounce 1s
@@ -1704,13 +1863,15 @@ updateResponseContent() {
         } catch (_) {}
 
         const prompt = (this.promptButtons || [])[idx];
-        const text = prompt?.text || '';
-        const el = this.shadowRoot?.querySelector('#textInput');
-        if (!el) return;
-        el.value = text.trim();
-        this.adjustTextareaHeight(el);
-        // Send using the same logic as typing then pressing Enter
-        this.handleSendText();
+        if (!prompt) return;
+
+        // Ensure the user sees the result in the chat thread
+        try {
+            this.activeTab = 'chat';
+            if (typeof this.onTabChange === 'function') this.onTabChange('chat');
+        } catch (_) {}
+
+        this.submitBufferedTranscriptAction(prompt.name, prompt.text);
     }
 
 

@@ -211,6 +211,27 @@ export class GhostPrepApp extends LitElement {
                 this.transcriptText += '\n';
                 this.requestUpdate();
             });
+            // When the user explicitly submits the buffered transcript, record it as a user turn in the chat thread.
+            ipcRenderer.on('transcription-submitted', (_, payload) => {
+                try {
+                    const text = (payload && payload.text) ? String(payload.text) : '';
+                    if (!text.trim()) return;
+
+                    // IMPORTANT: immutable updates so Lit propagates changes to AssistantView
+                    const nextQuestions = [...(this.questions || []), text];
+                    let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+
+                    // Keep arrays aligned: create a placeholder answer slot for this user turn.
+                    if (nextResponses.length < nextQuestions.length) {
+                        nextResponses.push('');
+                    }
+
+                    this.questions = nextQuestions;
+                    this.responses = nextResponses;
+                    this.currentResponseIndex = nextQuestions.length - 1;
+                    this.requestUpdate();
+                } catch (_) {}
+            });
         }
 
         // Add functions to window.cheddar for IPC callbacks
@@ -338,6 +359,31 @@ export class GhostPrepApp extends LitElement {
     handleResponseFinal(finalText) {
         try {
             if (typeof finalText !== 'string') return;
+
+            // If we did NOT start a streaming session (or streaming state is stale), render the final response immediately.
+            // This also force-resets streaming flags so AssistantView uses `responses[i]` instead of `_streamTypedText`.
+            const hasStreamTarget = typeof this._streamCumulativeTarget === 'string' && this._streamCumulativeTarget.length > 0;
+            if (!this._isStreaming || !hasStreamTarget) {
+                this._isStreaming = false;
+                this._streamIsFinal = false;
+                this._lastStreamDelta = '';
+                this._streamCumulativeTarget = '';
+
+                // Fill the latest placeholder so the answer renders under the correct question.
+                const qLen = (this.questions || []).length;
+                let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+                if (qLen > 0) {
+                    while (nextResponses.length < qLen) nextResponses.push('');
+                    nextResponses[qLen - 1] = finalText;
+                    this.responses = nextResponses;
+                    this.currentResponseIndex = qLen - 1;
+                } else {
+                    this.responses = [...nextResponses, finalText];
+                    this.currentResponseIndex = this.responses.length - 1;
+                }
+                this.requestUpdate();
+                return;
+            }
             // Ensure any remaining text is flushed
             if (this.responses.length > 0) {
                 const idx = this.responses.length - 1;
@@ -522,7 +568,16 @@ export class GhostPrepApp extends LitElement {
     // Assistant view event handlers
     async handleSendText(message) {
         if (window.cheddar) {
-            try { this.questions.push(message); this.currentResponseIndex = this.questions.length - 1; } catch (_) {}
+            try {
+                const nextQuestions = [...(this.questions || []), message];
+                let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+                if (nextResponses.length < nextQuestions.length) {
+                    nextResponses.push('');
+                }
+                this.questions = nextQuestions;
+                this.responses = nextResponses;
+                this.currentResponseIndex = nextQuestions.length - 1;
+            } catch (_) {}
             const result = await window.cheddar.sendTextMessage(message);
 
             if (!result.success) {
@@ -541,21 +596,6 @@ export class GhostPrepApp extends LitElement {
     // Onboarding event handlers
     handleOnboardingComplete() {
         this.currentView = 'main';
-    }
-
-    async handleTranscriptionModeChange(mode) {
-        try {
-            // Persist is handled by CustomizeView; notify main for runtime gating
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('update-transcription-mode', mode);
-            }
-            if (window.cheddar && typeof window.cheddar.setTranscriptionModeCached === 'function') {
-                window.cheddar.setTranscriptionModeCached(mode);
-            }
-        } catch (error) {
-            console.error('Failed to update transcription mode:', error);
-        }
     }
 
     updated(changedProperties) {
@@ -633,7 +673,6 @@ export class GhostPrepApp extends LitElement {
                         .advancedMode=${this.advancedMode}
                         .onProfileChange=${profile => this.handleProfileChange(profile)}
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
-                        .onTranscriptionModeChange=${mode => this.handleTranscriptionModeChange(mode)}
                         .onScreenshotIntervalChange=${interval => this.handleScreenshotIntervalChange(interval)}
                         .onImageQualityChange=${quality => this.handleImageQualityChange(quality)}
                         .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}

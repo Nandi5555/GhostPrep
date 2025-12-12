@@ -155,7 +155,6 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-        sendTranscription: isMac ? 'Cmd+Shift+Enter' : 'Ctrl+Shift+Enter',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -285,31 +284,6 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             // Registered nextStep
         } catch (error) {
             console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
-        }
-    }
-
-    // Register send transcription shortcut
-    if (keybinds.sendTranscription) {
-        try {
-            globalShortcut.register(keybinds.sendTranscription, async () => {
-                try {
-                    const isMac = process.platform === 'darwin';
-                    const shortcutKey = isMac ? 'cmd+shift+enter' : 'ctrl+shift+enter';
-
-                    mainWindow.webContents.executeJavaScript(`
-                        if (window.cheddar && window.cheddar.handleShortcut) {
-                            window.cheddar.handleShortcut('${shortcutKey}');
-                        } else {
-                            /* no-op */
-                        }
-                    `);
-                } catch (error) {
-                    console.error('Error handling send transcription shortcut:', error);
-                }
-            });
-            // Registered sendTranscription
-        } catch (error) {
-            console.error(`Failed to register sendTranscription (${keybinds.sendTranscription}):`, error);
         }
     }
 

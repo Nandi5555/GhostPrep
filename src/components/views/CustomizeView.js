@@ -501,7 +501,6 @@ export class CustomizeView extends LitElement {
     static properties = {
         selectedProfile: { type: String },
         selectedLanguage: { type: String },
-        selectedTranscriptionMode: { type: String },
         selectedAudioMode: { type: String },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
@@ -513,7 +512,6 @@ export class CustomizeView extends LitElement {
         fontSize: { type: Number },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
-        onTranscriptionModeChange: { type: Function },
         onAudioModeChange: { type: Function },
         onScreenshotIntervalChange: { type: Function },
         onImageQualityChange: { type: Function },
@@ -530,7 +528,6 @@ export class CustomizeView extends LitElement {
         super();
         this.selectedProfile = 'interview';
         this.selectedLanguage = 'en-US';
-        this.selectedTranscriptionMode = localStorage.getItem('selectedTranscriptionMode') || 'auto';
         this.selectedAudioMode = localStorage.getItem('selectedAudioMode') || 'speaker';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
@@ -538,7 +535,6 @@ export class CustomizeView extends LitElement {
         this.keybinds = this.getDefaultKeybinds();
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
-        this.onTranscriptionModeChange = () => {};
         this.onAudioModeChange = () => {};
         this.onScreenshotIntervalChange = () => {};
         this.onImageQualityChange = () => {};
@@ -573,6 +569,11 @@ export class CustomizeView extends LitElement {
         this.highlightColor = localStorage.getItem('highlightColor') || defaultHighlight;
         this.pendingHighlightColor = '';
         this.applyHighlightColor(this.highlightColor);
+
+        // Manual transcription is now the only mode; remove legacy persisted flag if present.
+        try {
+            localStorage.removeItem('selectedTranscriptionMode');
+        } catch (_) {}
     }
 
     connectedCallback() {
@@ -674,12 +675,6 @@ export class CustomizeView extends LitElement {
         this.onLanguageChange(this.selectedLanguage);
     }
 
-    handleTranscriptionModeSelect(e) {
-        this.selectedTranscriptionMode = e.target.value;
-        localStorage.setItem('selectedTranscriptionMode', this.selectedTranscriptionMode);
-        this.onTranscriptionModeChange(this.selectedTranscriptionMode);
-    }
-
     handleAudioModeSelect(e) {
         this.selectedAudioMode = e.target.value;
         localStorage.setItem('selectedAudioMode', this.selectedAudioMode);
@@ -777,7 +772,6 @@ export class CustomizeView extends LitElement {
             toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-            sendTranscription: isMac ? 'Cmd+Shift+Enter' : 'Ctrl+Shift+Enter',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -856,13 +850,8 @@ export class CustomizeView extends LitElement {
             },
             {
                 key: 'nextStep',
-                name: 'Ask Next Step',
-                description: 'Take screenshot and ask AI for the next step suggestion',
-            },
-            {
-                key: 'sendTranscription',
-                name: 'Send Transcription',
-                description: 'Send current voice transcription to AI',
+                name: 'Send / Submit',
+                description: 'Submit the current buffered transcript (and screenshot if enabled)',
             },
             {
                 key: 'previousResponse',
@@ -1259,20 +1248,6 @@ export class CustomizeView extends LitElement {
                                     <option value="mic" ?selected=${this.selectedAudioMode === 'mic'}>Mic (Your voice only)</option>
                                 </select>
                                 <div class="form-description">Choose whether to listen to interviewer (speaker) or your mic</div>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Transcription Mode
-                                    <span class="current-selection">${this.selectedTranscriptionMode === 'manual' ? 'Manual' : 'Auto'}</span>
-                                </label>
-                                <select class="form-control" .value=${this.selectedTranscriptionMode} @change=${this.handleTranscriptionModeSelect}>
-                                    <option value="auto" ?selected=${this.selectedTranscriptionMode === 'auto'}>Auto</option>
-                                    <option value="manual" ?selected=${this.selectedTranscriptionMode === 'manual'}>Manual</option>
-                                </select>
-                                <div class="form-description">When Manual, press Ctrl/Cmd+Shift+Enter to send current transcription</div>
                             </div>
                         </div>
                     </div>

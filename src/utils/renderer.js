@@ -21,7 +21,8 @@ let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
 
-let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode') || 'auto').toLowerCase();
+// Manual transcription is the only supported mode. Audio is always transcribed and buffered,
+// but never auto-submitted to the model without an explicit user action.
 
 let audioHealthInterval = null;
 let lastAudioProcessTs = 0;
@@ -351,6 +352,8 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
         // Start capturing screenshots only if Use Screen is enabled
         const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+        // Inform main process of current screen gate state at session start
+        try { await ipcRenderer.invoke('set-use-screen-enabled', useScreen); } catch (_) {}
         if (useScreen) {
             // check if manual mode
             if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
@@ -373,10 +376,12 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     } catch (_) {}
 }
 
-function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
+async function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
     if (!window.__geminiLiveReady) return;
     const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
     if (!useScreen) return;
+    // Inform main process that screen is enabled (await to avoid race with first capture)
+    try { await ipcRenderer.invoke('set-use-screen-enabled', true); } catch (_) {}
     if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
         return;
     }
@@ -412,45 +417,20 @@ function setupLinuxMicProcessing(micStream) {
         }
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // Auto end-of-speech detection (Linux mic)
+        // Voice activity detection (Linux mic) - used only for UI indicators, never for auto-submit
         try {
-            if (transcriptionModeCached === 'auto') {
-                // Compute RMS amplitude (stride 4 for lower CPU)
-                let sum = 0;
-                for (let i = 0; i < inputData.length; i += 4) {
-                    const v = inputData[i];
-                    sum += v * v;
-                }
-                const rms = Math.sqrt(sum / (inputData.length / 4));
-                const now = Date.now();
-                if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
-                    vadSpeaking = true;
-                    try { ipcRenderer.send('speech-start'); } catch (_) {}
-                } else if (rms < vadAmplitudeThreshold) {
-                    vadSpeaking = false;
-                }
-
-                // If below threshold for configured duration and cooldown passed, trigger transcription send
-                if (rms < vadAmplitudeThreshold) {
-                    const silenceStart = (micProcessor._silenceStart || now);
-                    micProcessor._silenceStart = silenceStart;
-                    const silenceElapsed = now - silenceStart;
-                    if (silenceElapsed >= vadSilenceMsToTrigger && now - vadLastTriggerAt >= vadCooldownMs) {
-                        vadLastTriggerAt = now;
-                        audioPauseUntil = Date.now() + 120; // brief pause helps model finalize
-                        try {
-                            const result = await ipcRenderer.invoke('send-current-transcription');
-                            if (!result.success) {
-                                console.warn('Auto transcription send failed:', result.error);
-                            }
-                        } catch (err) {
-                            console.warn('Error sending auto transcription:', err?.message || err);
-                        }
-                    }
-                } else {
-                    // Reset silence start on speech activity
-                    micProcessor._silenceStart = Date.now();
-                }
+            // Compute RMS amplitude (stride 4 for lower CPU)
+            let sum = 0;
+            for (let i = 0; i < inputData.length; i += 4) {
+                const v = inputData[i];
+                sum += v * v;
+            }
+            const rms = Math.sqrt(sum / (inputData.length / 4));
+            if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
+                vadSpeaking = true;
+                try { ipcRenderer.send('speech-start'); } catch (_) {}
+            } else if (rms < vadAmplitudeThreshold) {
+                vadSpeaking = false;
             }
         } catch (_) {}
 
@@ -494,43 +474,20 @@ function setupWindowsLoopbackProcessing() {
         }
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // Auto end-of-speech detection (Windows loopback)
+        // Voice activity detection (Windows loopback) - used only for UI indicators, never for auto-submit
         try {
-            if (transcriptionModeCached === 'auto') {
-                // Compute RMS amplitude (stride 4 for lower CPU)
-                let sum = 0;
-                for (let i = 0; i < inputData.length; i += 4) {
-                    const v = inputData[i];
-                    sum += v * v;
-                }
-                const rms = Math.sqrt(sum / (inputData.length / 4));
-                const now = Date.now();
-                if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
-                    vadSpeaking = true;
-                    try { ipcRenderer.send('speech-start'); } catch (_) {}
-                } else if (rms < vadAmplitudeThreshold) {
-                    vadSpeaking = false;
-                }
-
-                if (rms < vadAmplitudeThreshold) {
-                    const silenceStart = (audioProcessor._silenceStart || now);
-                    audioProcessor._silenceStart = silenceStart;
-                    const silenceElapsed = now - silenceStart;
-                    if (silenceElapsed >= vadSilenceMsToTrigger && now - vadLastTriggerAt >= vadCooldownMs) {
-                        vadLastTriggerAt = now;
-                        audioPauseUntil = Date.now() + 120; // brief pause helps model finalize
-                        try {
-                            const result = await ipcRenderer.invoke('send-current-transcription');
-                            if (!result.success) {
-                                console.warn('Auto transcription send failed:', result.error);
-                            }
-                        } catch (err) {
-                            console.warn('Error sending auto transcription:', err?.message || err);
-                        }
-                    }
-                } else {
-                    audioProcessor._silenceStart = Date.now();
-                }
+            // Compute RMS amplitude (stride 4 for lower CPU)
+            let sum = 0;
+            for (let i = 0; i < inputData.length; i += 4) {
+                const v = inputData[i];
+                sum += v * v;
+            }
+            const rms = Math.sqrt(sum / (inputData.length / 4));
+            if (rms >= vadAmplitudeThreshold && !vadSpeaking) {
+                vadSpeaking = true;
+                try { ipcRenderer.send('speech-start'); } catch (_) {}
+            } else if (rms < vadAmplitudeThreshold) {
+                vadSpeaking = false;
             }
         } catch (_) {}
 
@@ -578,11 +535,11 @@ function startAudioHealthMonitor() {
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     // Capturing screenshot
-    if (!mediaStream) return;
+    if (!mediaStream) return { success: false, error: 'No media stream' };
 
     // Check rate limiting for automated screenshots only
     if (!isManual && tokenTracker.shouldThrottle()) {
-        return;
+        return { success: false, error: 'Throttled' };
     }
 
     // Lazy init of video element
@@ -608,7 +565,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     // Check if video is ready
     if (hiddenVideo.readyState < 2) {
         console.warn('Video not ready yet, skipping screenshot');
-        return;
+        return { success: false, error: 'Video not ready' };
     }
 
     offscreenContext.drawImage(hiddenVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
@@ -639,53 +596,59 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
             qualityValue = 0.7; // Default to medium
     }
 
-    offscreenCanvas.toBlob(
-        async blob => {
-            if (!blob) {
-                console.error('Failed to create blob from canvas');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const base64data = reader.result.split(',')[1];
-
-                // Validate base64 data
-                if (!base64data || base64data.length < 100) {
-                    console.error('Invalid base64 data generated');
-                    return;
+    // IMPORTANT: return a Promise so callers can await until the screenshot is actually buffered in main.
+    return await new Promise(resolve => {
+        offscreenCanvas.toBlob(
+            async blob => {
+                if (!blob) {
+                    console.error('Failed to create blob from canvas');
+                    return resolve({ success: false, error: 'Failed to create blob' });
                 }
 
-                const result = await ipcRenderer.invoke('send-image-content', {
-                    data: base64data,
-                });
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    try {
+                        const base64data = reader.result.split(',')[1];
 
-                if (result.success) {
-                    // Track image tokens after successful send
-                    const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
-                    tokenTracker.addTokens(imageTokens, 'image');
-                } else {
-                    console.error('Failed to send image:', result.error);
-                }
-            };
-            reader.readAsDataURL(blob);
-        },
-        'image/jpeg',
-        qualityValue
-    );
+                        // Validate base64 data
+                        if (!base64data || base64data.length < 100) {
+                            console.error('Invalid base64 data generated');
+                            return resolve({ success: false, error: 'Invalid base64 data' });
+                        }
+
+                        // Sync main-process screen gate with current toggle state to avoid OFF->ON races.
+                        const useScreenNow = localStorage.getItem('assistantUseScreen') === 'true';
+                        try { await ipcRenderer.invoke('set-use-screen-enabled', useScreenNow); } catch (_) {}
+                        if (!useScreenNow) {
+                            return resolve({ success: false, error: 'Use Screen disabled' });
+                        }
+
+                        const result = await ipcRenderer.invoke('send-image-content', { data: base64data });
+
+                        if (result && result.success) {
+                            // Track image tokens after successful send
+                            const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
+                            tokenTracker.addTokens(imageTokens, 'image');
+                            return resolve({ success: true });
+                        }
+                        console.error('Failed to send image:', result?.error);
+                        return resolve({ success: false, error: result?.error || 'Failed to send image' });
+                    } catch (e) {
+                        console.error('Error sending image:', e);
+                        return resolve({ success: false, error: e?.message || 'Error sending image' });
+                    }
+                };
+                reader.readAsDataURL(blob);
+            },
+            'image/jpeg',
+            qualityValue
+        );
+    });
 }
 
 async function captureManualScreenshot(imageQuality = null) {
     const quality = imageQuality || currentImageQuality;
-    await captureScreenshot(quality, true); // Pass true for isManual
-    // Respect transcription mode: do not auto-send any prompt in manual mode
-    if ((transcriptionModeCached || 'auto') === 'auto') {
-        await sendTextMessage(`Help me on this page, give me the answer no bs, complete answer.
-            So if its a code question, give me the approach in few bullet points, then the entire code. Also if theres anything else i need to know, tell me.
-            If its a question about the website, give me the answer no bs, complete answer.
-            If its a mcq question, give me the answer no bs, complete answer.
-            `);
-    }
+    return await captureScreenshot(quality, true); // Pass true for isManual
 }
 
 // Expose functions to global scope for external access
@@ -747,6 +710,8 @@ function stopScreenCapture() {
     }
     offscreenCanvas = null;
     offscreenContext = null;
+    // Inform main process to disable and clear buffered screenshots
+    try { ipcRenderer.invoke('set-use-screen-enabled', false).catch(() => {}); } catch (_) {}
 }
 
 // Send text message to Gemini
@@ -901,7 +866,7 @@ ipcRenderer.on('save-conversation-turn', async (event, data) => {
 initConversationStorage().catch(console.error);
 
 // Handle shortcuts based on current view
-function handleShortcut(shortcutKey) {
+async function handleShortcut(shortcutKey) {
     // Handling shortcut
 
     // Get current view from the app
@@ -932,11 +897,11 @@ function handleShortcut(shortcutKey) {
         } else {
             const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
             if (useScreen) {
-                captureManualScreenshot();
+                try { await captureManualScreenshot(); } catch (_) {}
             }
             audioPauseUntil = Date.now() + 120;
             ipcRenderer
-                .invoke('send-current-transcription')
+                .invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!' })
                 .then(result => {
                     if (!result.success) {
                         console.error('Failed to send current transcription:', result.error);
@@ -946,21 +911,6 @@ function handleShortcut(shortcutKey) {
                     console.error('Error sending current transcription:', error);
                 });
         }
-    } else if (shortcutKey === 'ctrl+shift+enter' || shortcutKey === 'cmd+shift+enter') {
-        // Briefly pause audio streaming to help the model finalize the current utterance
-        audioPauseUntil = Date.now() + 300; // faster pause for quick turn closure
-
-        // Request to send the current transcription (handler will also wait briefly if empty)
-        ipcRenderer
-            .invoke('send-current-transcription')
-            .then(result => {
-                if (!result.success) {
-                    console.error('Failed to send current transcription:', result.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error sending current transcription:', error);
-            });
     }
 }
 
@@ -971,9 +921,6 @@ function handleShortcut(shortcutKey) {
         startScreenCaptureScheduling,
         stopScreenCapture,
         sendTextMessage,
-    setTranscriptionModeCached: mode => {
-        transcriptionModeCached = (mode || 'auto').toLowerCase();
-    },
     handleShortcut,
         // Conversation history functions
         getAllConversationSessions,
