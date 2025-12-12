@@ -8,6 +8,7 @@ const clarityStyle = `**WRITING STYLE — CLARITY & SIMPLICITY**
 
 const noBoilerplate = `**NO-BOILERPLATE RULES (STRICT):**
 - Do NOT include any preface or meta commentary like: "Sure", "Okay", "Of course", "I can help", "I'll assist you", "Let's understand", "Here's an overview"
+- Do NOT include any interpretation preface like: "This looks like...", "It seems like...", "Sounds like...", "I think...", "Probably...", "I assume..."
 - Do NOT restate the question
 - Start immediately with the answer content
 - Avoid generic filler; every sentence must directly answer the asked question`;

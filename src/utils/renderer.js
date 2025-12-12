@@ -7,8 +7,9 @@ let audioContext = null;
 let audioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
-  const AUDIO_CHUNK_DURATION = 0.01;
-  const BUFFER_SIZE = 256;
+  // 20ms chunks are more stable for streaming ASR than 10ms in many environments.
+  const AUDIO_CHUNK_DURATION = 0.08;
+  const BUFFER_SIZE = 512;
   let audioPauseUntil = 0;
   // Simple VAD config for auto end-of-speech detection
   let vadSilenceMsToTrigger = parseInt(localStorage.getItem('vadSilenceMs') || '600', 10);
@@ -895,13 +896,15 @@ async function handleShortcut(shortcutKey) {
                 }
             }
         } else {
+            // Instant UI bubble (no delay): show the action label immediately.
+            try { ipcRenderer.send('ui-action-triggered', { label: 'Assist' }); } catch (_) {}
             const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
             if (useScreen) {
                 try { await captureManualScreenshot(); } catch (_) {}
             }
             audioPauseUntil = Date.now() + 120;
             ipcRenderer
-                .invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!' })
+                .invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true })
                 .then(result => {
                     if (!result.success) {
                         console.error('Failed to send current transcription:', result.error);

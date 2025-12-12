@@ -214,11 +214,12 @@ export class GhostPrepApp extends LitElement {
             // When the user explicitly submits the buffered transcript, record it as a user turn in the chat thread.
             ipcRenderer.on('transcription-submitted', (_, payload) => {
                 try {
-                    const text = (payload && payload.text) ? String(payload.text) : '';
-                    if (!text.trim()) return;
+                    // UI rule: show only the action label for transcript-triggered actions.
+                    const display = (payload && (payload.displayText || payload.actionName || payload.text)) ? String(payload.displayText || payload.actionName || payload.text) : '';
+                    if (!display.trim()) return;
 
                     // IMPORTANT: immutable updates so Lit propagates changes to AssistantView
-                    const nextQuestions = [...(this.questions || []), text];
+                    const nextQuestions = [...(this.questions || []), display.trim()];
                     let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
 
                     // Keep arrays aligned: create a placeholder answer slot for this user turn.

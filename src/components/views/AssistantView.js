@@ -1277,11 +1277,18 @@ scrollToTop() {
                 if (this.useScreen) {
                     try {
                         if (window.captureManualScreenshot) {
+                            // Instant UI bubble (no delay): show the action label immediately.
+                            try {
+                                if (window.require) {
+                                    const { ipcRenderer } = window.require('electron');
+                                    ipcRenderer.send('ui-action-triggered', { label: 'Assist' });
+                                }
+                            } catch (_) {}
                             window.captureManualScreenshot().then(() => {
                                 try {
                                     if (window.require) {
                                         const { ipcRenderer } = window.require('electron');
-                                        ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!' });
+                                        ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
                                     }
                                 } catch (_) {}
                             });
@@ -1291,7 +1298,9 @@ scrollToTop() {
                     try {
                         if (window.require) {
                             const { ipcRenderer } = window.require('electron');
-                            ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!' });
+                            // Instant UI bubble (no delay): show the action label immediately.
+                            try { ipcRenderer.send('ui-action-triggered', { label: 'Assist' }); } catch (_) {}
+                            ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
                         }
                     } catch (_) {}
                 }
@@ -1835,6 +1844,8 @@ updateResponseContent() {
         try {
             if (!window.require) return;
             const { ipcRenderer } = window.require('electron');
+            // Instant UI bubble (no delay): show the action label immediately.
+            try { ipcRenderer.send('ui-action-triggered', { label: String(actionName || '').trim() || 'Assist' }); } catch (_) {}
             // If Use Screen is enabled, allow screen-only submissions by capturing first.
             try {
                 const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
@@ -1845,6 +1856,7 @@ updateResponseContent() {
             await ipcRenderer.invoke('send-current-transcription', {
                 actionName: String(actionName || '').trim(),
                 actionPrompt: String(actionPrompt || '').trim(),
+                uiAlreadyShown: true,
             });
         } catch (error) {
             console.warn('Failed to submit buffered transcript action:', error?.message || error);

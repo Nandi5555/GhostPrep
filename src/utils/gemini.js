@@ -590,6 +590,15 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: false, error: e?.message || String(e) };
         }
     });
+    // UI responsiveness: allow renderer to request immediate action-bubble display.
+    // This does NOT change backend/model behavior; it only updates the chat UI instantly.
+    ipcMain.on('ui-action-triggered', (_event, payload) => {
+        try {
+            const label = (payload && (payload.label || payload.text)) ? String(payload.label || payload.text).trim() : '';
+            if (!label) return;
+            sendToRenderer('transcription-submitted', { text: label, actionName: label });
+        } catch (_) {}
+    });
     // Store the geminiSessionRef globally for reconnection access
     global.geminiSessionRef = geminiSessionRef;
 
@@ -756,8 +765,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 });
             }
 
-            // Show this explicit user action in the chat thread as the user turn
-            try { sendToRenderer('transcription-submitted', { text: questionText }); } catch (_) {}
+            // If the UI already displayed the action label (ui-action-triggered), avoid duplicating.
+            if (!(payload && payload.uiAlreadyShown)) {
+                const displayText = actionName || 'Assist';
+                try { sendToRenderer('transcription-submitted', { text: displayText, actionName: displayText }); } catch (_) {}
+            }
 
             clearPendingImages();
             sendToRenderer('update-response', responseText || '');
