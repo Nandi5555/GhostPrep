@@ -14,6 +14,7 @@ const { getSystemPrompt } = require('./prompts');
  let systemAudioProc = null;
  let messageBuffer = '';
  let lastStreamLength = 0; // Track streamed length to avoid redundant emits
+ let pendingFinalizeTimer = null; // Fallback finalization when models omit generationComplete
 
  // Transcription mode gating
  let transcriptionMode = 'auto';
@@ -32,11 +33,65 @@ function sendToRenderer(channel, data) {
     }
 }
 
+function clearPendingFinalize() {
+    if (pendingFinalizeTimer) {
+        try { clearTimeout(pendingFinalizeTimer); } catch (_) {}
+        pendingFinalizeTimer = null;
+    }
+}
+
+function resetTurnBuffers() {
+    // Reset for next turn (always reset, even if we suppress UI emission)
+    manualResponseArmed = false;
+    messageBuffer = '';
+    lastStreamLength = 0;
+    clearPendingFinalize();
+}
+
+function finalizeAssistantTurn({ reason = 'unknown' } = {}) {
+    try {
+        // In manual mode, suppress auto responses unless explicitly armed
+        const shouldSuppress = transcriptionMode === 'manual' && !manualResponseArmed;
+
+        // Only emit if we have something meaningful to show
+        const text = (messageBuffer || '').trimEnd();
+        if (!shouldSuppress && text) {
+            sendToRenderer('update-response', messageBuffer);
+
+            // Save conversation turn when we have both transcription and AI response
+            if (currentTranscription && messageBuffer) {
+                saveConversationTurn(currentTranscription, messageBuffer);
+                currentTranscription = ''; // Reset for next turn
+            }
+        }
+    } catch (error) {
+        console.error('Error finalizing assistant turn:', reason, error);
+    } finally {
+        resetTurnBuffers();
+    }
+}
+
+function scheduleFinalizeAssistantTurn(reason) {
+    // Some models omit generationComplete; turnComplete is a reliable boundary.
+    // We delay slightly to allow any last modelTurn parts to arrive.
+    clearPendingFinalize();
+    pendingFinalizeTimer = setTimeout(() => {
+        pendingFinalizeTimer = null;
+        if (messageBuffer && messageBuffer.length > 0) {
+            finalizeAssistantTurn({ reason: reason || 'turnComplete' });
+        } else {
+            // Still reset gating/buffers to avoid leaking across turns
+            resetTurnBuffers();
+        }
+    }, 60);
+}
+
 // Conversation management functions
 function initializeNewSession() {
     currentSessionId = Date.now().toString();
     currentTranscription = '';
     conversationHistory = [];
+    console.log('New conversation session started:', currentSessionId);
 }
 
 function saveConversationTurn(transcription, aiResponse) {
@@ -51,6 +106,7 @@ function saveConversationTurn(transcription, aiResponse) {
     };
 
     conversationHistory.push(conversationTurn);
+    console.log('Saved conversation turn:', conversationTurn);
 
     // Send to renderer to save in IndexedDB
     sendToRenderer('save-conversation-turn', {
@@ -85,6 +141,8 @@ async function sendReconnectionContext() {
         // Create the context message
         const contextMessage = `Till now all these questions were asked in the interview, answer the last one please:\n\n${transcriptions.join('\n')}`;
 
+        console.log('Sending reconnection context with', transcriptions.length, 'previous questions');
+
         // Send the context message to the new session
         await global.geminiSessionRef.current.sendRealtimeInput({
             text: contextMessage,
@@ -99,9 +157,13 @@ async function getEnabledTools() {
 
     // Check if Google Search is enabled (default: true)
     const googleSearchEnabled = await getStoredSetting('googleSearchEnabled', 'false');
+    console.log('Google Search enabled:', googleSearchEnabled);
 
     if (googleSearchEnabled === 'true') {
         tools.push({ googleSearch: {} });
+        console.log('Added Google Search tool');
+    } else {
+        console.log('Google Search tool disabled');
     }
 
     return tools;
@@ -119,9 +181,11 @@ async function getStoredSetting(key, defaultValue) {
                 (function() {
                     try {
                         if (typeof localStorage === 'undefined') {
+                            console.log('localStorage not available yet for ${key}');
                             return '${defaultValue}';
                         }
                         const stored = localStorage.getItem('${key}');
+                        console.log('Retrieved setting ${key}:', stored);
                         return stored || '${defaultValue}';
                     } catch (e) {
                         console.error('Error accessing localStorage for ${key}:', e);
@@ -134,19 +198,36 @@ async function getStoredSetting(key, defaultValue) {
     } catch (error) {
         console.error('Error getting stored setting for', key, ':', error.message);
     }
+    console.log('Using default value for', key, ':', defaultValue);
     return defaultValue;
 }
 
 async function attemptReconnection() {
     if (!lastSessionParams || reconnectionAttempts >= maxReconnectionAttempts) {
+        console.log('Max reconnection attempts reached or no session params stored');
+        sendToRenderer('update-status', 'Session closed');
+        return false;
+    }
+
+    // Safety check: ensure lastSessionParams has required properties
+    if (!lastSessionParams.apiKey) {
+        console.log('No API key in session params - stopping reconnection');
         sendToRenderer('update-status', 'Session closed');
         return false;
     }
 
     reconnectionAttempts++;
+    console.log(`Attempting reconnection ${reconnectionAttempts}/${maxReconnectionAttempts}...`);
 
     // Wait before attempting reconnection
     await new Promise(resolve => setTimeout(resolve, reconnectionDelay));
+
+    // Double-check lastSessionParams is still valid after delay
+    if (!lastSessionParams || !lastSessionParams.apiKey) {
+        console.log('Session params cleared during reconnection delay - stopping');
+        sendToRenderer('update-status', 'Session closed');
+        return false;
+    }
 
     try {
         const session = await initializeGeminiSession(
@@ -160,6 +241,7 @@ async function attemptReconnection() {
         if (session && global.geminiSessionRef) {
             global.geminiSessionRef.current = session;
             reconnectionAttempts = 0; // Reset counter on successful reconnection
+            console.log('Live session reconnected');
 
             // Send context message with previous transcriptions
             await sendReconnectionContext();
@@ -174,6 +256,7 @@ async function attemptReconnection() {
     if (reconnectionAttempts < maxReconnectionAttempts) {
         return attemptReconnection();
     } else {
+        console.log('All reconnection attempts failed');
         sendToRenderer('update-status', 'Session closed');
         return false;
     }
@@ -181,6 +264,7 @@ async function attemptReconnection() {
 
 async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US', isReconnection = false) {
     if (isInitializingSession) {
+        console.log('Session initialization already in progress');
         return false;
     }
 
@@ -230,7 +314,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
         });
 
         const session = await client.live.connect({
-            model: 'gemini-live-2.5-flash-preview',
+            model: 'gemini-2.0-flash-exp',
             callbacks: {
                 onopen: function () {
                     opened = true;
@@ -248,6 +332,8 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                     // Handle AI model response
                     if (message.serverContent?.modelTurn?.parts) {
+                        // If a previous finalize was scheduled, cancel it because more content arrived.
+                        clearPendingFinalize();
                         for (const part of message.serverContent.modelTurn.parts) {
                             if (part.text) {
                                 messageBuffer += part.text;
@@ -270,31 +356,26 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     }
 
                     if (message.serverContent?.generationComplete) {
-                        // In manual mode, suppress auto responses unless explicitly armed
-                        const shouldSuppress = transcriptionMode === 'manual' && !manualResponseArmed;
-                        if (!shouldSuppress) {
-                            sendToRenderer('update-response', messageBuffer);
-
-                            // Save conversation turn when we have both transcription and AI response
-                            if (currentTranscription && messageBuffer) {
-                                saveConversationTurn(currentTranscription, messageBuffer);
-                                currentTranscription = ''; // Reset for next turn
-                            }
-                        }
-
-                        // Reset for next turn
-                        manualResponseArmed = false;
-                        messageBuffer = '';
-                        lastStreamLength = 0;
+                        // Prefer generationComplete when present
+                        finalizeAssistantTurn({ reason: 'generationComplete' });
                     }
 
                     if (message.serverContent?.turnComplete) {
+                        // Fallback for models that don't emit generationComplete
+                        // (or emit it inconsistently). This ensures each user turn
+                        // creates a distinct assistant message in the UI.
+                        if (messageBuffer && messageBuffer.length > 0) {
+                            scheduleFinalizeAssistantTurn('turnComplete');
+                        } else {
+                            // Still reset to avoid concatenating future turns
+                            resetTurnBuffers();
+                        }
                         sendToRenderer('update-status', 'Listening...');
                         try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
                     }
                 },
                 onerror: function (e) {
-                    console.error('Error:', e.message);
+                    console.debug('Error:', e.message);
 
                     // Check if the error is related to invalid API key
                     const isApiKeyError =
@@ -305,7 +386,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             e.message.includes('unauthorized'));
                     
                     if (isApiKeyError) {
-                        console.error('Error due to invalid API key - stopping reconnection attempts');
+                        console.log('Error due to invalid API key - stopping reconnection attempts');
                         lastSessionParams = null; // Clear session params to prevent reconnection
                         reconnectionAttempts = maxReconnectionAttempts; // Stop further attempts
                         sendToRenderer('update-status', 'Error: Invalid API key');
@@ -316,6 +397,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     sendToRenderer('update-status', 'Error: ' + e.message);
                 },
                 onclose: function (e) {
+                    console.debug('Session closed:', e.reason);
 
                     // Check if the session closed due to invalid API key
                     const isApiKeyError =
@@ -326,7 +408,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             e.reason.includes('unauthorized'));
 
                     if (isApiKeyError) {
-                        console.error('Session closed due to invalid API key - stopping reconnection attempts');
+                        console.log('Session closed due to invalid API key - stopping reconnection attempts');
                         lastSessionParams = null; // Clear session params to prevent reconnection
                         reconnectionAttempts = maxReconnectionAttempts; // Stop further attempts
                         sendToRenderer('update-status', 'Session closed: Invalid API key');
@@ -337,10 +419,11 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         return;
                     }
 
-                    try {} catch (_) {}
+                 
 
                     // Attempt automatic reconnection for server-side closures
                     if (lastSessionParams && reconnectionAttempts < maxReconnectionAttempts) {
+                        console.log('Attempting automatic reconnection...');
                         attemptReconnection();
                     } else {
                         sendToRenderer('update-status', 'Session closed');
@@ -381,6 +464,8 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
 function killExistingSystemAudioDump() {
     return new Promise(resolve => {
+        console.log('Checking for existing SystemAudioDump processes...');
+
         // Kill any existing SystemAudioDump processes
         const killProc = spawn('pkill', ['-f', 'SystemAudioDump'], {
             stdio: 'ignore',
@@ -391,6 +476,7 @@ function killExistingSystemAudioDump() {
         });
 
         killProc.on('error', err => {
+            console.log('Error checking for existing processes (this is normal):', err.message);
             resolve();
         });
 
@@ -408,6 +494,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     // Kill any existing SystemAudioDump processes first
     await killExistingSystemAudioDump();
 
+    console.log('Starting macOS audio capture with SystemAudioDump...');
+
     const { app } = require('electron');
     const path = require('path');
 
@@ -418,6 +506,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         systemAudioPath = path.join(__dirname, '../assets', 'SystemAudioDump');
     }
 
+    console.log('SystemAudioDump path:', systemAudioPath);
+
     systemAudioProc = spawn(systemAudioPath, [], {
         stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -427,7 +517,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
         return false;
     }
 
-    // macOS audio capture started
+    console.log('SystemAudioDump started with PID:', systemAudioProc.pid);
 
     const CHUNK_DURATION = 0.025;
     const SAMPLE_RATE = 24000;
@@ -449,6 +539,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
             sendAudioToGemini(base64Data, geminiSessionRef);
 
             if (process.env.DEBUG_AUDIO) {
+                console.log(`Processed audio chunk: ${chunk.length} bytes`);
                 saveDebugAudio(monoChunk, 'system_audio');
             }
         }
@@ -464,6 +555,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
     });
 
     systemAudioProc.on('close', code => {
+        console.log('SystemAudioDump process closed with code:', code);
         systemAudioProc = null;
     });
 
@@ -489,6 +581,7 @@ function convertStereoToMono(stereoBuffer) {
 
 function stopMacOSAudioCapture() {
     if (systemAudioProc) {
+        console.log('Stopping SystemAudioDump...');
         systemAudioProc.kill('SIGTERM');
         systemAudioProc = null;
     }
@@ -725,7 +818,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('update-google-search-setting', async (event, enabled) => {
         try {
-            process.stdout.write('ugss');
+            console.log('Google Search setting updated to:', enabled);
             // The setting is already saved in localStorage by the renderer
             // This is just for logging/confirmation
             return { success: true };
