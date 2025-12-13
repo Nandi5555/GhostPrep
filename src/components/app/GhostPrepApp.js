@@ -8,9 +8,12 @@ import { HistoryView } from '../views/HistoryView.js';
 import { AssistantView } from '../views/AssistantView.js';
 import { OnboardingView } from '../views/OnboardingView.js';
 import { AdvancedView } from '../views/AdvancedView.js';
+import { scrollbarStyles } from '../styles/scrollbarStyles.js';
 
 export class GhostPrepApp extends LitElement {
-    static styles = css`
+    static styles = [
+        scrollbarStyles,
+        css`
         * {
             box-sizing: border-box;
             font-family:
@@ -81,29 +84,6 @@ export class GhostPrepApp extends LitElement {
             opacity: 0;
             transform: translateY(10px);
         }
-
-        /* Global custom scrollbars (5px track, visually 3px thumb) */
-        ::-webkit-scrollbar {
-            width: 5px;
-            height: 5px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--scrollbar-background);
-            border-radius: 6px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--scrollbar-thumb);
-            border-radius: 6px;
-            border: 1px solid transparent; /* create 3px-like visual in 5px track */
-            background-clip: padding-box;
-            transition: background-color 0.2s ease;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--scrollbar-thumb-hover);
-        }
         .main-content.collapsed {
             max-height: 0;
             opacity: 0;
@@ -117,7 +97,8 @@ export class GhostPrepApp extends LitElement {
             max-height: 100vh;
             opacity: 1;
         }
-    `;
+    `,
+    ];
 
     static properties = {
         currentView: { type: String },

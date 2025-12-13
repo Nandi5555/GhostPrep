@@ -1,8 +1,18 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { resizeLayout } from '../../utils/windowResize.js';
+import { scrollbarStyles } from '../styles/scrollbarStyles.js';
 
 export class HelpView extends LitElement {
-    static styles = css`
+    static styles = [
+        scrollbarStyles,
+        css`
+        :host,
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
         * {
             font-family:
                 'Inter',
@@ -15,6 +25,18 @@ export class HelpView extends LitElement {
 
         :host {
             display: block;
+            height: 100%;
+            min-height: 0;
+            overflow: hidden; /* prevent host overflow; inner wrapper scrolls */
+        }
+
+        .help-scroll {
+            height: 100%;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
             padding: 12px;
         }
 
@@ -218,7 +240,8 @@ export class HelpView extends LitElement {
         .usage-step strong {
             color: var(--text-color);
         }
-    `;
+    `,
+    ];
 
     static properties = {
         onExternalLinkClick: { type: Function },
@@ -280,8 +303,8 @@ export class HelpView extends LitElement {
         const isLinux = window.cheddar?.isLinux || false;
 
         return html`
-            <div class="help-container">
-                
+            <div class="help-scroll">
+                <div class="help-container">
 
                 <div class="option-group">
                     <div class="option-label">
@@ -421,6 +444,7 @@ export class HelpView extends LitElement {
                         <span>Audio Input</span>
                     </div>
                     <div class="description">The AI listens to conversations and provides contextual assistance based on what it hears.</div>
+                </div>
                 </div>
             </div>
         `;

@@ -34,6 +34,7 @@ export class AssistantView extends LitElement {
         }
 
         .response-container.transcript {
+            /* Keep the transcript area clean (no dark container panel) */
             background: transparent;
             border: none;
             box-shadow: none;
@@ -44,6 +45,7 @@ export class AssistantView extends LitElement {
             display: flex;
             width: 100%;
             margin: 8px 0;
+            align-items: flex-end;
         }
         .transcript-row.right { justify-content: flex-end; }
         .transcript-row.left { justify-content: flex-start; }
@@ -52,26 +54,30 @@ export class AssistantView extends LitElement {
             max-width: 88%;
             font-size: var(--response-font-size, 18px);
             line-height: 1.6;
+            display: inline-block;
+            padding: 10px 12px;
+            border-radius: 14px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            background: transparent;
+            border: 1px solid transparent;
         }
         .transcript-bubble.user {
+            /* Match the "selected" highlight from gp-select menu items */
             color: var(--primary-button-text, #ffffff);
-            padding: 8px 14px;
-            border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.28);
-            background:
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
-                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
-            backdrop-filter: blur(8px);
-            white-space: pre-wrap;
+            background: linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10));
+            border-color: rgba(0, 122, 255, 0.38);
+            box-shadow:
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+                0 10px 24px rgba(0, 0, 0, 0.32);
         }
         .transcript-bubble.interviewer {
-            background: transparent;
-            border: none;
-            padding: 0;
-            border-radius: 0;
+            /* Neutral (no blue) */
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.14);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
             color: var(--text-color);
-            white-space: pre-wrap;
         }
 
         .chat-row {
@@ -98,7 +104,12 @@ export class AssistantView extends LitElement {
             border-radius: 14px;
         }
         .bubble.ai {
-            background: var(--main-content-background);
+            /* Neutral "glass/gray" like interviewer transcript (avoid solid black panel) */
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+                rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.14);
+            backdrop-filter: blur(10px);
         }
 
         .copy-btn {
@@ -202,12 +213,16 @@ export class AssistantView extends LitElement {
         }
 
         .response-container pre {
-            background: rgba(20, 22, 30, 0.88); /* solid dark for readability */
-            border: 1px solid #2a2f3a;
+            /* Neutral (no black panel) — match the glassy gray look */
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03)),
+                rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 10px;
             padding: 1em;
             overflow-x: auto;
             margin: 1em 0;
+            backdrop-filter: blur(10px);
         }
 
         .response-container pre code {
@@ -573,7 +588,9 @@ export class AssistantView extends LitElement {
 
         /* Distinct styling for output blocks */
         .response-container pre.output-block {
-            background: rgba(0, 0, 0, 0.25);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+                rgba(255, 255, 255, 0.04);
             border-left: 4px solid var(--focus-border-color);
         }
         .response-container pre.output-block code {

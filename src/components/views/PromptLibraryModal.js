@@ -1,4 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { scrollbarStyles } from '../styles/scrollbarStyles.js';
+import { buttonStyles } from '../styles/uiStyles.js';
 import {
   getPrompts,
   addPrompt,
@@ -10,7 +12,10 @@ import {
 } from '../../utils/promptLibrary.js';
 
 export class PromptLibraryModal extends LitElement {
-  static styles = css`
+  static styles = [
+    scrollbarStyles,
+    buttonStyles,
+    css`
     :host {
       position: fixed;
       inset: 0;
@@ -23,8 +28,8 @@ export class PromptLibraryModal extends LitElement {
     .overlay {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(4px);
+      background: rgba(0, 0, 0, 0.52);
+      backdrop-filter: blur(10px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -33,28 +38,31 @@ export class PromptLibraryModal extends LitElement {
       width: 860px;
       max-width: calc(100vw - 40px);
       max-height: calc(100vh - 40px);
-      background: var(--card-background, rgba(25, 25, 25, 0.95));
-      border: 1px solid var(--card-border, rgba(255, 255, 255, 0.12));
-      border-radius: 8px;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04)),
+        rgba(12, 14, 20, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 18px;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(10px);
       display: grid;
-      grid-template-columns: 240px 1fr;
+      grid-template-columns: 280px 1fr;
       overflow: hidden;
       position: relative;
     }
     .left {
-      border-right: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
-      padding: 12px;
-      display: grid;
-      grid-template-rows: auto 1fr;
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .right {
-      padding: 12px;
+      border-right: 1px solid rgba(255, 255, 255, 0.10);
+      padding: 14px;
       display: grid;
       grid-template-rows: auto 1fr auto;
       gap: 10px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .right {
+      padding: 14px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
     }
     .titlebar {
       display: flex;
@@ -63,52 +71,32 @@ export class PromptLibraryModal extends LitElement {
     }
     .modal-title {
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 750;
       color: var(--text-color, #fff);
-    }
-    .close-btn {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-color);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      font-size: 12px;
-      padding: 6px 10px;
-      cursor: pointer;
-    }
-    .delete-btn {
-      background: rgba(255, 0, 0, 0.12);
-      color: var(--text-color);
-      border: 1px solid rgba(255, 0, 0, 0.35);
-      border-radius: 6px;
-      font-size: 12px;
-      padding: 6px 10px;
-      cursor: pointer;
-    }
-    .add-btn {
-      width: 100%;
-      background: var(--button-background, rgba(255, 255, 255, 0.08));
-      color: var(--text-color);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      font-size: 12px;
-      padding: 6px 10px;
-      cursor: pointer;
     }
     .list {
       overflow: auto;
-      border-radius: 6px;
+      border-radius: 14px;
+      padding: 4px;
+      background: rgba(0,0,0,0.18);
+      border: 1px solid rgba(255,255,255,0.08);
     }
     .list-item {
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 8px 10px;
-      border-radius: 6px;
+      border-radius: 12px;
       cursor: pointer;
       color: var(--text-color);
+      border: 1px solid transparent;
     }
     .list-item:hover {
       background: rgba(255, 255, 255, 0.06);
+    }
+    .list-item.selected {
+      background: linear-gradient(180deg, rgba(0, 122, 255, 0.18), rgba(0, 122, 255, 0.08));
+      border-color: rgba(0, 122, 255, 0.28);
     }
     .tick {
       width: 16px;
@@ -137,27 +125,28 @@ export class PromptLibraryModal extends LitElement {
       color: var(--text-color);
       border: 1px solid var(--input-border, rgba(255, 255, 255, 0.15));
       padding: 8px 10px;
-      border-radius: 6px;
+      border-radius: 12px;
       font-size: 12px;
+    }
+    .form-control:focus {
+      outline: none;
+      border-color: rgba(0, 122, 255, 0.65);
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.16);
     }
     .actions {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
       gap: 8px;
     }
-    .button {
-      background: var(--button-background, rgba(255, 255, 255, 0.08));
-      color: var(--text-color);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      font-size: 12px;
-      padding: 6px 10px;
-      cursor: pointer;
+    .left-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
-    .button.primary {
-      background: var(--focus-border-color, #007aff);
-      border-color: var(--focus-border-color, #007aff);
-      color: #fff;
+    .right-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
 
     /* Confirmation overlay inside modal (content-protection friendly) */
@@ -195,46 +184,8 @@ export class PromptLibraryModal extends LitElement {
       justify-content: flex-end;
       gap: 8px;
     }
-    .button.danger {
-      background: #dc2626;
-      border-color: #dc2626;
-      color: #fff;
-    }
-
-    /* Custom thin, modern light-gray scrollbars inside the modal */
-    .left .list,
-    .right textarea.form-control {
-      /* Firefox */
-      scrollbar-width: thin;
-      scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35))
-        var(--scrollbar-track, transparent);
-    }
-
-    /* WebKit-based browsers (Chromium/Electron/Edge) */
-    .left .list::-webkit-scrollbar,
-    .right textarea.form-control::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .left .list::-webkit-scrollbar-track,
-    .right textarea.form-control::-webkit-scrollbar-track {
-      background: var(--scrollbar-track, transparent);
-      border-radius: 8px;
-    }
-    .left .list::-webkit-scrollbar-thumb,
-    .right textarea.form-control::-webkit-scrollbar-thumb {
-      background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35));
-      border-radius: 8px;
-    }
-    .left .list::-webkit-scrollbar-thumb:hover,
-    .right textarea.form-control::-webkit-scrollbar-thumb:hover {
-      background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.5));
-    }
-    .left .list::-webkit-scrollbar-thumb:active,
-    .right textarea.form-control::-webkit-scrollbar-thumb:active {
-      background: var(--scrollbar-thumb-active, rgba(255, 255, 255, 0.6));
-    }
-  `;
+  `,
+  ];
 
   static properties = {
     open: { type: Boolean, reflect: true },
@@ -246,6 +197,7 @@ export class PromptLibraryModal extends LitElement {
     deleteConfirmOpen: { type: Boolean },
     unsavedConfirmOpen: { type: Boolean },
     unsavedTargetId: { type: String },
+    searchQuery: { type: String },
   };
 
   constructor() {
@@ -253,12 +205,13 @@ export class PromptLibraryModal extends LitElement {
     this.open = false;
     this.prompts = [];
     this.selectedId = '';
-    this.draftName = 'New Cluely';
+    this.draftName = '';
     this.draftContent = '';
     this._dirty = false;
     this.deleteConfirmOpen = false;
     this.unsavedConfirmOpen = false;
     this.unsavedTargetId = '';
+    this.searchQuery = '';
   }
 
   connectedCallback() {
@@ -268,14 +221,21 @@ export class PromptLibraryModal extends LitElement {
     const active = getActivePrompt();
     if (active) {
       this.select(active.id);
-    } else if (this.prompts.length > 0) {
-      this.select(this.prompts[0].id);
+    } else {
+      // Fresh install UX: open editor even if no prompts exist, without creating one until Save.
+      this.startDraft();
     }
   }
 
   reload() {
     this.prompts = getPrompts();
     this.requestUpdate();
+  }
+
+  getFilteredPrompts() {
+    const q = (this.searchQuery || '').trim().toLowerCase();
+    if (!q) return this.prompts;
+    return (this.prompts || []).filter(p => String(p.name || '').toLowerCase().includes(q));
   }
 
   select(id) {
@@ -286,26 +246,54 @@ export class PromptLibraryModal extends LitElement {
     }
 
     this.selectedId = id;
+    if (id === '__draft__') {
+      this.draftName = '';
+      this.draftContent = '';
+      this._dirty = false;
+      return;
+    }
     const p = this.prompts.find(x => x.id === id);
     if (p) {
-      this.draftName = p.name || 'New Cluely';
+      this.draftName = p.name || '';
       this.draftContent = p.content || '';
       this._dirty = false;
     }
   }
 
+  startDraft() {
+    this.selectedId = '__draft__';
+    this.draftName = '';
+    this.draftContent = '';
+    this._dirty = false;
+  }
+
   addNew() {
-    const created = addPrompt({ name: 'New Cluely', content: '' });
-    this.reload();
-    this.select(created.id);
+    // UI-only: create a draft editor without persisting until Save
+    if (this._dirty) {
+      this.unsavedTargetId = '__draft__';
+      this.unsavedConfirmOpen = true;
+      return;
+    }
+    this.startDraft();
   }
 
   saveCurrent() {
     if (!this.selectedId) return;
-    updatePrompt(this.selectedId, { name: this.draftName, content: this.draftContent });
+    const name = (this.draftName || '').trim() || 'New Prompt';
+    const content = this.draftContent || '';
+
+    if (this.selectedId === '__draft__') {
+      const created = addPrompt({ name, content });
+      this.reload();
+      this._dirty = false;
+      this.select(created.id);
+      this.dispatchEvent(new CustomEvent('prompt-saved', { detail: { id: created.id }, bubbles: true, composed: true }));
+      return;
+    }
+
+    updatePrompt(this.selectedId, { name, content });
     this.reload();
     this._dirty = false;
-    // Fire toast-like event
     this.dispatchEvent(new CustomEvent('prompt-saved', { detail: { id: this.selectedId }, bubbles: true, composed: true }));
   }
 
@@ -317,6 +305,11 @@ export class PromptLibraryModal extends LitElement {
   performDelete() {
     if (!this.selectedId) return;
     const deletingId = this.selectedId;
+    if (deletingId === '__draft__') {
+      this.deleteConfirmOpen = false;
+      this.startDraft();
+      return;
+    }
     deletePrompt(deletingId);
     this.deleteConfirmOpen = false;
     this.reload();
@@ -324,10 +317,7 @@ export class PromptLibraryModal extends LitElement {
       this._dirty = false;
       this.select(this.prompts[0].id);
     } else {
-      this.selectedId = '';
-      this.draftName = 'New Cluely';
-      this.draftContent = '';
-      this._dirty = false;
+      this.startDraft();
     }
     this.dispatchEvent(new CustomEvent('prompt-deleted', { bubbles: true, composed: true }));
   }
@@ -354,6 +344,10 @@ export class PromptLibraryModal extends LitElement {
     if (!this.selectedId) return;
     // Ensure the current draft is saved before setting active
     if (this._dirty) this.saveCurrent();
+    if (this.selectedId === '__draft__') {
+      // saveCurrent() will convert draft into a real prompt and select it
+      if (this.selectedId === '__draft__') return;
+    }
     setActivePrompt(this.selectedId);
     this.reload();
   }
@@ -365,16 +359,46 @@ export class PromptLibraryModal extends LitElement {
   render() {
     const active = getActivePrompt();
     const activeId = active?.id || '';
+    const isDraft = this.selectedId === '__draft__';
+    const filtered = this.getFilteredPrompts();
     return html`
       <div class="overlay" @click=${e => { if (e.target.classList.contains('overlay')) this.close(); }}>
         <div class="modal" @click=${e => e.stopPropagation()}>
           <div class="left">
-            <button class="add-btn" @click=${() => this.addNew()}>+ Add Prompt</button>
+            <div class="titlebar">
+              <span class="modal-title">Prompts</span>
+              <button class="btn ghost" @click=${() => this.close()} title="Close">
+                <span class="icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.8 6.8 12 12m5.2 5.2L12 12m0 0 5.2-5.2M12 12 6.8 17.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </span>
+              </button>
+            </div>
+
+            <button class="btn primary" @click=${() => this.addNew()}>
+              <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </span>
+              New Prompt
+            </button>
+
+            <input
+              class="form-control"
+              type="text"
+              placeholder="Search prompts…"
+              .value=${this.searchQuery}
+              @input=${e => { this.searchQuery = e.target.value; }}
+            />
             <div class="list">
               ${this.prompts.length === 0
-                ? html`<div class="list-item" style="opacity:0.7">No prompts yet</div>`
-                : this.prompts.map(p => html`
-                    <div class="list-item" @click=${() => this.select(p.id)}>
+                ? html`
+                    <div class="list-item ${isDraft ? 'selected' : ''}" @click=${() => this.select('__draft__')}>
+                      <span class="tick">+</span>
+                      <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">New Prompt</span>
+                    </div>
+                    <div class="list-item" style="opacity:0.65">Save to create your first prompt</div>
+                  `
+                : filtered.map(p => html`
+                    <div class="list-item ${p.id === this.selectedId ? 'selected' : ''}" @click=${() => this.select(p.id)}>
                       <span class="tick ${p.id === activeId ? 'active' : ''}">${p.id === activeId ? '✓' : ''}</span>
                       <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${p.name}</span>
                     </div>
@@ -385,8 +409,15 @@ export class PromptLibraryModal extends LitElement {
             <div class="titlebar">
               <span class="modal-title">Prompt Editor</span>
               <div style="display:flex; gap:8px; align-items:center;">
-                <button class="delete-btn" ?disabled=${!this.selectedId} @click=${() => this.deleteCurrent()}>🗑 Delete</button>
-                <button class="close-btn" @click=${() => this.close()}>Close</button>
+                <button class="btn danger" ?disabled=${!this.selectedId || isDraft} @click=${() => this.deleteCurrent()} title="Delete prompt">
+                  <span class="icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3h6m-9 4h12m-11 0 1 14h8l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 11v7M14 11v7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  </span>
+                  Delete
+                </button>
+                <button class="btn ghost" @click=${() => this.close()}>
+                  Close
+                </button>
               </div>
             </div>
 
@@ -399,8 +430,16 @@ export class PromptLibraryModal extends LitElement {
             </div>
 
             <div class="actions">
-              <button class="button" @click=${() => this.setActive()}>Set Active</button>
-              <button class="button primary" @click=${() => this.saveCurrent()}>Save</button>
+              <div class="left-actions">
+                <button class="btn" ?disabled=${!this.selectedId || isDraft} @click=${() => this.setActive()} title=${isDraft ? 'Save the prompt first' : ''}>
+                  Set Active
+                </button>
+              </div>
+              <div class="right-actions">
+                <button class="btn primary" @click=${() => this.saveCurrent()}>
+                  Save
+                </button>
+              </div>
             </div>
           </div>
           ${this.deleteConfirmOpen ? html`
@@ -411,8 +450,8 @@ export class PromptLibraryModal extends LitElement {
                   Delete "${(this.prompts.find(x => x.id === this.selectedId)?.name) || 'this prompt'}" permanently? This cannot be undone.
                 </div>
                 <div class="confirm-actions">
-                  <button class="button" @click=${() => { this.deleteConfirmOpen = false; }}>Cancel</button>
-                  <button class="button danger" @click=${() => this.performDelete()}>Delete</button>
+                  <button class="btn ghost" @click=${() => { this.deleteConfirmOpen = false; }}>Cancel</button>
+                  <button class="btn danger" @click=${() => this.performDelete()}>Delete</button>
                 </div>
               </div>
             </div>
@@ -424,8 +463,8 @@ export class PromptLibraryModal extends LitElement {
                 <div class="confirm-title">Unsaved Changes</div>
                 <div class="confirm-text">You have unsaved changes. Save before switching?</div>
                 <div class="confirm-actions">
-                  <button class="button" @click=${() => this.confirmSwitchWithoutSaving()}>Switch without saving</button>
-                  <button class="button primary" @click=${() => this.confirmSaveAndSwitch()}>Save and switch</button>
+                  <button class="btn ghost" @click=${() => this.confirmSwitchWithoutSaving()}>Switch without saving</button>
+                  <button class="btn primary" @click=${() => this.confirmSaveAndSwitch()}>Save and switch</button>
                 </div>
               </div>
             </div>
