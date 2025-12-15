@@ -1234,24 +1234,37 @@ scrollToTop() {
             } else {
                 if (this.useScreen) {
                     try {
-                        if (window.captureManualScreenshot) {
-                            // Instant UI bubble (no delay): show the action label immediately.
-                            try {
-                                if (window.require) {
-                                    const { ipcRenderer } = window.require('electron');
-                                    ipcRenderer.send('ui-action-triggered', { label: 'Assist' });
-                                }
-                            } catch (_) {}
-                            // Do NOT wait for screenshot: waiting here creates a visible delay after Ctrl+Enter.
-                            // We already have periodic screenshots buffered; this manual capture is best-effort.
-                            try { window.captureManualScreenshot().catch?.(() => {}); } catch (_) {}
-                            try {
-                                if (window.require) {
-                                    const { ipcRenderer } = window.require('electron');
-                                    ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
-                                }
-                            } catch (_) {}
-                        }
+                        // IMPORTANT: Screenshot capture is best-effort. Even if captureManualScreenshot
+                        // is unavailable (startup/init edge cases), we must still show UI feedback and
+                        // submit the buffered transcription.
+
+                        // Instant UI bubble (no delay): show the action label immediately.
+                        try {
+                            if (window.require) {
+                                const { ipcRenderer } = window.require('electron');
+                                ipcRenderer.send('ui-action-triggered', { label: 'Assist' });
+                            }
+                        } catch (_) {}
+
+                        // Do NOT wait for screenshot: waiting here creates a visible delay after Enter.
+                        // If available, capture a manual screenshot best-effort.
+                        try {
+                            if (typeof window.captureManualScreenshot === 'function') {
+                                window.captureManualScreenshot().catch?.(() => {});
+                            }
+                        } catch (_) {}
+
+                        // Always submit the buffered transcript, regardless of screenshot capability.
+                        try {
+                            if (window.require) {
+                                const { ipcRenderer } = window.require('electron');
+                                ipcRenderer.invoke('send-current-transcription', {
+                                    actionName: 'Assist',
+                                    actionPrompt: 'Assist!',
+                                    uiAlreadyShown: true,
+                                });
+                            }
+                        } catch (_) {}
                     } catch (_) {}
                 } else {
                     try {

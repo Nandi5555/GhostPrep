@@ -228,6 +228,9 @@ export class GhostPrepApp extends LitElement {
             ipcRenderer.removeAllListeners('update-response-stream');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
+            ipcRenderer.removeAllListeners('update-transcript-stream');
+            ipcRenderer.removeAllListeners('transcript-turn-complete');
+            ipcRenderer.removeAllListeners('transcription-submitted');
         }
     }
 
