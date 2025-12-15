@@ -512,9 +512,6 @@ async function autoSubmitLatestTurn() {
     try {
         sendToRenderer('update-status', 'Submitting...');
         const includeScreenTurns = !!useScreenEnabled;
-        const screenOffGuard = useScreenEnabled
-            ? ''
-            : 'Use Screen is OFF. Only if the user explicitly asks about on-screen/visual content, say you cannot see the screen. Otherwise, ignore screen context and answer normally.';
 
         let responseText = '';
         let rawTranscript = snapshotText;
@@ -523,7 +520,7 @@ async function autoSubmitLatestTurn() {
             const result = await submitBufferedTranscript({
                 transcript: snapshotText,
                 actionName: '',
-                actionPrompt: screenOffGuard ? `${DEFAULT_ASSIST_ACTION_PROMPT}\n\n${screenOffGuard}` : DEFAULT_ASSIST_ACTION_PROMPT,
+                actionPrompt: DEFAULT_ASSIST_ACTION_PROMPT,
                 systemInstruction: activeSystemPrompt,
                 conversationHistory,
                 images: snapshotImages,
@@ -533,9 +530,7 @@ async function autoSubmitLatestTurn() {
             rawTranscript = result.rawTranscript || snapshotText;
         } else if (snapshotImages.length > 0) {
             const history = buildHistoryForModel(conversationHistory, { includeScreenTurns });
-            const userText = screenOffGuard
-                ? `${screenOffGuard}\n\n${DEFAULT_ASSIST_ACTION_PROMPT}\n\nAnalyze the screenshot and provide the best possible answer based only on what you see.`
-                : `${DEFAULT_ASSIST_ACTION_PROMPT}\n\nAnalyze the screenshot and provide the best possible answer based only on what you see.`;
+            const userText = `${DEFAULT_ASSIST_ACTION_PROMPT}\n\nAnalyze the screenshot and provide the best possible answer based only on what you see.`;
             responseText = await modelAdapter.generateText({
                 systemInstruction: activeSystemPrompt,
                 userText,
@@ -994,20 +989,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             let responseText = '';
             let rawTranscript = '';
             const includeScreenTurns = !!useScreenEnabled;
-            // IMPORTANT: keep this guard non-intrusive; otherwise it can cause irrelevant
-            // "I can't see the screen" answers even for normal spoken questions.
-            const screenOffGuard = useScreenEnabled
-                ? ''
-                : 'Use Screen is OFF. Only if the user explicitly asks about on-screen/visual content, say you cannot see the screen. Otherwise, ignore screen context and answer normally.';
 
             if (hasText) {
-                const combinedActionPrompt = screenOffGuard
-                    ? (actionPrompt ? `${actionPrompt}\n\n${screenOffGuard}` : screenOffGuard)
-                    : actionPrompt;
                 const result = await submitBufferedTranscript({
                     transcript: text,
                     actionName,
-                    actionPrompt: combinedActionPrompt,
+                    actionPrompt,
                     systemInstruction: activeSystemPrompt,
                     conversationHistory,
                     images: imagesToUse,
@@ -1076,10 +1063,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             const includeScreenTurns = !!useScreenEnabled;
             const history = buildHistoryForModel(conversationHistory, { includeScreenTurns });
             const imagesToUse = useScreenEnabled ? pendingImages : [];
-            const screenOffGuard = useScreenEnabled
-                ? ''
-                : 'Screen viewing is OFF. Do not use or rely on any previously described screen content. If the question requires screen details, respond that you cannot see the screen because Use Screen is OFF.';
-            const userText = screenOffGuard ? `${screenOffGuard}\n\n${text.trim()}` : text.trim();
+            const userText = text.trim();
 
             const canStream = typeof modelAdapter.generateTextStream === 'function';
             const finalText = canStream
