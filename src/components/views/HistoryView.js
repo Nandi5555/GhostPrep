@@ -1,8 +1,11 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { scrollbarStyles } from '../styles/scrollbarStyles.js';
 import { resizeLayout } from '../../utils/windowResize.js';
 
 export class HistoryView extends LitElement {
-    static styles = css`
+    static styles = [
+        scrollbarStyles,
+        css`
         * {
             font-family:
                 'Inter',
@@ -317,24 +320,8 @@ export class HistoryView extends LitElement {
             background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.3));
         }
 
-        .conversation-view::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .conversation-view::-webkit-scrollbar-track {
-            background: var(--scrollbar-track, rgba(0, 0, 0, 0.2));
-            border-radius: 3px;
-        }
-
-        .conversation-view::-webkit-scrollbar-thumb {
-            background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.2));
-            border-radius: 3px;
-        }
-
-        .conversation-view::-webkit-scrollbar-thumb:hover {
-            background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.3));
-        }
-    `;
+    `,
+    ];
 
     static properties = {
         sessions: { type: Array },

@@ -42,6 +42,13 @@
                 --key-background: rgba(255, 255, 255, 0.1);
                 --scrollbar-background: rgba(0, 0, 0, 0.4);
 
+                /* Shared Liquid Glass scrollbar tokens (used across Shadow DOM components) */
+                --app-scrollbar-track: rgba(255, 255, 255, 0.06);
+                --app-scrollbar-thumb: rgba(255, 255, 255, 0.30);
+                --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.42);
+                --app-scrollbar-thumb-active: rgba(255, 255, 255, 0.50);
+                --app-scrollbar-thumb-border: rgba(255, 255, 255, 0.16);
+
                 --highlight-color: #fa6e4e;
                 --highlight-bg-color: rgba(250, 110, 78, 0.16);
 
@@ -53,23 +60,7 @@
                 --glass-highlight: rgba(255, 255, 255, 0.22);
 
                 /* Layout-specific variables */
-                --header-padding: 10px 20px;
-                --header-font-size: 16px;
-                --header-gap: 12px;
-                --header-button-padding: 8px 16px;
-                --header-icon-padding: 8px;
-                --header-font-size-small: 13px;
-                --main-content-padding: 20px;
-                --main-content-margin-top: 10px;
-                --icon-size: 24px;
-                --border-radius: 12px;
-                --content-border-radius: 22px;
-                --primary-button-radius: 16px;
-                --primary-button-text: #ffffff;
-            }
-
-            /* Compact layout styles */
-            :root.compact-layout {
+                /* Compact is the ONLY supported layout mode */
                 --header-padding: 6px 12px;
                 --header-font-size: 13px;
                 --header-gap: 6px;
@@ -82,6 +73,7 @@
                 --border-radius: 4px;
                 --content-border-radius: 22px;
                 --primary-button-radius: 12px;
+                --primary-button-text: #ffffff;
             }
 
             html,
@@ -114,6 +106,13 @@
     </head>
     <body>
         <script src="assets/marked-4.3.0.min.js"></script>
+        <script>
+            // Compact mode is the ONLY supported layout mode.
+            // Ensure fresh installs never see "normal" mode.
+            (function () {
+                try { document.documentElement.classList.add('compact-layout'); } catch (_) {}
+            })();
+        </script>
         <script type="module" src="components/app/GhostPrepApp.js"></script>
 
         <ghostprep-app id="cheddar"></ghostprep-app>

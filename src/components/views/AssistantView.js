@@ -34,6 +34,7 @@ export class AssistantView extends LitElement {
         }
 
         .response-container.transcript {
+            /* Keep the transcript area clean (no dark container panel) */
             background: transparent;
             border: none;
             box-shadow: none;
@@ -44,6 +45,7 @@ export class AssistantView extends LitElement {
             display: flex;
             width: 100%;
             margin: 8px 0;
+            align-items: flex-end;
         }
         .transcript-row.right { justify-content: flex-end; }
         .transcript-row.left { justify-content: flex-start; }
@@ -52,26 +54,30 @@ export class AssistantView extends LitElement {
             max-width: 88%;
             font-size: var(--response-font-size, 18px);
             line-height: 1.6;
+            display: inline-block;
+            padding: 10px 12px;
+            border-radius: 14px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            background: transparent;
+            border: 1px solid transparent;
         }
         .transcript-bubble.user {
+            /* Match the "selected" highlight from gp-select menu items */
             color: var(--primary-button-text, #ffffff);
-            padding: 8px 14px;
-            border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.28);
-            background:
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
-                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
-            backdrop-filter: blur(8px);
-            white-space: pre-wrap;
+            background: linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10));
+            border-color: rgba(0, 122, 255, 0.38);
+            box-shadow:
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+                0 10px 24px rgba(0, 0, 0, 0.32);
         }
         .transcript-bubble.interviewer {
-            background: transparent;
-            border: none;
-            padding: 0;
-            border-radius: 0;
+            /* Neutral (no blue) */
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.14);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
             color: var(--text-color);
-            white-space: pre-wrap;
         }
 
         .chat-row {
@@ -90,15 +96,32 @@ export class AssistantView extends LitElement {
             box-shadow: 0 8px 24px rgba(0,0,0,0.25);
         }
         .bubble.user {
-            background: var(--glass-bg);
-            border-radius: 999px;
+            /* Match Transcript tab "user speaking" bubble for consistency */
+            max-width: 88%;
+            font-size: var(--response-font-size, 18px);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            color: var(--primary-button-text, #ffffff);
+            background: linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10));
+            border-color: rgba(0, 122, 255, 0.38);
+            box-shadow:
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+                0 10px 24px rgba(0, 0, 0, 0.32);
+            border-radius: 14px;
             overflow: hidden;
         }
         .bubble.user.multiline {
             border-radius: 14px;
         }
         .bubble.ai {
-            background: var(--main-content-background);
+            /* Neutral "glass/gray" like interviewer transcript (avoid solid black panel) */
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+                rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.14);
+            backdrop-filter: blur(10px);
         }
 
         .copy-btn {
@@ -136,6 +159,46 @@ export class AssistantView extends LitElement {
 
         .answer-block.placeholder {
             min-height: var(--answer-placeholder-height, 120px);
+        }
+
+        /* Loader: Cluely-style 3 dots (no container, no spinner) */
+        .dots-loader {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            user-select: none;
+            /* Keep it visually consistent with the app's subtle UI text */
+            opacity: 0.95;
+        }
+        .dots-loader .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: var(--description-color, #9aa6b2);
+            opacity: 0.35;
+            transform: translateY(0) scale(0.95);
+            animation: gp-dotPulse 1.05s ease-in-out infinite;
+        }
+        .dots-loader .dot:nth-child(2) { animation-delay: 0.15s; }
+        .dots-loader .dot:nth-child(3) { animation-delay: 0.30s; }
+
+        @keyframes gp-dotPulse {
+            0%, 80%, 100% {
+                opacity: 0.28;
+                transform: translateY(0) scale(0.95);
+            }
+            35% {
+                opacity: 0.92;
+                transform: translateY(-2px) scale(1.0);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .dots-loader .dot {
+                animation: none;
+                opacity: 0.6;
+                transform: none;
+            }
         }
 
         /* Markdown styling */
@@ -202,12 +265,16 @@ export class AssistantView extends LitElement {
         }
 
         .response-container pre {
-            background: rgba(20, 22, 30, 0.88); /* solid dark for readability */
-            border: 1px solid #2a2f3a;
+            /* Neutral (no black panel) — match the glassy gray look */
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03)),
+                rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 10px;
             padding: 1em;
             overflow-x: auto;
             margin: 1em 0;
+            backdrop-filter: blur(10px);
         }
 
         .response-container pre code {
@@ -573,7 +640,9 @@ export class AssistantView extends LitElement {
 
         /* Distinct styling for output blocks */
         .response-container pre.output-block {
-            background: rgba(0, 0, 0, 0.25);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+                rgba(255, 255, 255, 0.04);
             border-left: 4px solid var(--focus-border-color);
         }
         .response-container pre.output-block code {
@@ -906,6 +975,17 @@ scrollToTop() {
         // Check if marked is available
         if (typeof window !== 'undefined' && window.marked) {
             try {
+                const normalizeAndFenceCode = (raw) => {
+                    const input = String(raw || '').replace(/\r\n/g, '\n');
+                    if (!input.trim()) return input;
+                    // If the model emitted an odd number of fences, close it to avoid breaking parsing,
+                    // but DO NOT auto-wrap normal text in code fences. This guarantees only explicit
+                    // fenced blocks become code containers.
+                    const fenceCount = (input.match(/```/g) || []).length;
+                    if (fenceCount % 2 === 0) return input;
+                    return input + '\n```';
+                };
+
                 const escapeHtml = (str) =>
                     str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -946,7 +1026,8 @@ scrollToTop() {
 
                 window.marked.use({ renderer });
 
-                const rendered = window.marked.parse(content);
+                const prepared = normalizeAndFenceCode(content);
+                const rendered = window.marked.parse(prepared);
                 return rendered;
             } catch (error) {
                 console.warn('Error parsing markdown:', error);
@@ -1153,15 +1234,45 @@ scrollToTop() {
             } else {
                 if (this.useScreen) {
                     try {
-                        if (window.captureManualScreenshot) {
-                            window.captureManualScreenshot();
-                        }
+                        // IMPORTANT: Screenshot capture is best-effort. Even if captureManualScreenshot
+                        // is unavailable (startup/init edge cases), we must still show UI feedback and
+                        // submit the buffered transcription.
+
+                        // Instant UI bubble (no delay): show the action label immediately.
+                        try {
+                            if (window.require) {
+                                const { ipcRenderer } = window.require('electron');
+                                ipcRenderer.send('ui-action-triggered', { label: 'Assist' });
+                            }
+                        } catch (_) {}
+
+                        // Do NOT wait for screenshot: waiting here creates a visible delay after Enter.
+                        // If available, capture a manual screenshot best-effort.
+                        try {
+                            if (typeof window.captureManualScreenshot === 'function') {
+                                window.captureManualScreenshot().catch?.(() => {});
+                            }
+                        } catch (_) {}
+
+                        // Always submit the buffered transcript, regardless of screenshot capability.
+                        try {
+                            if (window.require) {
+                                const { ipcRenderer } = window.require('electron');
+                                ipcRenderer.invoke('send-current-transcription', {
+                                    actionName: 'Assist',
+                                    actionPrompt: 'Assist!',
+                                    uiAlreadyShown: true,
+                                });
+                            }
+                        } catch (_) {}
                     } catch (_) {}
                 } else {
                     try {
                         if (window.require) {
                             const { ipcRenderer } = window.require('electron');
-                            ipcRenderer.invoke('send-current-transcription');
+                            // Instant UI bubble (no delay): show the action label immediately.
+                            try { ipcRenderer.send('ui-action-triggered', { label: 'Assist' }); } catch (_) {}
+                            ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
                         }
                     } catch (_) {}
                 }
@@ -1218,21 +1329,30 @@ scrollToTop() {
         el.style.height = `${newHeight}px`;
     }
 
-    toggleUseScreen() {
+    async toggleUseScreen() {
         this.useScreen = !this.useScreen;
         try {
             localStorage.setItem('assistantUseScreen', this.useScreen ? 'true' : 'false');
+
+            // IMPORTANT: await main-process gate update to avoid races where screenshots are ignored.
+            try {
+                if (window.require) {
+                    const { ipcRenderer } = window.require('electron');
+                    await ipcRenderer.invoke('set-use-screen-enabled', this.useScreen);
+                }
+            } catch (_) {}
+
             if (this.useScreen) {
                 const interval = localStorage.getItem('selectedScreenshotInterval') || '5';
                 const quality = localStorage.getItem('selectedImageQuality') || 'medium';
                 if (window.cheddar && typeof window.cheddar.startScreenCaptureScheduling === 'function') {
-                    window.cheddar.startScreenCaptureScheduling(interval, quality);
+                    await window.cheddar.startScreenCaptureScheduling(interval, quality);
                 } else if (window.cheddar && typeof window.cheddar.startCapture === 'function') {
-                    window.cheddar.startCapture(interval, quality);
+                    await window.cheddar.startCapture(interval, quality);
                 }
             } else {
                 if (window.cheddar && typeof window.cheddar.stopScreenCapture === 'function') {
-                    window.cheddar.stopScreenCapture();
+                    await window.cheddar.stopScreenCapture();
                 }
             }
         } catch (_) {}
@@ -1353,10 +1473,10 @@ updateResponseContent() {
         const q = (this.questions || [])[i] || '';
         const isCurrent = i === this.currentResponseIndex;
 
-    const ansText =
-        isCurrent && this.isStreaming
-            ? this._streamTypedText
-            : ((this.responses || [])[i] || '');
+    // We render the response from `responses[]` directly so the first streamed token
+    // appears immediately (no typewriter delay). While streaming, `responses[idx]`
+    // is incrementally appended by the app.
+    const ansText = ((this.responses || [])[i] || '');
 
     const ansRendered = this.renderMarkdown(
         ansText,
@@ -1403,7 +1523,13 @@ updateResponseContent() {
     } else if (isCurrent) {
         htmlStr += `
             <div class="chat-row left">
-                <div class="answer-block placeholder">&nbsp;</div>
+                <div class="answer-block placeholder">
+                    <span class="dots-loader" aria-label="Processing">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </span>
+                </div>
             </div>`;
     }
 
@@ -1553,25 +1679,20 @@ updateResponseContent() {
     }
 
     _handleStreamSessionChange() {
+        // Streaming is rendered directly from `responses[]` for instant token display.
+        // Keep session tracking only (no typewriter loop).
         if (typeof this.streamSession === 'number' && this.streamSession !== this._currentStreamSession) {
             this._currentStreamSession = this.streamSession;
-            // New stream session begins
-            this._beginStream();
         }
     }
 
     _handleStreamDeltaChange() {
-        const delta = this.streamDelta || '';
-        if (this.isStreaming && delta) {
-            this._streamTargetText += delta;
-            this.updateResponseContent();
-        }
+        // No-op: deltas are applied upstream into `responses[]`.
     }
 
     _handleStreamingStateChange() {
+        // When streaming ends, responses[] already contains the final content.
         if (!this.isStreaming) {
-            // Stream finished or interrupted
-            this._endStream();
             this.updateResponseContent();
         }
     }
@@ -1616,11 +1737,11 @@ updateResponseContent() {
                     const defaults = [
                         {
                             name: 'Assist',
-                            text: 'Assist!',
+                            text: 'Answer the question directly. Treat the transcript as an interviewer question and assume it may contain minor speech-to-text errors. Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.',
                         },
-                         {
-                            name: 'What should I say?',
-                            text: 'What should I say?',
+                        {
+                            name: 'What should I say next?',
+                            text: 'Give me the exact next thing to say (ready to speak). Assume the transcript may have minor speech-to-text errors; silently correct them and respond without mentioning it.',
                         },
                         {
                             name: 'Code Assistance',
@@ -1692,6 +1813,30 @@ updateResponseContent() {
         this.closePromptPanel();
     }
 
+    async submitBufferedTranscriptAction(actionName, actionPrompt) {
+        try {
+            if (!window.require) return;
+            const { ipcRenderer } = window.require('electron');
+            // Instant UI bubble (no delay): show the action label immediately.
+            try { ipcRenderer.send('ui-action-triggered', { label: String(actionName || '').trim() || 'Assist' }); } catch (_) {}
+            // If Use Screen is enabled, allow screen-only submissions by capturing first.
+            try {
+                const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
+                if (useScreen && typeof window.captureManualScreenshot === 'function') {
+                    // Best-effort. Waiting here causes a visible "nothing happens" gap after click.
+                    window.captureManualScreenshot().catch?.(() => {});
+                }
+            } catch (_) {}
+            await ipcRenderer.invoke('send-current-transcription', {
+                actionName: String(actionName || '').trim(),
+                actionPrompt: String(actionPrompt || '').trim(),
+                uiAlreadyShown: true,
+            });
+        } catch (error) {
+            console.warn('Failed to submit buffered transcript action:', error?.message || error);
+        }
+    }
+
     handlePromptButtonClick(e, idx) {
         const now = Date.now();
         if (now - (this._lastPromptClickTs || 0) < 1000) return; // debounce 1s
@@ -1704,13 +1849,15 @@ updateResponseContent() {
         } catch (_) {}
 
         const prompt = (this.promptButtons || [])[idx];
-        const text = prompt?.text || '';
-        const el = this.shadowRoot?.querySelector('#textInput');
-        if (!el) return;
-        el.value = text.trim();
-        this.adjustTextareaHeight(el);
-        // Send using the same logic as typing then pressing Enter
-        this.handleSendText();
+        if (!prompt) return;
+
+        // Ensure the user sees the result in the chat thread
+        try {
+            this.activeTab = 'chat';
+            if (typeof this.onTabChange === 'function') this.onTabChange('chat');
+        } catch (_) {}
+
+        this.submitBufferedTranscriptAction(prompt.name, prompt.text);
     }
 
 

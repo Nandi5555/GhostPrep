@@ -8,9 +8,12 @@ import { HistoryView } from '../views/HistoryView.js';
 import { AssistantView } from '../views/AssistantView.js';
 import { OnboardingView } from '../views/OnboardingView.js';
 import { AdvancedView } from '../views/AdvancedView.js';
+import { scrollbarStyles } from '../styles/scrollbarStyles.js';
 
 export class GhostPrepApp extends LitElement {
-    static styles = css`
+    static styles = [
+        scrollbarStyles,
+        css`
         * {
             box-sizing: border-box;
             font-family:
@@ -81,29 +84,6 @@ export class GhostPrepApp extends LitElement {
             opacity: 0;
             transform: translateY(10px);
         }
-
-        /* Global custom scrollbars (5px track, visually 3px thumb) */
-        ::-webkit-scrollbar {
-            width: 5px;
-            height: 5px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--scrollbar-background);
-            border-radius: 6px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--scrollbar-thumb);
-            border-radius: 6px;
-            border: 1px solid transparent; /* create 3px-like visual in 5px track */
-            background-clip: padding-box;
-            transition: background-color 0.2s ease;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--scrollbar-thumb-hover);
-        }
         .main-content.collapsed {
             max-height: 0;
             opacity: 0;
@@ -117,7 +97,8 @@ export class GhostPrepApp extends LitElement {
             max-height: 100vh;
             opacity: 1;
         }
-    `;
+    `,
+    ];
 
     static properties = {
         currentView: { type: String },
@@ -132,9 +113,7 @@ export class GhostPrepApp extends LitElement {
         questions: { type: Array },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
-        layoutMode: { type: String },
         advancedMode: { type: Boolean },
-        _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         // New: prompt configuration panel open state
         promptPanelOpen: { type: Boolean },
@@ -156,24 +135,21 @@ export class GhostPrepApp extends LitElement {
         this.selectedLanguage = localStorage.getItem('selectedLanguage') || 'en-US';
         this.selectedScreenshotInterval = localStorage.getItem('selectedScreenshotInterval') || '5';
         this.selectedImageQuality = localStorage.getItem('selectedImageQuality') || 'medium';
-        this.layoutMode = localStorage.getItem('layoutMode') || 'normal';
         this.advancedMode = localStorage.getItem('advancedMode') === 'true';
         this.responses = [];
         this.currentResponseIndex = -1;
         this.questions = [];
-        this._viewInstances = new Map();
         this._isClickThrough = false;
         this.promptPanelOpen = false;
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
         this.mainCollapsed = this.currentView === 'main';
-
-        // Apply layout mode to document root
-        this.updateLayoutMode();
     }
 
     connectedCallback() {
         super.connectedCallback();
+        // Compact mode is the ONLY supported layout mode; ensure it stays applied.
+        this.applyCompactLayout();
 
         // Set up IPC listeners if needed
         if (window.require) {
@@ -211,6 +187,28 @@ export class GhostPrepApp extends LitElement {
                 this.transcriptText += '\n';
                 this.requestUpdate();
             });
+            // When the user explicitly submits the buffered transcript, record it as a user turn in the chat thread.
+            ipcRenderer.on('transcription-submitted', (_, payload) => {
+                try {
+                    // UI rule: show only the action label for transcript-triggered actions.
+                    const display = (payload && (payload.displayText || payload.actionName || payload.text)) ? String(payload.displayText || payload.actionName || payload.text) : '';
+                    if (!display.trim()) return;
+
+                    // IMPORTANT: immutable updates so Lit propagates changes to AssistantView
+                    const nextQuestions = [...(this.questions || []), display.trim()];
+                    let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+
+                    // Keep arrays aligned: create a placeholder answer slot for this user turn.
+                    if (nextResponses.length < nextQuestions.length) {
+                        nextResponses.push('');
+                    }
+
+                    this.questions = nextQuestions;
+                    this.responses = nextResponses;
+                    this.currentResponseIndex = nextQuestions.length - 1;
+                    this.requestUpdate();
+                } catch (_) {}
+            });
         }
 
         // Add functions to window.cheddar for IPC callbacks
@@ -225,6 +223,9 @@ export class GhostPrepApp extends LitElement {
             ipcRenderer.removeAllListeners('update-response-stream');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
+            ipcRenderer.removeAllListeners('update-transcript-stream');
+            ipcRenderer.removeAllListeners('transcript-turn-complete');
+            ipcRenderer.removeAllListeners('transcription-submitted');
         }
     }
 
@@ -234,13 +235,9 @@ export class GhostPrepApp extends LitElement {
             window.cheddar = {};
         }
 
-        // Add functions to get current view and layout mode
+        // Add function to get current view
         window.cheddar.getCurrentView = () => {
             return this.currentView;
-        };
-
-        window.cheddar.getLayoutMode = () => {
-            return this.layoutMode;
         };
 
         // Provide browser-preview stubs for Electron renderer functions when unavailable
@@ -306,27 +303,43 @@ export class GhostPrepApp extends LitElement {
     _streamSession = 0;
     _lastStreamDelta = '';
     _streamIsFinal = false;
+    _streamResponseIndex = -1;
 
     handleResponseStream(partial) {
         try {
             if (!partial || typeof partial !== 'string') return;
 
-            // Start streaming on first chunk by creating a new response entry
+            // Start streaming on first chunk. We keep showing the dots loader until the FINAL
+            // answer arrives, so we do NOT render partial tokens into `responses[]`.
             if (!this._isStreaming) {
                 this._isStreaming = true;
-                this._streamCumulativeTarget = partial;
-                if ((this.questions || []).length < (this.responses || []).length + 1) {
+                this._streamCumulativeTarget = '';
+                const qLen = (this.questions || []).length;
+                let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+
+                // Ensure we have a response slot for the latest question.
+                if (qLen > 0) {
+                    while (nextResponses.length < qLen) nextResponses.push('');
+                    const idx = Math.min(
+                        Math.max(this.currentResponseIndex >= 0 ? this.currentResponseIndex : qLen - 1, 0),
+                        qLen - 1
+                    );
+                    this._streamResponseIndex = idx;
+                    this.currentResponseIndex = idx;
+                } else {
+                    // Edge case: no question exists; create a slot.
                     this.questions = [...(this.questions || []), ''];
+                    nextResponses.push('');
+                    this._streamResponseIndex = nextResponses.length - 1;
+                    this.currentResponseIndex = this._streamResponseIndex;
                 }
-                this.responses.push('');
-                this.currentResponseIndex = this.responses.length - 1;
+
+                this.responses = nextResponses;
                 // Signal new stream session to AssistantView
                 this._streamSession++;
                 this._lastStreamDelta = partial;
                 this._streamIsFinal = false;
             } else {
-                // Append new delta chunk to cumulative target and forward delta
-                this._streamCumulativeTarget += partial;
                 this._lastStreamDelta = partial;
             }
             this.requestUpdate();
@@ -338,19 +351,32 @@ export class GhostPrepApp extends LitElement {
     handleResponseFinal(finalText) {
         try {
             if (typeof finalText !== 'string') return;
-            // Ensure any remaining text is flushed
-            if (this.responses.length > 0) {
-                const idx = this.responses.length - 1;
-                this.responses[idx] = finalText;
-                this.currentResponseIndex = idx;
-            } else {
-                // Fallback in case streaming wasn't active
-                this.responses.push(finalText);
-                this.currentResponseIndex = this.responses.length - 1;
+
+            // Always finalize into the active streaming slot when available.
+            const qLen = (this.questions || []).length;
+            let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+            const idx = this._streamResponseIndex >= 0
+                ? this._streamResponseIndex
+                : (qLen > 0 ? qLen - 1 : nextResponses.length - 1);
+
+            if (qLen > 0) {
+                while (nextResponses.length < qLen) nextResponses.push('');
+            } else if (idx < 0) {
+                this.questions = [...(this.questions || []), ''];
+                nextResponses.push('');
             }
-            // Do NOT end streaming immediately; allow AssistantView to type to completion
-            this._streamIsFinal = true;
-            this._isStreaming = true;
+
+            const safeIdx = idx >= 0 ? idx : (nextResponses.length - 1);
+            nextResponses[safeIdx] = finalText;
+            this.responses = nextResponses;
+            this.currentResponseIndex = safeIdx;
+
+            // Streaming session ends on final (we already appended deltas to responses directly).
+            this._streamIsFinal = false;
+            this._isStreaming = false;
+            this._lastStreamDelta = '';
+            this._streamCumulativeTarget = '';
+            this._streamResponseIndex = -1;
             this.requestUpdate();
         } finally {
             // no-op
@@ -492,6 +518,18 @@ export class GhostPrepApp extends LitElement {
         this.selectedLanguage = language;
     }
 
+    async handleTranscriptionModeChange(mode) {
+        try {
+            // Persist is handled by CustomizeView; notify main for runtime gating
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                await ipcRenderer.invoke('update-transcription-mode', mode);
+            }
+        } catch (error) {
+            console.error('Failed to update transcription mode:', error);
+        }
+    }
+
     handleScreenshotIntervalChange(interval) {
         this.selectedScreenshotInterval = interval;
     }
@@ -522,7 +560,16 @@ export class GhostPrepApp extends LitElement {
     // Assistant view event handlers
     async handleSendText(message) {
         if (window.cheddar) {
-            try { this.questions.push(message); this.currentResponseIndex = this.questions.length - 1; } catch (_) {}
+            try {
+                const nextQuestions = [...(this.questions || []), message];
+                let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+                if (nextResponses.length < nextQuestions.length) {
+                    nextResponses.push('');
+                }
+                this.questions = nextQuestions;
+                this.responses = nextResponses;
+                this.currentResponseIndex = nextQuestions.length - 1;
+            } catch (_) {}
             const result = await window.cheddar.sendTextMessage(message);
 
             if (!result.success) {
@@ -541,21 +588,6 @@ export class GhostPrepApp extends LitElement {
     // Onboarding event handlers
     handleOnboardingComplete() {
         this.currentView = 'main';
-    }
-
-    async handleTranscriptionModeChange(mode) {
-        try {
-            // Persist is handled by CustomizeView; notify main for runtime gating
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('update-transcription-mode', mode);
-            }
-            if (window.cheddar && typeof window.cheddar.setTranscriptionModeCached === 'function') {
-                window.cheddar.setTranscriptionModeCached(mode);
-            }
-        } catch (error) {
-            console.error('Failed to update transcription mode:', error);
-        }
     }
 
     updated(changedProperties) {
@@ -595,18 +627,12 @@ export class GhostPrepApp extends LitElement {
         if (changedProperties.has('selectedImageQuality')) {
             localStorage.setItem('selectedImageQuality', this.selectedImageQuality);
         }
-        if (changedProperties.has('layoutMode')) {
-            this.updateLayoutMode();
-        }
         if (changedProperties.has('advancedMode')) {
             localStorage.setItem('advancedMode', this.advancedMode.toString());
         }
     }
 
     renderCurrentView() {
-        // Only re-render the view if it hasn't been cached or if critical properties changed
-        const viewKey = `${this.currentView}-${this.selectedProfile}-${this.selectedLanguage}`;
-
         switch (this.currentView) {
             case 'onboarding':
                 return html`
@@ -618,7 +644,6 @@ export class GhostPrepApp extends LitElement {
                     <main-view
                         .onStart=${() => this.handleStart()}
                         .onAPIKeyHelp=${() => this.handleAPIKeyHelp()}
-                        .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}
                     ></main-view>
                 `;
 
@@ -629,14 +654,12 @@ export class GhostPrepApp extends LitElement {
                         .selectedLanguage=${this.selectedLanguage}
                         .selectedScreenshotInterval=${this.selectedScreenshotInterval}
                         .selectedImageQuality=${this.selectedImageQuality}
-                        .layoutMode=${this.layoutMode}
                         .advancedMode=${this.advancedMode}
                         .onProfileChange=${profile => this.handleProfileChange(profile)}
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
                         .onTranscriptionModeChange=${mode => this.handleTranscriptionModeChange(mode)}
                         .onScreenshotIntervalChange=${interval => this.handleScreenshotIntervalChange(interval)}
                         .onImageQualityChange=${quality => this.handleImageQualityChange(quality)}
-                        .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}
                         .onAdvancedModeChange=${advancedMode => this.handleAdvancedModeChange(advancedMode)}
                     ></customize-view>
                 `;
@@ -712,13 +735,8 @@ export class GhostPrepApp extends LitElement {
         `;
     }
 
-    updateLayoutMode() {
-        // Apply or remove compact layout class to document root
-        if (this.layoutMode === 'compact') {
-            document.documentElement.classList.add('compact-layout');
-        } else {
-            document.documentElement.classList.remove('compact-layout');
-        }
+    applyCompactLayout() {
+        try { document.documentElement.classList.add('compact-layout'); } catch (_) {}
     }
 
     handleMainToggle() {
@@ -727,23 +745,7 @@ export class GhostPrepApp extends LitElement {
         this.requestUpdate();
     }
 
-    async handleLayoutModeChange(layoutMode) {
-        this.layoutMode = layoutMode;
-        localStorage.setItem('layoutMode', layoutMode);
-        this.updateLayoutMode();
-
-        // Notify main process about layout change for window resizing
-        if (window.require) {
-            try {
-                const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('update-sizes');
-            } catch (error) {
-                console.error('Failed to update sizes in main process:', error);
-            }
-        }
-
-        this.requestUpdate();
-    }
+    // Layout mode switching removed: compact is always-on.
 
     // Prompt configuration panel controls (must be inside class)
     handlePromptConfigOpen() {

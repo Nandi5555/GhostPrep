@@ -7,9 +7,20 @@ import {
     migrateFromLegacyKey,
 } from '../../utils/promptLibrary.js';
 import { resizeLayout } from '../../utils/windowResize.js';
+import { scrollbarStyles } from '../styles/scrollbarStyles.js';
+import '../ui/GPSelect.js';
 
 export class CustomizeView extends LitElement {
-    static styles = css`
+    static styles = [
+        scrollbarStyles,
+        css`
+        :host,
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
         * {
             font-family:
                 'Inter',
@@ -22,23 +33,244 @@ export class CustomizeView extends LitElement {
 
         :host {
             display: block;
-            padding: 12px;
-            margin: 0 auto;
-            max-width: 700px;
+            height: 100%;
         }
 
-        .settings-container {
-            display: grid;
-            gap: 12px;
-            padding-bottom: 20px;
+        /* Compact is the ONLY supported layout mode */
+        .page {
+            height: 100%;
+            padding: 10px;
+            margin: 0 auto;
+            max-width: 980px;
+            min-height: 0;
+            overflow: hidden; /* prevent host-level overflow; internal panels handle scrolling */
         }
+        .shell {
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            grid-template-rows: none;
+            gap: 10px;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .sidebar {
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)),
+                var(--glass-bg, rgba(255, 255, 255, 0.08));
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.22));
+            border-radius: 16px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+            min-height: 0;
+            /* Important: clip scrollbars to rounded corners */
+            overflow: hidden;
+            padding: 0;
+        }
+
+        .sidebar-scroll {
+            height: 100%;
+            padding: 10px;
+            overflow-x: hidden;
+            overflow-y: auto;
+            scrollbar-gutter: stable;
+            overscroll-behavior: contain;
+        }
+
+        /* Compact-only: sidebar/content tightening */
+        .sidebar {
+            max-height: none;
+            height: 100%;
+        }
+        .sidebar-scroll { padding: 10px; }
+        .nav { display: flex; flex-direction: column; gap: 4px; }
+        .nav-item { min-width: 0; padding: 8px 10px; }
+        .nav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .sidebar-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .sidebar-subtitle { display: none; }
+        .sidebar-header {
+            grid-template-columns: auto 1fr;
+            grid-template-rows: auto auto;
+            row-gap: 8px;
+        }
+        .sidebar-headings { overflow: hidden; }
+        .sidebar-header .content-pill { grid-column: 1 / -1; justify-self: start; max-width: 100%; }
+        .content-header { padding: 8px 6px 10px; }
+        .content-title { font-size: 16px; }
+
+        .sidebar-header {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 10px 12px;
+            border-bottom: 1px solid var(--table-border, rgba(255, 255, 255, 0.08));
+            margin-bottom: 8px;
+        }
+
+        .sidebar-logo {
+            width: 28px;
+            height: 28px;
+            opacity: 0.95;
+            filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+            flex: 0 0 auto;
+        }
+
+        .sidebar-headings {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .sidebar-title {
+            font-size: 15px;
+            font-weight: 750;
+            color: var(--text-color);
+            letter-spacing: 0.2px;
+            line-height: 1.1;
+        }
+
+        .sidebar-subtitle {
+            font-size: 11px;
+            color: var(--description-color, rgba(255, 255, 255, 0.6));
+            line-height: 1.2;
+        }
+
+        .nav {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 8px 2px 2px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 10px 10px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-color);
+            cursor: pointer;
+            transition:
+                background 0.14s ease,
+                border-color 0.14s ease,
+                transform 0.12s ease,
+                filter 0.14s ease;
+            text-align: left;
+            position: relative;
+        }
+
+        .nav-item { padding: 9px 10px; border-radius: 12px; }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .nav-item:active {
+            transform: translateY(1px);
+        }
+
+        .nav-item[aria-current='page'] {
+            background: linear-gradient(180deg, rgba(0, 122, 255, 0.20), rgba(0, 122, 255, 0.08));
+            border-color: rgba(0, 122, 255, 0.40);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        .nav-item[aria-current='page']::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 16px;
+            border-radius: 99px;
+            background: var(--focus-border-color, #007aff);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+        }
+
+        .nav-icon {
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.8);
+            flex: 0 0 auto;
+        }
+
+        .nav-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .nav-label {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        .content {
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+            padding-right: 4px;
+        }
+
+        .content-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 6px 12px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background:
+                linear-gradient(180deg, rgba(12, 14, 20, 0.72) 0%, rgba(12, 14, 20, 0.30) 60%, rgba(12, 14, 20, 0) 100%);
+            backdrop-filter: blur(8px);
+        }
+
+        .content-title {
+            font-size: 18px;
+            font-weight: 760;
+            color: var(--text-color);
+            letter-spacing: 0.2px;
+        }
+
+        .content-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--label-color, rgba(255, 255, 255, 0.85));
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 4px 8px;
+            border-radius: 999px;
+        }
+
+        /* Compact-only app: keep the sidebar + vertical nav even on narrower windows.
+           (Do NOT switch the nav into a 2-column grid; it breaks the compact UX.) */
 
         .settings-section {
-            background: var(--card-background, rgba(255, 255, 255, 0.04));
-            border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
-            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-radius: 16px;
             padding: 16px;
-            backdrop-filter: blur(10px);
+        }
+
+        /* Compact spacing: keep sections separated but tight */
+        .settings-section + .settings-section {
+            margin-top: 10px;
         }
 
         .section-title {
@@ -46,11 +278,10 @@ export class CustomizeView extends LitElement {
             align-items: center;
             gap: 8px;
             margin-bottom: 12px;
-            font-size: 14px;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 750;
             color: var(--text-color);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.2px;
         }
 
         .section-title::before {
@@ -150,32 +381,7 @@ export class CustomizeView extends LitElement {
             color: var(--placeholder-color, rgba(255, 255, 255, 0.4));
         }
 
-        /* Custom thin, modern light-gray scrollbar for the read-only instructions textarea */
-        textarea.form-control {
-            /* Firefox */
-            scrollbar-width: thin;
-            scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35))
-                var(--scrollbar-track, transparent);
-        }
-        /* WebKit-based browsers (Chromium/Electron/Edge) */
-        textarea.form-control::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        textarea.form-control::-webkit-scrollbar-track {
-            background: var(--scrollbar-track, transparent);
-            border-radius: 8px;
-        }
-        textarea.form-control::-webkit-scrollbar-thumb {
-            background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35));
-            border-radius: 8px;
-        }
-        textarea.form-control::-webkit-scrollbar-thumb:hover {
-            background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.5));
-        }
-        textarea.form-control::-webkit-scrollbar-thumb:active {
-            background: var(--scrollbar-thumb-active, rgba(255, 255, 255, 0.6));
-        }
+        /* Scrollbars are standardized globally via scrollbarStyles (avoid per-component overrides). */
 
         .profile-option {
             display: flex;
@@ -496,28 +702,28 @@ export class CustomizeView extends LitElement {
             font-size: 10px;
             color: var(--description-color, rgba(255, 255, 255, 0.5));
         }
-    `;
+    `,
+    ];
 
     static properties = {
         selectedProfile: { type: String },
         selectedLanguage: { type: String },
-        selectedTranscriptionMode: { type: String },
         selectedAudioMode: { type: String },
+        selectedTranscriptionMode: { type: String },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
-        layoutMode: { type: String },
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
         undetectableEnabled: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
+        activeCategory: { type: String },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
-        onTranscriptionModeChange: { type: Function },
         onAudioModeChange: { type: Function },
+        onTranscriptionModeChange: { type: Function },
         onScreenshotIntervalChange: { type: Function },
         onImageQualityChange: { type: Function },
-        onLayoutModeChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
         // Prompt library modal state
@@ -530,19 +736,18 @@ export class CustomizeView extends LitElement {
         super();
         this.selectedProfile = 'interview';
         this.selectedLanguage = 'en-US';
-        this.selectedTranscriptionMode = localStorage.getItem('selectedTranscriptionMode') || 'auto';
         this.selectedAudioMode = localStorage.getItem('selectedAudioMode') || 'speaker';
+        // Default to Manual for reliability (but respect any saved selection)
+        this.selectedTranscriptionMode = localStorage.getItem('selectedTranscriptionMode') || 'manual';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
-        this.layoutMode = 'normal';
         this.keybinds = this.getDefaultKeybinds();
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
-        this.onTranscriptionModeChange = () => {};
         this.onAudioModeChange = () => {};
+        this.onTranscriptionModeChange = () => {};
         this.onScreenshotIntervalChange = () => {};
         this.onImageQualityChange = () => {};
-        this.onLayoutModeChange = () => {};
         this.onAdvancedModeChange = () => {};
 
         // Google Search default
@@ -559,6 +764,8 @@ export class CustomizeView extends LitElement {
 
         // Font size default (in pixels)
         this.fontSize = 20;
+
+        this.activeCategory = 'profile';
 
         this.loadKeybinds();
         this.loadGoogleSearchSettings();
@@ -577,8 +784,6 @@ export class CustomizeView extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
-        // Load layout mode for display purposes
-        this.loadLayoutMode();
         // Resize window for this view
         resizeLayout();
         // Initialize multi-prompt library from legacy key if present
@@ -674,16 +879,28 @@ export class CustomizeView extends LitElement {
         this.onLanguageChange(this.selectedLanguage);
     }
 
-    handleTranscriptionModeSelect(e) {
-        this.selectedTranscriptionMode = e.target.value;
-        localStorage.setItem('selectedTranscriptionMode', this.selectedTranscriptionMode);
-        this.onTranscriptionModeChange(this.selectedTranscriptionMode);
-    }
-
     handleAudioModeSelect(e) {
         this.selectedAudioMode = e.target.value;
         localStorage.setItem('selectedAudioMode', this.selectedAudioMode);
         this.onAudioModeChange(this.selectedAudioMode);
+        this.requestUpdate();
+    }
+
+    async handleTranscriptionModeSelect(e) {
+        this.selectedTranscriptionMode = e.target.value === 'auto' ? 'auto' : 'manual';
+        try {
+            localStorage.setItem('selectedTranscriptionMode', this.selectedTranscriptionMode);
+        } catch (_) {}
+        try {
+            this.onTranscriptionModeChange(this.selectedTranscriptionMode);
+        } catch (_) {}
+        // Also notify main process immediately (so behavior updates mid-session)
+        try {
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                await ipcRenderer.invoke('update-transcription-mode', this.selectedTranscriptionMode);
+            }
+        } catch (_) {}
         this.requestUpdate();
     }
 
@@ -698,11 +915,7 @@ export class CustomizeView extends LitElement {
         this.onImageQualityChange(e.target.value);
     }
 
-    handleLayoutModeSelect(e) {
-        this.layoutMode = e.target.value;
-        localStorage.setItem('layoutMode', this.layoutMode);
-        this.onLayoutModeChange(e.target.value);
-    }
+    // Layout mode removed: compact is always-on.
 
     handleCustomPromptInput(e) {
         const active = getActivePrompt();
@@ -743,7 +956,7 @@ export class CustomizeView extends LitElement {
             window.cheddar.isPromptLibraryOpen = false;
         } catch (_) {}
 
-        // Restore normal resizable behavior for Customize view
+        // Restore default resizable behavior for Customize view
         try {
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
@@ -777,7 +990,6 @@ export class CustomizeView extends LitElement {
             toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-            sendTranscription: isMac ? 'Cmd+Shift+Enter' : 'Ctrl+Shift+Enter',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -856,13 +1068,8 @@ export class CustomizeView extends LitElement {
             },
             {
                 key: 'nextStep',
-                name: 'Ask Next Step',
-                description: 'Take screenshot and ask AI for the next step suggestion',
-            },
-            {
-                key: 'sendTranscription',
-                name: 'Send Transcription',
-                description: 'Send current voice transcription to AI',
+                name: 'Send / Submit',
+                description: 'Submit the current buffered transcript (and screenshot if enabled)',
             },
             {
                 key: 'previousResponse',
@@ -1034,12 +1241,7 @@ export class CustomizeView extends LitElement {
         this.requestUpdate();
     }
 
-    loadLayoutMode() {
-        const savedLayoutMode = localStorage.getItem('layoutMode');
-        if (savedLayoutMode) {
-            this.layoutMode = savedLayoutMode;
-        }
-    }
+    // Layout mode removed: compact is always-on.
 
     loadAdvancedModeSettings() {
         const advancedMode = localStorage.getItem('advancedMode');
@@ -1139,398 +1341,498 @@ export class CustomizeView extends LitElement {
         const currentProfile = profiles.find(p => p.value === this.selectedProfile);
         const currentLanguage = languages.find(l => l.value === this.selectedLanguage);
 
+        const navItems = [
+            { id: 'profile', label: 'Profile' },
+            { id: 'appearance', label: 'Appearance' },
+            { id: 'audio', label: 'Audio' },
+            { id: 'language', label: 'Language' },
+            { id: 'capture', label: 'Capture' },
+            { id: 'keyboard', label: 'Keyboard' },
+            { id: 'search', label: 'Search' },
+            { id: 'advanced', label: 'Advanced' },
+        ];
+        const activeNavLabel = navItems.find(n => n.id === this.activeCategory)?.label || 'Customize';
+
         return html`
-            <div class="settings-container">
-                <!-- Undetectable Section (Primary) -->
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>Undetectable</span>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="toggle-group">
-                            <input
-                                type="checkbox"
-                                class="switch-input"
-                                id="undetectable-enabled"
-                                .checked=${this.undetectableEnabled}
-                                @change=${this.handleUndetectableChange}
-                            />
-                            <label for="undetectable-enabled" class="switch-label" aria-label="Enable Undetectable"></label>
-                            <span class="switch-text">Enable Undetectable</span>
-                        </div>
-                        <div class="form-description" style="margin-left: 52px; margin-top: -8px;">
-                            Toggle the main Undetectable feature. Detailed behavior configuration will follow.
-                        </div>
-                    </div>
-                </div>
-                <!-- Profile & Behavior Section -->
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>AI Profile & Behavior</span>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Profile Type
-                                    <span class="current-selection">${currentProfile?.name || 'Unknown'}</span>
-                                </label>
-                                <select class="form-control" .value=${this.selectedProfile} @change=${this.handleProfileSelect}>
-                                    ${profiles.map(
-                                        profile => html`
-                                            <option value=${profile.value} ?selected=${this.selectedProfile === profile.value}>
-                                                ${profile.name}
-                                            </option>
-                                        `
-                                    )}
-                                </select>
+            <div class="page">
+            <div class="shell">
+                <aside class="sidebar">
+                    <div class="sidebar-scroll">
+                        <div class="sidebar-header">
+                            <img class="sidebar-logo" src="assets/onboarding/customize.svg" alt="" />
+                            <div class="sidebar-headings">
+                                <div class="sidebar-title">Customize</div>
+                                <div class="sidebar-subtitle">UI & behavior settings</div>
+                            </div>
+                            <div class="content-pill" title="Active profile">
+                                <span>Profile</span>
+                                <span style="opacity:0.8;">${currentProfile?.name || 'Unknown'}</span>
                             </div>
                         </div>
 
-                        <div class="form-group full-width">
-                            <label class="form-label">Custom AI Instructions
-                                <button class="reset-keybinds-button" style="margin-left:8px" @click=${() => this.openPromptLibrary()}>
-                                    Manage Prompts
-                                </button>
-                            </label>
-                            <textarea
-                                class="form-control"
-                                placeholder="Add specific instructions for how you want the AI to behave during ${
-                                    profileNames[this.selectedProfile] || 'this interaction'
-                                }..."
-                                .value=${this.getActivePromptText()}
-                                rows="4"
-                                readonly
-                                title="Read-only. Use Manage Prompts to edit."
-                            ></textarea>
-                            <div class="form-description">
-                                Personalize the AI's behavior with specific instructions that will be added to the
-                                ${profileNames[this.selectedProfile] || 'selected profile'} base prompts. This field is read-only — use
-                                "Manage Prompts" to edit.
-                            </div>
+                        <nav class="nav" aria-label="Customize navigation">
+                            ${navItems.map(
+                                item => html`
+                                    <button
+                                        class="nav-item"
+                                        aria-current=${this.activeCategory === item.id ? 'page' : 'false'}
+                                        @click=${() => {
+                                            this.activeCategory = item.id;
+                                        }}
+                                    >
+                                        <span class="nav-icon" aria-hidden="true">
+                                            ${this.renderNavIcon(item.id)}
+                                        </span>
+                                        <span class="nav-label">${item.label}</span>
+                                    </button>
+                                `
+                            )}
+                        </nav>
+                    </div>
+                </aside>
+
+                <main class="content">
+                    <div class="content-header">
+                        <div class="content-title">${activeNavLabel}</div>
+                        <div class="content-pill" title="Settings auto-save">
+                            <span style="opacity:0.9;">Auto-saved</span>
+                            <span style="opacity:0.65;">No action needed</span>
                         </div>
                     </div>
-                </div>
 
-                ${this.promptLibraryOpen
-                    ? html`<prompt-library-modal
-                            open
-                            @close=${() => this.closePromptLibrary()}
-                            @prompt-saved=${() => this.requestUpdate()}
-                        ></prompt-library-modal>`
-                    : ''}
+                    ${this.renderCategoryContent({ profiles, languages, profileNames, currentProfile, currentLanguage })}
+                </main>
+            </div>
+            </div>
 
-                <!-- Language & Audio Section -->
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>Language & Audio</span>
-                    </div>
+            ${this.promptLibraryOpen
+                ? html`<prompt-library-modal
+                        open
+                        @close=${() => this.closePromptLibrary()}
+                        @prompt-saved=${() => this.requestUpdate()}
+                    ></prompt-library-modal>`
+                : ''}
+        `;
+    }
 
-                    <div class="form-grid">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Speech Language
-                                    <span class="current-selection">${currentLanguage?.name || 'Unknown'}</span>
-                                </label>
-                                <select class="form-control" .value=${this.selectedLanguage} @change=${this.handleLanguageSelect}>
-                                    ${languages.map(
-                                        language => html`
-                                            <option value=${language.value} ?selected=${this.selectedLanguage === language.value}>
-                                                ${language.name}
-                                            </option>
-                                        `
-                                    )}
-                                </select>
-                                <div class="form-description">Language for speech recognition and AI responses</div>
-                            </div>
-                        </div>
+    renderNavIcon(id) {
+        // Lightweight inline icons (no external deps)
+        switch (id) {
+            case 'profile':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 21c0-4-3.6-7-8-7s-8 3-8 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+            case 'appearance':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 16.5V7.8c0-.44.36-.8.8-.8h14.4c.44 0 .8.36.8.8v8.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M8 20h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M12 7v9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>`;
+            case 'audio':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11 5 7 9H4v6h3l4 4V5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M18.8 6.2a8 8 0 0 1 0 11.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.8"/>
+                </svg>`;
+            case 'language':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 5h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M7 5c0 7-4 9-4 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M5 10c2 2 4 3 8 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M14 19l3-9 3 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M15.2 16h3.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>`;
+            case 'capture':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 7h10a3 3 0 0 1 3 3v7H4v-7a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M9 7l1-2h4l1 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.8"/>
+                </svg>`;
+            case 'keyboard':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V8Z" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 13h.01M10 13h.01M13 13h.01M16 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+                    <path d="M8 16h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>`;
+            case 'search':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>`;
+            case 'advanced':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 3l10 18H2L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M12 9v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M12 17h.01" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+                </svg>`;
+            default:
+                return html``;
+        }
+    }
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Audio Mode
-                                    <span class="current-selection">${this.selectedAudioMode === 'mic' ? 'Mic' : 'Speaker'}</span>
-                                </label>
-                                <select class="form-control" .value=${this.selectedAudioMode} @change=${this.handleAudioModeSelect}>
-                                    <option value="speaker" ?selected=${this.selectedAudioMode === 'speaker'}>Speaker (Interviewer voice only)</option>
-                                    <option value="mic" ?selected=${this.selectedAudioMode === 'mic'}>Mic (Your voice only)</option>
-                                </select>
-                                <div class="form-description">Choose whether to listen to interviewer (speaker) or your mic</div>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Transcription Mode
-                                    <span class="current-selection">${this.selectedTranscriptionMode === 'manual' ? 'Manual' : 'Auto'}</span>
-                                </label>
-                                <select class="form-control" .value=${this.selectedTranscriptionMode} @change=${this.handleTranscriptionModeSelect}>
-                                    <option value="auto" ?selected=${this.selectedTranscriptionMode === 'auto'}>Auto</option>
-                                    <option value="manual" ?selected=${this.selectedTranscriptionMode === 'manual'}>Manual</option>
-                                </select>
-                                <div class="form-description">When Manual, press Ctrl/Cmd+Shift+Enter to send current transcription</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Interface Layout Section -->
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>Interface Layout</span>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Layout Mode
-                                    <span class="current-selection">${this.layoutMode === 'compact' ? 'Compact' : 'Normal'}</span>
-                                </label>
-                                <select class="form-control" .value=${this.layoutMode} @change=${this.handleLayoutModeSelect}>
-                                    <option value="normal" ?selected=${this.layoutMode === 'normal'}>Normal</option>
-                                    <option value="compact" ?selected=${this.layoutMode === 'compact'}>Compact</option>
-                                </select>
-                                <div class="form-description">
-                                    ${
-                                        this.layoutMode === 'compact'
-                                            ? 'Smaller window size with reduced padding and font sizes for minimal screen footprint'
-                                            : 'Standard layout with comfortable spacing and font sizes'
-                                    }
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-group full-width">
-                            <div class="slider-container">
-                                <div class="slider-header">
-                                    <label class="form-label">Background Transparency</label>
-                                    <span class="slider-value">${Math.round(this.backgroundTransparency * 100)}%</span>
-                                </div>
+    renderCategoryContent({ profiles, languages, profileNames, currentProfile, currentLanguage }) {
+        switch (this.activeCategory) {
+            case 'profile':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>Undetectable</span></div>
+                        <div class="form-grid">
+                            <div class="toggle-group">
                                 <input
-                                    type="range"
-                                    class="slider-input"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                    .value=${this.backgroundTransparency}
-                                    @input=${this.handleBackgroundTransparencyChange}
+                                    type="checkbox"
+                                    class="switch-input"
+                                    id="undetectable-enabled"
+                                    .checked=${this.undetectableEnabled}
+                                    @change=${this.handleUndetectableChange}
                                 />
-                                <div class="slider-labels">
-                                    <span>Transparent</span>
-                                    <span>Opaque</span>
-                                </div>
-                                <div class="form-description">
-                                    Adjust the transparency of the interface background elements
-                                </div>
+                                <label for="undetectable-enabled" class="switch-label" aria-label="Enable Undetectable"></label>
+                                <span class="switch-text">Enable Undetectable</span>
+                            </div>
+                            <div class="form-description" style="margin-left: 52px; margin-top: -8px;">
+                                Toggle the main Undetectable feature. Detailed behavior configuration will follow.
                             </div>
                         </div>
+                    </div>
 
-                        <div class="form-group full-width">
-                            <div class="slider-container">
-                                <div class="slider-header">
-                                    <label class="form-label">Response Font Size</label>
-                                    <span class="slider-value">${this.fontSize}px</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    class="slider-input"
-                                    min="12"
-                                    max="32"
-                                    step="1"
-                                    .value=${this.fontSize}
-                                    @input=${this.handleFontSizeChange}
-                                />
-                                <div class="slider-labels">
-                                    <span>12px</span>
-                                    <span>32px</span>
-                                </div>
-                                <div class="form-description">
-                                    Adjust the font size of AI response text in the assistant view
+                    <div class="settings-section">
+                        <div class="section-title"><span>AI Profile & Behavior</span></div>
+                        <div class="form-grid">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        Profile Type
+                                        <span class="current-selection">${currentProfile?.name || 'Unknown'}</span>
+                                    </label>
+                                    <gp-select
+                                        .value=${this.selectedProfile}
+                                        .options=${profiles.map(p => ({ value: p.value, label: p.name }))}
+                                        @gp-change=${e => this.handleProfileSelect({ target: { value: e.detail.value } })}
+                                    ></gp-select>
                                 </div>
                             </div>
-                        </div>
 
-
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>Highlight Color</span>
-                    </div>
-                    <div class="form-grid">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Main Points Highlight</label>
-                                <input
-                                    type="color"
+                            <div class="form-group full-width">
+                                <label class="form-label"
+                                    >Custom AI Instructions
+                                    <button class="reset-keybinds-button" style="margin-left:8px" @click=${() => this.openPromptLibrary()}>
+                                        Manage Prompts
+                                    </button>
+                                </label>
+                                <textarea
                                     class="form-control"
-                                    .value=${this.pendingHighlightColor || this.highlightColor}
-                                    @input=${this.handleHighlightColorChange}
-                                />
-                                <div class="form-description">Select the color used to highlight important points.</div>
-                                ${this.pendingHighlightColor && this.pendingHighlightColor !== this.highlightColor
-                                    ? html`<button
-                                            class="reset-keybinds-button"
-                                            style="border-color: ${this.pendingHighlightColor};"
-                                            @click=${this.saveHighlightColor}
-                                        >Save</button>`
-                                    : ''}
+                                    placeholder="Add specific instructions for how you want the AI to behave during ${
+                                        profileNames[this.selectedProfile] || 'this interaction'
+                                    }..."
+                                    .value=${this.getActivePromptText()}
+                                    rows="4"
+                                    readonly
+                                    title="Read-only. Use Manage Prompts to edit."
+                                ></textarea>
+                                <div class="form-description">
+                                    Personalize the AI's behavior with specific instructions that will be added to the
+                                    ${profileNames[this.selectedProfile] || 'selected profile'} base prompts. This field is read-only — use
+                                    "Manage Prompts" to edit.
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                `;
 
-                <!-- Screen Capture Section -->
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>Screen Capture Settings</span>
-                    </div>
+            case 'appearance':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>Interface Layout</span></div>
+                        <div class="form-grid">
+                           
 
-                    <div class="form-grid">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Capture Interval
-                                    <span class="current-selection"
-                                        >${this.selectedScreenshotInterval === 'manual' ? 'Manual' : this.selectedScreenshotInterval + 's'}</span
-                                    >
-                                </label>
-                                <select class="form-control" .value=${this.selectedScreenshotInterval} @change=${this.handleScreenshotIntervalSelect}>
-                                    <option value="manual" ?selected=${this.selectedScreenshotInterval === 'manual'}>Manual (On demand)</option>
-                                    <option value="1" ?selected=${this.selectedScreenshotInterval === '1'}>Every 1 second</option>
-                                    <option value="2" ?selected=${this.selectedScreenshotInterval === '2'}>Every 2 seconds</option>
-                                    <option value="5" ?selected=${this.selectedScreenshotInterval === '5'}>Every 5 seconds</option>
-                                    <option value="10" ?selected=${this.selectedScreenshotInterval === '10'}>Every 10 seconds</option>
-                                </select>
-                                <div class="form-description">
-                                    ${
-                                        this.selectedScreenshotInterval === 'manual'
-                                            ? 'Screenshots will only be taken when you use the "Ask Next Step" shortcut'
-                                            : 'Automatic screenshots will be taken at the specified interval'
-                                    }
+                            <div class="form-group full-width">
+                                <div class="slider-container">
+                                    <div class="slider-header">
+                                        <label class="form-label">Background Transparency</label>
+                                        <span class="slider-value">${Math.round(this.backgroundTransparency * 100)}%</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        class="slider-input"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                        .value=${this.backgroundTransparency}
+                                        @input=${this.handleBackgroundTransparencyChange}
+                                    />
+                                    <div class="slider-labels">
+                                        <span>Transparent</span>
+                                        <span>Opaque</span>
+                                    </div>
+                                    <div class="form-description">Adjust the transparency of the interface background elements</div>
                                 </div>
                             </div>
 
-                            <div class="form-group">
-                                <label class="form-label">
-                                    Image Quality
-                                    <span class="current-selection"
-                                        >${this.selectedImageQuality.charAt(0).toUpperCase() + this.selectedImageQuality.slice(1)}</span
-                                    >
-                                </label>
-                                <select class="form-control" .value=${this.selectedImageQuality} @change=${this.handleImageQualitySelect}>
-                                    <option value="high" ?selected=${this.selectedImageQuality === 'high'}>High Quality</option>
-                                    <option value="medium" ?selected=${this.selectedImageQuality === 'medium'}>Medium Quality</option>
-                                    <option value="low" ?selected=${this.selectedImageQuality === 'low'}>Low Quality</option>
-                                </select>
-                                <div class="form-description">
-                                    ${
-                                        this.selectedImageQuality === 'high'
+                            <div class="form-group full-width">
+                                <div class="slider-container">
+                                    <div class="slider-header">
+                                        <label class="form-label">Response Font Size</label>
+                                        <span class="slider-value">${this.fontSize}px</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        class="slider-input"
+                                        min="12"
+                                        max="32"
+                                        step="1"
+                                        .value=${this.fontSize}
+                                        @input=${this.handleFontSizeChange}
+                                    />
+                                    <div class="slider-labels">
+                                        <span>12px</span>
+                                        <span>32px</span>
+                                    </div>
+                                    <div class="form-description">Adjust the font size of AI response text in the assistant view</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="section-title"><span>Highlight Color</span></div>
+                        <div class="form-grid">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Main Points Highlight</label>
+                                    <input
+                                        type="color"
+                                        class="form-control"
+                                        .value=${this.pendingHighlightColor || this.highlightColor}
+                                        @input=${this.handleHighlightColorChange}
+                                    />
+                                    <div class="form-description">Select the color used to highlight important points.</div>
+                                    ${this.pendingHighlightColor && this.pendingHighlightColor !== this.highlightColor
+                                        ? html`<button
+                                                class="reset-keybinds-button"
+                                                style="border-color: ${this.pendingHighlightColor};"
+                                                @click=${this.saveHighlightColor}
+                                            >
+                                                Save
+                                            </button>`
+                                        : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+            case 'audio':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>Audio</span></div>
+                        <div class="form-grid">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        Audio Mode
+                                        <span class="current-selection">${this.selectedAudioMode === 'mic' ? 'Mic' : 'Speaker'}</span>
+                                    </label>
+                                    <gp-select
+                                        .value=${this.selectedAudioMode}
+                                        .options=${[
+                                            { value: 'speaker', label: 'Speaker (Interviewer voice only)' },
+                                            { value: 'mic', label: 'Mic (Your voice only)' },
+                                        ]}
+                                        @gp-change=${e => this.handleAudioModeSelect({ target: { value: e.detail.value } })}
+                                    ></gp-select>
+                                    <div class="form-description">Choose whether to listen to interviewer (speaker) or your mic</div>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        Transcription Mode
+                                        <span class="current-selection">${this.selectedTranscriptionMode === 'auto' ? 'Auto' : 'Manual'}</span>
+                                    </label>
+                                    <gp-select
+                                        .value=${this.selectedTranscriptionMode}
+                                        .options=${[
+                                            { value: 'manual', label: 'Manual (listen silently, answer only on Ctrl/Cmd+Enter or action buttons)' },
+                                            { value: 'auto', label: 'Auto (answer automatically after each detected question)' },
+                                        ]}
+                                        @gp-change=${e => this.handleTranscriptionModeSelect({ target: { value: e.detail.value } })}
+                                    ></gp-select>
+                                    <div class="form-description">
+                                        Manual mode is recommended for interview-style conversations where you decide exactly when the AI should answer.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+            case 'language':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>Language</span></div>
+                        <div class="form-grid">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        Speech Language
+                                        <span class="current-selection">${currentLanguage?.name || 'Unknown'}</span>
+                                    </label>
+                                    <gp-select
+                                        .value=${this.selectedLanguage}
+                                        .options=${languages.map(l => ({ value: l.value, label: l.name }))}
+                                        @gp-change=${e => this.handleLanguageSelect({ target: { value: e.detail.value } })}
+                                    ></gp-select>
+                                    <div class="form-description">Language for speech recognition and AI responses</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+            case 'capture':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>Screen Capture Settings</span></div>
+                        <div class="form-grid">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        Capture Interval
+                                        <span class="current-selection">
+                                            ${this.selectedScreenshotInterval === 'manual' ? 'Manual' : this.selectedScreenshotInterval + 's'}
+                                        </span>
+                                    </label>
+                                    <gp-select
+                                        .value=${this.selectedScreenshotInterval}
+                                        .options=${[
+                                            { value: 'manual', label: 'Manual (On demand)' },
+                                            { value: '1', label: 'Every 1 second' },
+                                            { value: '2', label: 'Every 2 seconds' },
+                                            { value: '5', label: 'Every 5 seconds' },
+                                            { value: '10', label: 'Every 10 seconds' },
+                                        ]}
+                                        @gp-change=${e => this.handleScreenshotIntervalSelect({ target: { value: e.detail.value } })}
+                                    ></gp-select>
+                                    <div class="form-description">
+                                        ${this.selectedScreenshotInterval === 'manual'
+                                            ? 'Screenshots will only be taken when you use the "Ask Next Step" shortcut'
+                                            : 'Automatic screenshots will be taken at the specified interval'}
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        Image Quality
+                                        <span class="current-selection">
+                                            ${this.selectedImageQuality.charAt(0).toUpperCase() + this.selectedImageQuality.slice(1)}
+                                        </span>
+                                    </label>
+                                    <gp-select
+                                        .value=${this.selectedImageQuality}
+                                        .options=${[
+                                            { value: 'high', label: 'High Quality' },
+                                            { value: 'medium', label: 'Medium Quality' },
+                                            { value: 'low', label: 'Low Quality' },
+                                        ]}
+                                        @gp-change=${e => this.handleImageQualitySelect({ target: { value: e.detail.value } })}
+                                    ></gp-select>
+                                    <div class="form-description">
+                                        ${this.selectedImageQuality === 'high'
                                             ? 'Best quality, uses more tokens'
                                             : this.selectedImageQuality === 'medium'
                                               ? 'Balanced quality and token usage'
-                                              : 'Lower quality, uses fewer tokens'
-                                    }
+                                              : 'Lower quality, uses fewer tokens'}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                `;
 
-                <!-- Keyboard Shortcuts Section -->
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>Keyboard Shortcuts</span>
+            case 'keyboard':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>Keyboard Shortcuts</span></div>
+                        <table class="keybinds-table">
+                            <thead>
+                                <tr>
+                                    <th>Action</th>
+                                    <th>Shortcut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${this.getKeybindActions().map(
+                                    action => html`
+                                        <tr>
+                                            <td>
+                                                <div class="action-name">${action.name}</div>
+                                                <div class="action-description">${action.description}</div>
+                                            </td>
+                                            <td>
+                                                <input
+                                                    type="text"
+                                                    class="form-control keybind-input"
+                                                    .value=${this.keybinds[action.key]}
+                                                    placeholder="Press keys..."
+                                                    data-action=${action.key}
+                                                    @keydown=${this.handleKeybindInput}
+                                                    @focus=${this.handleKeybindFocus}
+                                                    readonly
+                                                />
+                                            </td>
+                                        </tr>
+                                    `
+                                )}
+                                <tr class="table-reset-row">
+                                    <td colspan="2">
+                                        <button class="reset-keybinds-button" @click=${this.resetKeybinds}>Reset to Defaults</button>
+                                        <div class="form-description" style="margin-top: 8px;">
+                                            Restore all keyboard shortcuts to their default values
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
+                `;
 
-                    <table class="keybinds-table">
-                        <thead>
-                            <tr>
-                                <th>Action</th>
-                                <th>Shortcut</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${this.getKeybindActions().map(
-                                action => html`
-                                    <tr>
-                                        <td>
-                                            <div class="action-name">${action.name}</div>
-                                            <div class="action-description">${action.description}</div>
-                                        </td>
-                                        <td>
-                                            <input
-                                                type="text"
-                                                class="form-control keybind-input"
-                                                .value=${this.keybinds[action.key]}
-                                                placeholder="Press keys..."
-                                                data-action=${action.key}
-                                                @keydown=${this.handleKeybindInput}
-                                                @focus=${this.handleKeybindFocus}
-                                                readonly
-                                            />
-                                        </td>
-                                    </tr>
-                                `
-                            )}
-                            <tr class="table-reset-row">
-                                <td colspan="2">
-                                    <button class="reset-keybinds-button" @click=${this.resetKeybinds}>Reset to Defaults</button>
-                                    <div class="form-description" style="margin-top: 8px;">
-                                        Restore all keyboard shortcuts to their default values
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-
-
-                <!-- Google Search Section -->
-                <div class="settings-section">
-                    <div class="section-title">
-                        <span>Google Search</span>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="checkbox-group">
-                            <input
-                                type="checkbox"
-                                class="checkbox-input"
-                                id="google-search-enabled"
-                                .checked=${this.googleSearchEnabled}
-                                @change=${this.handleGoogleSearchChange}
-                            />
-                            <label for="google-search-enabled" class="checkbox-label"> Enable Google Search </label>
-                        </div>
-                        <div class="form-description" style="margin-left: 24px; margin-top: -8px;">
-                            Allow the AI to search Google for up-to-date information and facts during conversations
-                            <br /><strong>Note:</strong> Changes take effect when starting a new AI session
+            case 'search':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>Google Search</span></div>
+                        <div class="form-grid">
+                            <div class="checkbox-group">
+                                <input
+                                    type="checkbox"
+                                    class="checkbox-input"
+                                    id="google-search-enabled"
+                                    .checked=${this.googleSearchEnabled}
+                                    @change=${this.handleGoogleSearchChange}
+                                />
+                                <label for="google-search-enabled" class="checkbox-label"> Enable Google Search </label>
+                            </div>
+                            <div class="form-description" style="margin-left: 24px; margin-top: -8px;">
+                                Allow the AI to search Google for up-to-date information and facts during conversations
+                                <br /><strong>Note:</strong> Changes take effect when starting a new AI session
+                            </div>
                         </div>
                     </div>
-                </div>
+                `;
 
-                
+            case 'advanced':
+                return html`
+                    <div
+                        class="settings-section"
+                        style="border-color: var(--danger-border, rgba(239, 68, 68, 0.3)); background: var(--danger-background, rgba(239, 68, 68, 0.05));"
+                    >
+                        <div class="section-title" style="color: var(--danger-color, #ef4444);">
+                            <span>⚠️ Advanced Mode</span>
+                        </div>
 
-                <div class="settings-note">
-                    💡 Settings are automatically saved as you change them. Changes will take effect immediately or on the next session start.
-                </div>
-
-                <!-- Advanced Mode Section (Danger Zone) -->
-                <div class="settings-section" style="border-color: var(--danger-border, rgba(239, 68, 68, 0.3)); background: var(--danger-background, rgba(239, 68, 68, 0.05));">
-                    <div class="section-title" style="color: var(--danger-color, #ef4444);">
-                        <span>⚠️ Advanced Mode</span>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="checkbox-group">
+                        <div class="form-grid">
+                            <div class="checkbox-group">
                                 <input
                                     type="checkbox"
                                     class="checkbox-input"
@@ -1546,9 +1848,15 @@ export class CustomizeView extends LitElement {
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        `;
+
+                    <div class="settings-note">
+                        💡 Settings are automatically saved as you change them. Changes will take effect immediately or on the next session start.
+                    </div>
+                `;
+
+            default:
+                return html``;
+        }
     }
 }
 

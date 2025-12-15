@@ -6,6 +6,20 @@ const clarityStyle = `**WRITING STYLE — CLARITY & SIMPLICITY**
 - Include a short example or analogy when it helps understanding
 - Be concise yet complete: cover what matters, skip fluff`;
 
+const noBoilerplate = `**NO-BOILERPLATE RULES (STRICT):**
+- Do NOT include any preface or meta commentary like: "Sure", "Okay", "Of course", "I can help", "I'll assist you", "Let's understand", "Here's an overview"
+- Do NOT include any interpretation preface like: "This looks like...", "It seems like...", "Sounds like...", "I think...", "Probably...", "I assume..."
+- Do NOT restate the question
+- Start immediately with the answer content
+- Avoid generic filler; every sentence must directly answer the asked question`;
+
+const transcriptNoiseRules = `**TRANSCRIPTION NOISE RULES (STRICT):**
+- The user/interviewer speech transcript may contain ASR errors (wrong words like "water closer" instead of "closure")
+- NEVER mention or correct transcription mistakes (no "I assume you mean...", no "you said X but...", no apologies)
+- NEVER ask clarifying questions
+- Silently infer the most likely intended question and answer it correctly
+- If multiple interpretations are plausible, pick the most likely one and answer that (do not discuss the ambiguity)`;
+
 
 const profilePrompts = {
     interview: {
@@ -172,7 +186,7 @@ Provide only the exact words to say in **markdown format**. Focus on finding win
 };
 
 function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true) {
-    const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements, '\n\n', clarityStyle];
+    const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements, '\n\n', clarityStyle, '\n\n', noBoilerplate, '\n\n', transcriptNoiseRules];
 
     // Only add search usage section if Google Search is enabled
     if (googleSearchEnabled) {
