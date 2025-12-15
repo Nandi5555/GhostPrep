@@ -27,7 +27,6 @@ let currentImageQuality = 'medium'; // Store current image quality for manual sc
 // Transcription mode:
 // - manual: buffer transcription continuously, generate answers only on explicit user action
 // - auto: allow automatic answering after detected turns (main process controls this)
-let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode') || 'manual');
 
 let audioHealthInterval = null;
 let lastAudioProcessTs = 0;
@@ -133,14 +132,6 @@ setInterval(() => {
 
 function cheddarElement() {
     return document.getElementById('cheddar');
-}
-
-function setTranscriptionModeCached(mode) {
-    transcriptionModeCached = mode === 'auto' ? 'auto' : 'manual';
-}
-
-function getTranscriptionModeCached() {
-    return transcriptionModeCached;
 }
 
 function convertFloat32ToInt16(float32Array) {
@@ -964,9 +955,7 @@ async function handleShortcut(shortcutKey) {
         startScreenCaptureScheduling,
         stopScreenCapture,
         sendTextMessage,
-    handleShortcut,
-        setTranscriptionModeCached,
-        getTranscriptionModeCached,
+        handleShortcut,
         // Conversation history functions
         getAllConversationSessions,
         getConversationSession,

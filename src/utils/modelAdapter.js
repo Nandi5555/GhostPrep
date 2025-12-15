@@ -11,17 +11,6 @@ const DEFAULT_MODEL_CANDIDATES = [
     'gemini-2.0-flash-exp',
 ];
 
-async function listModels(apiKey) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, { method: 'GET', cache: 'no-store' });
-    if (!resp.ok) {
-        throw new Error(`Failed to list models (${resp.status})`);
-    }
-    const json = await resp.json();
-    const models = Array.isArray(json?.models) ? json.models : [];
-    return models.map(m => (m?.name || '').replace(/^models\//, '')).filter(Boolean);
-}
-
 function buildContents({ userText, history = [], images = [] }) {
     const contents = [];
 
@@ -59,26 +48,10 @@ class ModelAdapter {
         this.apiKey = apiKey;
         this.preferredModels = Array.isArray(preferredModels) && preferredModels.length ? preferredModels : DEFAULT_MODEL_CANDIDATES;
         this._resolvedModel = null;
-        this._listedModels = null;
     }
 
     async resolveModelName() {
         if (this._resolvedModel) return this._resolvedModel;
-
-        try {
-            if (!this._listedModels) {
-                this._listedModels = await listModels(this.apiKey);
-            }
-            for (const candidate of this.preferredModels) {
-                if (this._listedModels.includes(candidate)) {
-                    this._resolvedModel = candidate;
-                    return candidate;
-                }
-            }
-        } catch (_) {
-            // If listing fails, fall back to first candidate.
-        }
-
         this._resolvedModel = this.preferredModels[0] || DEFAULT_MODEL_CANDIDATES[0];
         return this._resolvedModel;
     }

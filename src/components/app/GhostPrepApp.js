@@ -114,7 +114,6 @@ export class GhostPrepApp extends LitElement {
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
         advancedMode: { type: Boolean },
-        _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
         // New: prompt configuration panel open state
         promptPanelOpen: { type: Boolean },
@@ -125,8 +124,6 @@ export class GhostPrepApp extends LitElement {
 
     constructor() {
         super();
-        // Compact mode is the ONLY supported layout mode.
-        try { localStorage.setItem('layoutMode', 'compact'); } catch (_) {}
         // Check if onboarding has been completed
         const onboardingCompleted = localStorage.getItem('onboardingCompleted');
         this.currentView = onboardingCompleted ? 'main' : 'onboarding';
@@ -142,19 +139,17 @@ export class GhostPrepApp extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.questions = [];
-        this._viewInstances = new Map();
         this._isClickThrough = false;
         this.promptPanelOpen = false;
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
         this.mainCollapsed = this.currentView === 'main';
-
-        // Apply compact layout to document root
-        this.applyCompactLayout();
     }
 
     connectedCallback() {
         super.connectedCallback();
+        // Compact mode is the ONLY supported layout mode; ensure it stays applied.
+        this.applyCompactLayout();
 
         // Set up IPC listeners if needed
         if (window.require) {
@@ -530,10 +525,6 @@ export class GhostPrepApp extends LitElement {
                 const { ipcRenderer } = window.require('electron');
                 await ipcRenderer.invoke('update-transcription-mode', mode);
             }
-            // Optional renderer cache
-            if (window.cheddar && typeof window.cheddar.setTranscriptionModeCached === 'function') {
-                window.cheddar.setTranscriptionModeCached(mode);
-            }
         } catch (error) {
             console.error('Failed to update transcription mode:', error);
         }
@@ -601,9 +592,6 @@ export class GhostPrepApp extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
-        // Compact mode is always enforced (even if storage was modified externally).
-        try { localStorage.setItem('layoutMode', 'compact'); } catch (_) {}
-        this.applyCompactLayout();
 
         // Only notify main process of view change if the view actually changed
         if (changedProperties.has('currentView') && window.require) {
@@ -645,9 +633,6 @@ export class GhostPrepApp extends LitElement {
     }
 
     renderCurrentView() {
-        // Only re-render the view if it hasn't been cached or if critical properties changed
-        const viewKey = `${this.currentView}-${this.selectedProfile}-${this.selectedLanguage}`;
-
         switch (this.currentView) {
             case 'onboarding':
                 return html`

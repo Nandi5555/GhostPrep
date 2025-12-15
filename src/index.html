@@ -110,7 +110,6 @@
             // Compact mode is the ONLY supported layout mode.
             // Ensure fresh installs never see "normal" mode.
             (function () {
-                try { localStorage.setItem('layoutMode', 'compact'); } catch (_) {}
                 try { document.documentElement.classList.add('compact-layout'); } catch (_) {}
             })();
         </script>
