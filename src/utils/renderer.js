@@ -8,8 +8,8 @@ let audioProcessor = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
   // Smaller chunks reduce end-to-end latency for very short questions (more IPC overhead, but still light).
-  const AUDIO_CHUNK_DURATION = 0.03;
-  const BUFFER_SIZE = 512;
+  const AUDIO_CHUNK_DURATION = 0.02;
+  const BUFFER_SIZE = 256;
   let audioPauseUntil = 0;
   // Simple VAD config for auto end-of-speech detection
   // Lower default silence improves "speak then immediately Ctrl+Enter" responsiveness.
@@ -24,8 +24,10 @@ let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
 
-// Manual transcription is the only supported mode. Audio is always transcribed and buffered,
-// but never auto-submitted to the model without an explicit user action.
+// Transcription mode:
+// - manual: buffer transcription continuously, generate answers only on explicit user action
+// - auto: allow automatic answering after detected turns (main process controls this)
+let transcriptionModeCached = (localStorage.getItem('selectedTranscriptionMode') || 'manual');
 
 let audioHealthInterval = null;
 let lastAudioProcessTs = 0;
@@ -131,6 +133,14 @@ setInterval(() => {
 
 function cheddarElement() {
     return document.getElementById('cheddar');
+}
+
+function setTranscriptionModeCached(mode) {
+    transcriptionModeCached = mode === 'auto' ? 'auto' : 'manual';
+}
+
+function getTranscriptionModeCached() {
+    return transcriptionModeCached;
 }
 
 function convertFloat32ToInt16(float32Array) {
@@ -922,11 +932,19 @@ async function handleShortcut(shortcutKey) {
             try { ipcRenderer.send('ui-action-triggered', { label: 'Assist' }); } catch (_) {}
             const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
             if (useScreen) {
-                try { await captureManualScreenshot(); } catch (_) {}
+                // Best-effort only: do not block the send action on screenshot capture,
+                // otherwise there is a noticeable delay after Ctrl+Enter.
+                try { captureManualScreenshot().catch?.(() => {}); } catch (_) {}
             }
             audioPauseUntil = Date.now() + 120;
             ipcRenderer
-                .invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true })
+                .invoke('send-current-transcription', {
+                    actionName: 'Assist',
+                    actionPrompt:
+                        'Answer the question directly. Treat the transcript as an interviewer question and assume it may contain minor speech-to-text errors. ' +
+                        'Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.',
+                    uiAlreadyShown: true,
+                })
                 .then(result => {
                     if (!result.success) {
                         console.error('Failed to send current transcription:', result.error);
@@ -947,6 +965,8 @@ async function handleShortcut(shortcutKey) {
         stopScreenCapture,
         sendTextMessage,
     handleShortcut,
+        setTranscriptionModeCached,
+        getTranscriptionModeCached,
         // Conversation history functions
         getAllConversationSessions,
         getConversationSession,

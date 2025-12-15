@@ -6,6 +6,12 @@ const { getSystemPrompt } = require('./prompts');
 const { ModelAdapter } = require('./modelAdapter');
 const { submitBufferedTranscript, buildHistoryForModel } = require('./transcriptionFlow');
 
+// IMPORTANT: Logging on every audio chunk / server message can easily introduce
+// real latency (event-loop stalls). Keep logs OFF by default.
+const DEBUG_GEMINI = process.env.DEBUG_GEMINI === '1';
+const DEBUG_CONVERSATION = process.env.DEBUG_CONVERSATION === '1';
+const DEBUG_AUDIO_IPC = process.env.DEBUG_AUDIO_IPC === '1';
+
 // Conversation tracking variables
  let currentSessionId = null;
  let currentTranscription = '';
@@ -24,6 +30,15 @@ const { submitBufferedTranscript, buildHistoryForModel } = require('./transcript
  const MAX_PENDING_IMAGES = 3;
  // Hard gate controlled by the UI toggle. When OFF, screenshots must not be buffered or used.
  let useScreenEnabled = false;
+
+// Transcription mode gating (selected in Customize)
+// - manual: listen continuously, generate only on explicit user action
+// - auto: auto-generate after each detected speech turn
+let transcriptionMode = 'manual';
+let autoSubmitInFlight = false;
+const DEFAULT_ASSIST_ACTION_PROMPT =
+    'Answer the question directly. Treat the transcript as an interviewer question and assume it may contain minor speech-to-text errors. ' +
+    'Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.';
 
  // Adapter for on-demand model calls (guarded & model-agnostic)
  let modelAdapter = null;
@@ -58,7 +73,7 @@ function initializeNewSession() {
     currentSessionId = Date.now().toString();
     currentTranscription = '';
     conversationHistory = [];
-    console.log('New conversation session started:', currentSessionId);
+    if (DEBUG_CONVERSATION) console.log('New conversation session started:', currentSessionId);
 }
 
 function saveConversationTurn(transcription, aiResponse, meta = {}) {
@@ -74,7 +89,7 @@ function saveConversationTurn(transcription, aiResponse, meta = {}) {
     };
 
     conversationHistory.push(conversationTurn);
-    console.log('Saved conversation turn:', conversationTurn);
+    if (DEBUG_CONVERSATION) console.log('Saved conversation turn:', conversationTurn);
 
     // Send to renderer to save in IndexedDB
     sendToRenderer('save-conversation-turn', {
@@ -239,7 +254,13 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     isInitializingSession = true;
     sendToRenderer('session-initializing', true);
 
-    // Manual transcription is the only mode. UI/logic never relies on model-specific auto behaviors.
+    // Initialize transcription mode from renderer storage (default manual)
+    try {
+        const storedMode = await getStoredSetting('selectedTranscriptionMode', 'manual');
+        transcriptionMode = storedMode === 'auto' ? 'auto' : 'manual';
+    } catch (e) {
+        transcriptionMode = 'manual';
+    }
 
     // Store session parameters for reconnection (only if not already reconnecting)
     if (!isReconnection) {
@@ -265,6 +286,11 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     activeSystemPrompt = systemPrompt;
     try {
         modelAdapter = new ModelAdapter({ apiKey });
+        // Warm up model resolution once per session so the first answer is faster.
+        try {
+            // Fire and forget; errors are handled inside generateText fallback.
+            modelAdapter.resolveModelName().catch(() => {});
+        } catch (_) {}
     } catch (e) {
         modelAdapter = null;
         console.error('Failed to initialize ModelAdapter:', e?.message || e);
@@ -291,6 +317,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
         let session = null;
         try {
             session = await client.live.connect({
+                // REQUIRED: user wants ONLY this model
                 model: 'gemini-2.0-flash-exp',
                 callbacks: {
                 onopen: function () {
@@ -299,7 +326,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     try { resolveReady({ ok: true }); } catch (_) {}
                 },
                 onmessage: function (message) {
-                    console.log('----------------', message);
+                    if (DEBUG_GEMINI) console.log('Live message:', message);
 
                     if (message.serverContent?.inputTranscription?.text) {
                         const t = message.serverContent.inputTranscription.text;
@@ -312,6 +339,15 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         lastTurnCompleteAt = Date.now();
                         sendToRenderer('update-status', 'Listening...');
                         try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
+
+                        // Auto mode: submit the buffered transcript for an answer as soon as a turn completes.
+                        // Manual mode: never auto-submit; wait for user permission.
+                        if (transcriptionMode === 'auto') {
+                            // fire and forget (do not block websocket handler)
+                            setImmediate(() => {
+                                try { autoSubmitLatestTurn(); } catch (_) {}
+                            });
+                        }
                     }
                 },
                 onerror: function (e) {
@@ -382,6 +418,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
         } catch (e) {
             // Fallback: some server configs may require response modalities
             session = await client.live.connect({
+                // REQUIRED: user wants ONLY this model
                 model: 'gemini-2.0-flash-exp',
                 callbacks: {
                     onopen: function () {
@@ -390,7 +427,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         try { resolveReady({ ok: true }); } catch (_) {}
                     },
                     onmessage: function (message) {
-                        console.log('----------------', message);
+                        if (DEBUG_GEMINI) console.log('Live message:', message);
                         if (message.serverContent?.inputTranscription?.text) {
                             const t = message.serverContent.inputTranscription.text;
                             currentTranscription += t;
@@ -401,6 +438,11 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             lastTurnCompleteAt = Date.now();
                             sendToRenderer('update-status', 'Listening...');
                             try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
+                            if (transcriptionMode === 'auto') {
+                                setImmediate(() => {
+                                    try { autoSubmitLatestTurn(); } catch (_) {}
+                                });
+                            }
                         }
                     },
                     onerror: function (err) {
@@ -445,6 +487,80 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
         isInitializingSession = false;
         sendToRenderer('session-initializing', false);
         return null;
+    }
+}
+
+async function autoSubmitLatestTurn() {
+    // Guardrails: only for auto mode, only if model is ready, and never overlap submissions.
+    if (transcriptionMode !== 'auto') return;
+    if (!modelAdapter) return;
+    if (autoSubmitInFlight) return;
+
+    const text = String(currentTranscription || '').trim();
+    const imagesToUse = useScreenEnabled ? pendingImages : [];
+    const hasImages = Array.isArray(imagesToUse) && imagesToUse.length > 0;
+    if (!text && !hasImages) return;
+
+    autoSubmitInFlight = true;
+    const snapshotText = text;
+    const snapshotImages = hasImages ? [...imagesToUse] : [];
+
+    // Clear buffers immediately so new speech can be collected for the next question while we answer.
+    currentTranscription = '';
+    clearPendingImages();
+
+    try {
+        sendToRenderer('update-status', 'Submitting...');
+        const includeScreenTurns = !!useScreenEnabled;
+        const screenOffGuard = useScreenEnabled
+            ? ''
+            : 'Use Screen is OFF. Only if the user explicitly asks about on-screen/visual content, say you cannot see the screen. Otherwise, ignore screen context and answer normally.';
+
+        let responseText = '';
+        let rawTranscript = snapshotText;
+
+        if (snapshotText && snapshotText.trim().length > 0) {
+            const result = await submitBufferedTranscript({
+                transcript: snapshotText,
+                actionName: '',
+                actionPrompt: screenOffGuard ? `${DEFAULT_ASSIST_ACTION_PROMPT}\n\n${screenOffGuard}` : DEFAULT_ASSIST_ACTION_PROMPT,
+                systemInstruction: activeSystemPrompt,
+                conversationHistory,
+                images: snapshotImages,
+                modelAdapter,
+            });
+            responseText = result.responseText || '';
+            rawTranscript = result.rawTranscript || snapshotText;
+        } else if (snapshotImages.length > 0) {
+            const history = buildHistoryForModel(conversationHistory, { includeScreenTurns });
+            const userText = screenOffGuard
+                ? `${screenOffGuard}\n\n${DEFAULT_ASSIST_ACTION_PROMPT}\n\nAnalyze the screenshot and provide the best possible answer based only on what you see.`
+                : `${DEFAULT_ASSIST_ACTION_PROMPT}\n\nAnalyze the screenshot and provide the best possible answer based only on what you see.`;
+            responseText = await modelAdapter.generateText({
+                systemInstruction: activeSystemPrompt,
+                userText,
+                history,
+                images: snapshotImages,
+            });
+            rawTranscript = '(screen only)';
+        }
+
+        sendToRenderer('update-response', responseText || '');
+        sendToRenderer('update-status', 'Listening...');
+        try {
+            saveConversationTurn(rawTranscript || snapshotText, responseText || '', { usedScreen: snapshotImages.length > 0 });
+        } catch (_) {}
+    } catch (e) {
+        console.error('Auto submit failed:', e?.message || e);
+        sendToRenderer('update-status', 'Listening...');
+    } finally {
+        autoSubmitInFlight = false;
+        // If another complete turn arrived while we were submitting, run once more.
+        if (transcriptionMode === 'auto' && String(currentTranscription || '').trim().length > 0) {
+            setImmediate(() => {
+                try { autoSubmitLatestTurn(); } catch (_) {}
+            });
+        }
     }
 }
 
@@ -577,7 +693,7 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
     if (!geminiSessionRef.current) return;
 
     try {
-        process.stdout.write('.');
+        if (DEBUG_AUDIO_IPC) process.stdout.write('.');
         await geminiSessionRef.current.sendRealtimeInput({
             audio: {
                 data: base64Data,
@@ -678,35 +794,66 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
         return false;
     });
+
+    // Update transcription mode at runtime
+    ipcMain.handle('update-transcription-mode', async (_event, mode) => {
+        try {
+            transcriptionMode = mode === 'auto' ? 'auto' : 'manual';
+            return { success: true, mode: transcriptionMode };
+        } catch (error) {
+            return { success: false, error: error?.message || String(error) };
+        }
+    });
     // Audio send queue to prevent overlapping sends and reduce IPC backpressure
     let audioSendQueue = [];
     let audioSending = false;
-    const AUDIO_QUEUE_MAX = 50;
+    // Keep this small so we never "fall behind" and start transcribing seconds late.
+    // If the network/model can't keep up, drop older audio to stay near-real-time.
+    const AUDIO_QUEUE_MAX = 12;
+    const AUDIO_MAX_SEND_PER_FLUSH = 6;
 
     async function flushAudioQueue() {
         if (audioSending) return;
         audioSending = true;
         try {
-            while (audioSendQueue.length > 0 && geminiSessionRef.current) {
+            let sent = 0;
+            while (audioSendQueue.length > 0 && geminiSessionRef.current && sent < AUDIO_MAX_SEND_PER_FLUSH) {
                 const next = audioSendQueue.shift();
+                sent++;
                 await geminiSessionRef.current.sendRealtimeInput({ audio: next });
             }
         } catch (error) {
             console.error('Error sending queued audio:', error);
         } finally {
             audioSending = false;
+            // If more audio is waiting, schedule another flush without blocking the event loop.
+            if (audioSendQueue.length > 0 && geminiSessionRef.current) {
+                setImmediate(flushAudioQueue);
+            }
         }
     }
 
     ipcMain.on('audio-chunk', (event, payload) => {
         if (!geminiSessionRef.current) return;
         try {
-            process.stdout.write('.')
+            if (DEBUG_AUDIO_IPC) process.stdout.write('.');
             let audioPart;
             if (payload && typeof payload.data === 'string') {
                 audioPart = { data: payload.data, mimeType: payload.mimeType };
             } else if (payload && payload.raw) {
-                const buf = Buffer.isBuffer(payload.raw) ? payload.raw : Buffer.from(payload.raw);
+                let buf;
+                if (Buffer.isBuffer(payload.raw)) {
+                    buf = payload.raw;
+                } else if (payload.raw instanceof ArrayBuffer) {
+                    // Buffer view over ArrayBuffer (no extra copy)
+                    buf = Buffer.from(payload.raw);
+                } else if (ArrayBuffer.isView(payload.raw)) {
+                    // TypedArray/DataView: create a Buffer view without copying
+                    buf = Buffer.from(payload.raw.buffer, payload.raw.byteOffset, payload.raw.byteLength);
+                } else {
+                    // Fallback (may copy)
+                    buf = Buffer.from(payload.raw);
+                }
                 const base64 = buf.toString('base64');
                 audioPart = { data: base64, mimeType: payload.mimeType };
             } else {
@@ -768,20 +915,71 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('send-current-transcription', async (event, payload) => {
         if (!modelAdapter) return { success: false, error: 'Model not initialized' };
         try {
-            // Try to use whatever we have; if the user submits immediately after speaking,
-            // wait a short, bounded time for the streaming transcription to settle.
+            // Try to use whatever we have; if the user submits while the user/interviewer
+            // is STILL speaking, do not rush. Wait (bounded) for speech to end / transcript
+            // to settle so we don't answer an incomplete question.
             process.stdout.write('!');
             const waitStartedAt = Date.now();
-            await waitForTranscriptionToSettle({ waitStartedAt });
+
+            // Heuristic: if renderer VAD says speech started but hasn't ended yet,
+            // we are likely mid-question. Also treat "recent transcript chunk" as unstable.
+            const speakingOngoing =
+                !!lastSpeechStartAt && (!lastSpeechEndAt || lastSpeechEndAt < lastSpeechStartAt);
+            const msSinceLastChunk = lastTranscriptChunkAt ? (Date.now() - lastTranscriptChunkAt) : 999999;
             let text = (currentTranscription || '').trim();
 
-            const actionName = (payload && payload.actionName) ? String(payload.actionName).trim() : '';
-            const actionPrompt = (payload && payload.actionPrompt) ? String(payload.actionPrompt).trim() : '';
+            const shouldWait =
+                speakingOngoing ||
+                // If chunks are still arriving, don't submit mid-stream.
+                msSinceLastChunk < 140 ||
+                // If we have very little text, it's often a partial first word.
+                (text.length > 0 && text.length < 14 && msSinceLastChunk < 400);
 
-            // Clear the buffer immediately (we only submit what was present at the time of user action)
+            if (shouldWait) {
+                // Show a clear loader-like status while we wait for the question to complete.
+                // If the answer ends up fast, this will be visible only briefly.
+                sendToRenderer('update-status', 'Processing...');
+
+                await waitForTranscriptionToSettle({
+                    waitStartedAt,
+                    // Longer bound only when speech is ongoing; otherwise keep it tight.
+                    maxWaitMs: speakingOngoing ? 1800 : 600,
+                    // Quiet period to consider transcript "stable"
+                    quietMs: speakingOngoing ? 140 : 90,
+                    pollMs: 20,
+                });
+
+                text = (currentTranscription || '').trim();
+            } else if (!text) {
+                // Very short bound to avoid empty-submit when user clicks immediately.
+                await waitForTranscriptionToSettle({
+                    waitStartedAt,
+                    maxWaitMs: 450,
+                    quietMs: 90,
+                    pollMs: 15,
+                });
+                text = (currentTranscription || '').trim();
+            }
+
+            const actionName = (payload && payload.actionName) ? String(payload.actionName).trim() : '';
+            let actionPrompt = (payload && payload.actionPrompt) ? String(payload.actionPrompt).trim() : '';
+            // Fix: The old flow expects "Assist" to intelligently correct imperfect speech.
+            // Some call sites still pass "Assist!" as a placeholder; replace it with a real instruction prompt.
+            if (!actionPrompt || actionPrompt === 'Assist!' || (actionName && actionName.toLowerCase() === 'assist' && actionPrompt.length < 12)) {
+                actionPrompt = DEFAULT_ASSIST_ACTION_PROMPT;
+            }
+
+            // Snapshot complete; now clear the buffer (we only submit what was present at the time of user action)
             currentTranscription = '';
 
             sendToRenderer('update-status', 'Submitting...');
+
+            // Ensure the chat shows the action immediately (when the renderer didn't already do it).
+            // This removes the "nothing happens" gap while the model is starting.
+            if (!(payload && payload.uiAlreadyShown)) {
+                const displayText = actionName || 'Assist';
+                try { sendToRenderer('transcription-submitted', { text: displayText, actionName: displayText }); } catch (_) {}
+            }
 
             // Screen-only support: if no transcript but we have buffered screenshots, still submit.
             const imagesToUse = useScreenEnabled ? pendingImages : [];
@@ -814,6 +1012,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                     conversationHistory,
                     images: imagesToUse,
                     modelAdapter,
+                    onDelta: delta => {
+                        try { sendToRenderer('update-response-stream', String(delta || '')); } catch (_) {}
+                    },
                 });
                 questionText = result.questionText;
                 responseText = result.responseText || '';
@@ -827,18 +1028,24 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                     : 'Analyze the screenshot and provide the best possible answer based only on what you see.';
 
                 const history = buildHistoryForModel(conversationHistory, { includeScreenTurns });
-                responseText = await modelAdapter.generateText({
-                    systemInstruction: activeSystemPrompt,
-                    userText,
-                    history,
-                    images: imagesToUse,
-                });
-            }
-
-            // If the UI already displayed the action label (ui-action-triggered), avoid duplicating.
-            if (!(payload && payload.uiAlreadyShown)) {
-                const displayText = actionName || 'Assist';
-                try { sendToRenderer('transcription-submitted', { text: displayText, actionName: displayText }); } catch (_) {}
+                if (typeof modelAdapter.generateTextStream === 'function') {
+                    responseText = await modelAdapter.generateTextStream({
+                        systemInstruction: activeSystemPrompt,
+                        userText,
+                        history,
+                        images: imagesToUse,
+                        onDelta: delta => {
+                            try { sendToRenderer('update-response-stream', String(delta || '')); } catch (_) {}
+                        },
+                    });
+                } else {
+                    responseText = await modelAdapter.generateText({
+                        systemInstruction: activeSystemPrompt,
+                        userText,
+                        history,
+                        images: imagesToUse,
+                    });
+                }
             }
 
             clearPendingImages();
@@ -874,18 +1081,29 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 : 'Screen viewing is OFF. Do not use or rely on any previously described screen content. If the question requires screen details, respond that you cannot see the screen because Use Screen is OFF.';
             const userText = screenOffGuard ? `${screenOffGuard}\n\n${text.trim()}` : text.trim();
 
-            const responseText = await modelAdapter.generateText({
-                systemInstruction: activeSystemPrompt,
-                userText,
-                history,
-                images: imagesToUse,
-            });
+            const canStream = typeof modelAdapter.generateTextStream === 'function';
+            const finalText = canStream
+                ? await modelAdapter.generateTextStream({
+                      systemInstruction: activeSystemPrompt,
+                      userText,
+                      history,
+                      images: imagesToUse,
+                      onDelta: delta => {
+                          try { sendToRenderer('update-response-stream', String(delta || '')); } catch (_) {}
+                      },
+                  })
+                : await modelAdapter.generateText({
+                      systemInstruction: activeSystemPrompt,
+                      userText,
+                      history,
+                      images: imagesToUse,
+                  });
 
             clearPendingImages();
-            sendToRenderer('update-response', responseText || '');
+            sendToRenderer('update-response', finalText || '');
             sendToRenderer('update-status', 'Listening...');
             try {
-                saveConversationTurn(text.trim(), responseText || '', { usedScreen: Array.isArray(imagesToUse) && imagesToUse.length > 0 });
+                saveConversationTurn(text.trim(), finalText || '', { usedScreen: Array.isArray(imagesToUse) && imagesToUse.length > 0 });
             } catch (_) {}
             return { success: true };
         } catch (error) {

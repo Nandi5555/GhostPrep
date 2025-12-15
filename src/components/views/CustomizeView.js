@@ -788,6 +788,7 @@ export class CustomizeView extends LitElement {
         selectedProfile: { type: String },
         selectedLanguage: { type: String },
         selectedAudioMode: { type: String },
+        selectedTranscriptionMode: { type: String },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
@@ -800,6 +801,7 @@ export class CustomizeView extends LitElement {
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
         onAudioModeChange: { type: Function },
+        onTranscriptionModeChange: { type: Function },
         onScreenshotIntervalChange: { type: Function },
         onImageQualityChange: { type: Function },
         onLayoutModeChange: { type: Function },
@@ -816,6 +818,8 @@ export class CustomizeView extends LitElement {
         this.selectedProfile = 'interview';
         this.selectedLanguage = 'en-US';
         this.selectedAudioMode = localStorage.getItem('selectedAudioMode') || 'speaker';
+        // Default to Manual for reliability (but respect any saved selection)
+        this.selectedTranscriptionMode = localStorage.getItem('selectedTranscriptionMode') || 'manual';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
         this.layoutMode = 'normal';
@@ -823,6 +827,7 @@ export class CustomizeView extends LitElement {
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
         this.onAudioModeChange = () => {};
+        this.onTranscriptionModeChange = () => {};
         this.onScreenshotIntervalChange = () => {};
         this.onImageQualityChange = () => {};
         this.onLayoutModeChange = () => {};
@@ -858,11 +863,6 @@ export class CustomizeView extends LitElement {
         this.highlightColor = localStorage.getItem('highlightColor') || defaultHighlight;
         this.pendingHighlightColor = '';
         this.applyHighlightColor(this.highlightColor);
-
-        // Manual transcription is now the only mode; remove legacy persisted flag if present.
-        try {
-            localStorage.removeItem('selectedTranscriptionMode');
-        } catch (_) {}
     }
 
     connectedCallback() {
@@ -968,6 +968,24 @@ export class CustomizeView extends LitElement {
         this.selectedAudioMode = e.target.value;
         localStorage.setItem('selectedAudioMode', this.selectedAudioMode);
         this.onAudioModeChange(this.selectedAudioMode);
+        this.requestUpdate();
+    }
+
+    async handleTranscriptionModeSelect(e) {
+        this.selectedTranscriptionMode = e.target.value === 'auto' ? 'auto' : 'manual';
+        try {
+            localStorage.setItem('selectedTranscriptionMode', this.selectedTranscriptionMode);
+        } catch (_) {}
+        try {
+            this.onTranscriptionModeChange(this.selectedTranscriptionMode);
+        } catch (_) {}
+        // Also notify main process immediately (so behavior updates mid-session)
+        try {
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                await ipcRenderer.invoke('update-transcription-mode', this.selectedTranscriptionMode);
+            }
+        } catch (_) {}
         this.requestUpdate();
     }
 
@@ -1738,6 +1756,26 @@ export class CustomizeView extends LitElement {
                                         @gp-change=${e => this.handleAudioModeSelect({ target: { value: e.detail.value } })}
                                     ></gp-select>
                                     <div class="form-description">Choose whether to listen to interviewer (speaker) or your mic</div>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        Transcription Mode
+                                        <span class="current-selection">${this.selectedTranscriptionMode === 'auto' ? 'Auto' : 'Manual'}</span>
+                                    </label>
+                                    <gp-select
+                                        .value=${this.selectedTranscriptionMode}
+                                        .options=${[
+                                            { value: 'manual', label: 'Manual (listen silently, answer only on Ctrl/Cmd+Enter or action buttons)' },
+                                            { value: 'auto', label: 'Auto (answer automatically after each detected question)' },
+                                        ]}
+                                        @gp-change=${e => this.handleTranscriptionModeSelect({ target: { value: e.detail.value } })}
+                                    ></gp-select>
+                                    <div class="form-description">
+                                        Manual mode is recommended for interview-style conversations where you decide exactly when the AI should answer.
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -28,6 +28,7 @@ async function submitBufferedTranscript({
     conversationHistory,
     images,
     modelAdapter,
+    onDelta,
 } = {}) {
     const t = String(transcript || '').trim();
     if (!t) throw new Error('No transcription available');
@@ -39,12 +40,21 @@ async function submitBufferedTranscript({
     const userText = prompt ? `${prompt}\n\n${t}` : t;
     const history = buildHistoryForModel(conversationHistory);
 
-    const responseText = await modelAdapter.generateText({
-        systemInstruction,
-        userText,
-        history,
-        images: images || [],
-    });
+    const canStream = typeof onDelta === 'function' && typeof modelAdapter.generateTextStream === 'function';
+    const responseText = canStream
+        ? await modelAdapter.generateTextStream({
+              systemInstruction,
+              userText,
+              history,
+              images: images || [],
+              onDelta,
+          })
+        : await modelAdapter.generateText({
+              systemInstruction,
+              userText,
+              history,
+              images: images || [],
+          });
 
     return {
         questionText: formatSubmittedQuestion({ actionName, transcript: t }),

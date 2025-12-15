@@ -309,27 +309,43 @@ export class GhostPrepApp extends LitElement {
     _streamSession = 0;
     _lastStreamDelta = '';
     _streamIsFinal = false;
+    _streamResponseIndex = -1;
 
     handleResponseStream(partial) {
         try {
             if (!partial || typeof partial !== 'string') return;
 
-            // Start streaming on first chunk by creating a new response entry
+            // Start streaming on first chunk. We keep showing the dots loader until the FINAL
+            // answer arrives, so we do NOT render partial tokens into `responses[]`.
             if (!this._isStreaming) {
                 this._isStreaming = true;
-                this._streamCumulativeTarget = partial;
-                if ((this.questions || []).length < (this.responses || []).length + 1) {
+                this._streamCumulativeTarget = '';
+                const qLen = (this.questions || []).length;
+                let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+
+                // Ensure we have a response slot for the latest question.
+                if (qLen > 0) {
+                    while (nextResponses.length < qLen) nextResponses.push('');
+                    const idx = Math.min(
+                        Math.max(this.currentResponseIndex >= 0 ? this.currentResponseIndex : qLen - 1, 0),
+                        qLen - 1
+                    );
+                    this._streamResponseIndex = idx;
+                    this.currentResponseIndex = idx;
+                } else {
+                    // Edge case: no question exists; create a slot.
                     this.questions = [...(this.questions || []), ''];
+                    nextResponses.push('');
+                    this._streamResponseIndex = nextResponses.length - 1;
+                    this.currentResponseIndex = this._streamResponseIndex;
                 }
-                this.responses.push('');
-                this.currentResponseIndex = this.responses.length - 1;
+
+                this.responses = nextResponses;
                 // Signal new stream session to AssistantView
                 this._streamSession++;
                 this._lastStreamDelta = partial;
                 this._streamIsFinal = false;
             } else {
-                // Append new delta chunk to cumulative target and forward delta
-                this._streamCumulativeTarget += partial;
                 this._lastStreamDelta = partial;
             }
             this.requestUpdate();
@@ -342,43 +358,31 @@ export class GhostPrepApp extends LitElement {
         try {
             if (typeof finalText !== 'string') return;
 
-            // If we did NOT start a streaming session (or streaming state is stale), render the final response immediately.
-            // This also force-resets streaming flags so AssistantView uses `responses[i]` instead of `_streamTypedText`.
-            const hasStreamTarget = typeof this._streamCumulativeTarget === 'string' && this._streamCumulativeTarget.length > 0;
-            if (!this._isStreaming || !hasStreamTarget) {
-                this._isStreaming = false;
-                this._streamIsFinal = false;
-                this._lastStreamDelta = '';
-                this._streamCumulativeTarget = '';
+            // Always finalize into the active streaming slot when available.
+            const qLen = (this.questions || []).length;
+            let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+            const idx = this._streamResponseIndex >= 0
+                ? this._streamResponseIndex
+                : (qLen > 0 ? qLen - 1 : nextResponses.length - 1);
 
-                // Fill the latest placeholder so the answer renders under the correct question.
-                const qLen = (this.questions || []).length;
-                let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
-                if (qLen > 0) {
-                    while (nextResponses.length < qLen) nextResponses.push('');
-                    nextResponses[qLen - 1] = finalText;
-                    this.responses = nextResponses;
-                    this.currentResponseIndex = qLen - 1;
-                } else {
-                    this.responses = [...nextResponses, finalText];
-                    this.currentResponseIndex = this.responses.length - 1;
-                }
-                this.requestUpdate();
-                return;
+            if (qLen > 0) {
+                while (nextResponses.length < qLen) nextResponses.push('');
+            } else if (idx < 0) {
+                this.questions = [...(this.questions || []), ''];
+                nextResponses.push('');
             }
-            // Ensure any remaining text is flushed
-            if (this.responses.length > 0) {
-                const idx = this.responses.length - 1;
-                this.responses[idx] = finalText;
-                this.currentResponseIndex = idx;
-            } else {
-                // Fallback in case streaming wasn't active
-                this.responses.push(finalText);
-                this.currentResponseIndex = this.responses.length - 1;
-            }
-            // Do NOT end streaming immediately; allow AssistantView to type to completion
-            this._streamIsFinal = true;
-            this._isStreaming = true;
+
+            const safeIdx = idx >= 0 ? idx : (nextResponses.length - 1);
+            nextResponses[safeIdx] = finalText;
+            this.responses = nextResponses;
+            this.currentResponseIndex = safeIdx;
+
+            // Streaming session ends on final (we already appended deltas to responses directly).
+            this._streamIsFinal = false;
+            this._isStreaming = false;
+            this._lastStreamDelta = '';
+            this._streamCumulativeTarget = '';
+            this._streamResponseIndex = -1;
             this.requestUpdate();
         } finally {
             // no-op
@@ -520,6 +524,22 @@ export class GhostPrepApp extends LitElement {
         this.selectedLanguage = language;
     }
 
+    async handleTranscriptionModeChange(mode) {
+        try {
+            // Persist is handled by CustomizeView; notify main for runtime gating
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                await ipcRenderer.invoke('update-transcription-mode', mode);
+            }
+            // Optional renderer cache
+            if (window.cheddar && typeof window.cheddar.setTranscriptionModeCached === 'function') {
+                window.cheddar.setTranscriptionModeCached(mode);
+            }
+        } catch (error) {
+            console.error('Failed to update transcription mode:', error);
+        }
+    }
+
     handleScreenshotIntervalChange(interval) {
         this.selectedScreenshotInterval = interval;
     }
@@ -655,6 +675,7 @@ export class GhostPrepApp extends LitElement {
                         .advancedMode=${this.advancedMode}
                         .onProfileChange=${profile => this.handleProfileChange(profile)}
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
+                        .onTranscriptionModeChange=${mode => this.handleTranscriptionModeChange(mode)}
                         .onScreenshotIntervalChange=${interval => this.handleScreenshotIntervalChange(interval)}
                         .onImageQualityChange=${quality => this.handleImageQualityChange(quality)}
                         .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}

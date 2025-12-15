@@ -96,8 +96,20 @@ export class AssistantView extends LitElement {
             box-shadow: 0 8px 24px rgba(0,0,0,0.25);
         }
         .bubble.user {
-            background: var(--glass-bg);
-            border-radius: 999px;
+            /* Match Transcript tab "user speaking" bubble for consistency */
+            max-width: 88%;
+            font-size: var(--response-font-size, 18px);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            color: var(--primary-button-text, #ffffff);
+            background: linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10));
+            border-color: rgba(0, 122, 255, 0.38);
+            box-shadow:
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+                0 10px 24px rgba(0, 0, 0, 0.32);
+            border-radius: 14px;
             overflow: hidden;
         }
         .bubble.user.multiline {
@@ -147,6 +159,46 @@ export class AssistantView extends LitElement {
 
         .answer-block.placeholder {
             min-height: var(--answer-placeholder-height, 120px);
+        }
+
+        /* Loader: Cluely-style 3 dots (no container, no spinner) */
+        .dots-loader {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            user-select: none;
+            /* Keep it visually consistent with the app's subtle UI text */
+            opacity: 0.95;
+        }
+        .dots-loader .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: var(--description-color, #9aa6b2);
+            opacity: 0.35;
+            transform: translateY(0) scale(0.95);
+            animation: gp-dotPulse 1.05s ease-in-out infinite;
+        }
+        .dots-loader .dot:nth-child(2) { animation-delay: 0.15s; }
+        .dots-loader .dot:nth-child(3) { animation-delay: 0.30s; }
+
+        @keyframes gp-dotPulse {
+            0%, 80%, 100% {
+                opacity: 0.28;
+                transform: translateY(0) scale(0.95);
+            }
+            35% {
+                opacity: 0.92;
+                transform: translateY(-2px) scale(1.0);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .dots-loader .dot {
+                animation: none;
+                opacity: 0.6;
+                transform: none;
+            }
         }
 
         /* Markdown styling */
@@ -926,123 +978,12 @@ scrollToTop() {
                 const normalizeAndFenceCode = (raw) => {
                     const input = String(raw || '').replace(/\r\n/g, '\n');
                     if (!input.trim()) return input;
-
-                    // If the model emitted an odd number of fences, close it to avoid breaking parsing.
+                    // If the model emitted an odd number of fences, close it to avoid breaking parsing,
+                    // but DO NOT auto-wrap normal text in code fences. This guarantees only explicit
+                    // fenced blocks become code containers.
                     const fenceCount = (input.match(/```/g) || []).length;
-                    const balanced = fenceCount % 2 === 0 ? input : (input + '\n```');
-
-                    const isCodeLine = (line) => {
-                        const l = String(line || '');
-                        if (!l.trim()) return false;
-                        // Skip obvious markdown bullets/headings
-                        if (/^\s*([-*]|\d+\.)\s+/.test(l)) return false;
-                        if (/^\s{0,3}#{1,6}\s+/.test(l)) return false;
-
-                        // Common code starters / tokens
-                        if (/^\s*(const|let|var|function|class|import|export|return|if|else|for|while|switch|case|try|catch|finally)\b/.test(l)) return true;
-                        if (/^\s*(def|class|import|from|return|if|elif|else|for|while|try|except|finally|with)\b/.test(l)) return true;
-                        if (/^\s*(public|private|protected|static|final)\b/.test(l)) return true;
-                        if (/^\s*<\w+[\s>]/.test(l)) return true; // html/xml-ish
-                        if (/[{};]/.test(l)) return true;
-                        if (/\=\>/.test(l)) return true;
-                        if (/\b(console\.log|System\.out\.println|printf|print)\b/.test(l)) return true;
-                        if (/^\s*\w+\s*\(.*\)\s*[{:]?\s*$/.test(l) && l.length > 6) return true; // function-ish
-                        if (/^\s*\w+\s*=\s*.+/.test(l)) return true; // assignment-ish
-                        return false;
-                    };
-
-                    const detectLang = (blockText) => {
-                        const t = String(blockText || '');
-                        const s = t.trim();
-                        if (!s) return '';
-                        if ((s.startsWith('{') || s.startsWith('[')) && /":\s*|':\s*|:\s*\d|:\s*true|:\s*false|null/.test(s)) return 'json';
-                        if (/^\s*<(!doctype|html|div|span|script|style)\b/i.test(s) || /<\/\w+>/.test(s)) return 'html';
-                        if (/\b(def|elif|except|None|True|False)\b/.test(t) && /:\s*$/.test(t.split('\n')[0] || '')) return 'python';
-                        if (/\b(function|const|let|var|=>)\b/.test(t)) return 'javascript';
-                        if (/\b(public|private|class)\b/.test(t) && /\bstatic\b/.test(t)) return 'java';
-                        return '';
-                    };
-
-                    const wrapOutsideFence = (outsideLines) => {
-                        const out = [];
-                        let buf = [];
-                        const flush = () => {
-                            if (buf.length === 0) return;
-                            const block = buf.join('\n');
-                            const nonEmpty = buf.filter(l => String(l || '').trim().length > 0);
-                            const codeHits = nonEmpty.reduce((n, l) => n + (isCodeLine(l) ? 1 : 0), 0);
-
-                            const looksCode =
-                                nonEmpty.length >= 2 &&
-                                (codeHits / Math.max(1, nonEmpty.length)) >= 0.5 &&
-                                // Require at least one "strong" code marker to avoid false positives.
-                                (/[{};=]/.test(block) || /\b(function|const|let|var|def|class|import|export)\b/.test(block) || /^\s{2,}\S/m.test(block));
-
-                            if (looksCode) {
-                                const lang = detectLang(block);
-                                out.push('```' + (lang ? lang : ''));
-                                out.push(block);
-                                out.push('```');
-                            } else {
-                                out.push(block);
-                            }
-                            buf = [];
-                        };
-
-                        for (const line of outsideLines) {
-                            if (String(line || '').trim() === '') {
-                                flush();
-                                out.push(''); // preserve blank line
-                            } else {
-                                buf.push(line);
-                            }
-                        }
-                        flush();
-                        return out.join('\n');
-                    };
-
-                    // Only transform outside fenced blocks, preserve fenced content verbatim.
-                    const lines = balanced.split('\n');
-                    let inFence = false;
-                    let seg = [];
-                    const out = [];
-
-                    const flushOutsideSeg = () => {
-                        if (seg.length === 0) return;
-                        out.push(wrapOutsideFence(seg));
-                        seg = [];
-                    };
-
-                    const flushInsideSeg = () => {
-                        if (seg.length === 0) return;
-                        out.push(seg.join('\n'));
-                        seg = [];
-                    };
-
-                    for (const line of lines) {
-                        const trimmed = String(line || '').trim();
-                        const isFenceLine = trimmed.startsWith('```');
-                        if (isFenceLine) {
-                            if (!inFence) {
-                                flushOutsideSeg();
-                                inFence = true;
-                            } else {
-                                flushInsideSeg();
-                                inFence = false;
-                            }
-                            out.push(line);
-                            continue;
-                        }
-                        seg.push(line);
-                    }
-                    if (inFence) {
-                        // If still inside fence, close it.
-                        flushInsideSeg();
-                        out.push('```');
-                    } else {
-                        flushOutsideSeg();
-                    }
-                    return out.join('\n');
+                    if (fenceCount % 2 === 0) return input;
+                    return input + '\n```';
                 };
 
                 const escapeHtml = (str) =>
@@ -1301,14 +1242,15 @@ scrollToTop() {
                                     ipcRenderer.send('ui-action-triggered', { label: 'Assist' });
                                 }
                             } catch (_) {}
-                            window.captureManualScreenshot().then(() => {
-                                try {
-                                    if (window.require) {
-                                        const { ipcRenderer } = window.require('electron');
-                                        ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
-                                    }
-                                } catch (_) {}
-                            });
+                            // Do NOT wait for screenshot: waiting here creates a visible delay after Ctrl+Enter.
+                            // We already have periodic screenshots buffered; this manual capture is best-effort.
+                            try { window.captureManualScreenshot().catch?.(() => {}); } catch (_) {}
+                            try {
+                                if (window.require) {
+                                    const { ipcRenderer } = window.require('electron');
+                                    ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
+                                }
+                            } catch (_) {}
                         }
                     } catch (_) {}
                 } else {
@@ -1518,10 +1460,10 @@ updateResponseContent() {
         const q = (this.questions || [])[i] || '';
         const isCurrent = i === this.currentResponseIndex;
 
-    const ansText =
-        isCurrent && this.isStreaming
-            ? this._streamTypedText
-            : ((this.responses || [])[i] || '');
+    // We render the response from `responses[]` directly so the first streamed token
+    // appears immediately (no typewriter delay). While streaming, `responses[idx]`
+    // is incrementally appended by the app.
+    const ansText = ((this.responses || [])[i] || '');
 
     const ansRendered = this.renderMarkdown(
         ansText,
@@ -1568,7 +1510,13 @@ updateResponseContent() {
     } else if (isCurrent) {
         htmlStr += `
             <div class="chat-row left">
-                <div class="answer-block placeholder">&nbsp;</div>
+                <div class="answer-block placeholder">
+                    <span class="dots-loader" aria-label="Processing">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </span>
+                </div>
             </div>`;
     }
 
@@ -1718,25 +1666,20 @@ updateResponseContent() {
     }
 
     _handleStreamSessionChange() {
+        // Streaming is rendered directly from `responses[]` for instant token display.
+        // Keep session tracking only (no typewriter loop).
         if (typeof this.streamSession === 'number' && this.streamSession !== this._currentStreamSession) {
             this._currentStreamSession = this.streamSession;
-            // New stream session begins
-            this._beginStream();
         }
     }
 
     _handleStreamDeltaChange() {
-        const delta = this.streamDelta || '';
-        if (this.isStreaming && delta) {
-            this._streamTargetText += delta;
-            this.updateResponseContent();
-        }
+        // No-op: deltas are applied upstream into `responses[]`.
     }
 
     _handleStreamingStateChange() {
+        // When streaming ends, responses[] already contains the final content.
         if (!this.isStreaming) {
-            // Stream finished or interrupted
-            this._endStream();
             this.updateResponseContent();
         }
     }
@@ -1867,7 +1810,8 @@ updateResponseContent() {
             try {
                 const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
                 if (useScreen && typeof window.captureManualScreenshot === 'function') {
-                    await window.captureManualScreenshot();
+                    // Best-effort. Waiting here causes a visible "nothing happens" gap after click.
+                    window.captureManualScreenshot().catch?.(() => {});
                 }
             } catch (_) {}
             await ipcRenderer.invoke('send-current-transcription', {
