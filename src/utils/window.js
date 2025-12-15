@@ -11,9 +11,12 @@ const MAX_ASSISTANT_W = 635;
 const MAX_ASSISTANT_H = 635;
 
 function createWindow(sendToRenderer, geminiSessionRef) {
-    // Get layout preference (default to 'normal')
-    let windowWidth = 1100;
-    let windowHeight = 600;
+    // Compact mode is the ONLY supported layout mode.
+    // Start directly in compact sizing (fresh installs should never see "normal").
+    let windowWidth = 700;
+    // Onboarding slides (textarea/features) need more vertical space.
+    // Main view will immediately resize itself down via update-sizes.
+    let windowHeight = 500;
 
     const mainWindow = new BrowserWindow({
         width: windowWidth,
@@ -443,7 +446,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         }
     });
 
-    function animateWindowResize(mainWindow, targetWidth, targetHeight, layoutMode, keepResizable) {
+    function animateWindowResize(mainWindow, targetWidth, targetHeight, label, keepResizable) {
         return new Promise(resolve => {
             // Check if window is destroyed before starting animation
             if (mainWindow.isDestroyed()) {
@@ -530,17 +533,13 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 return { success: false, error: 'Window has been destroyed' };
             }
 
-            // Get current view and layout mode from renderer
-            let viewName, layoutMode;
+            // Get current view from renderer (layout mode removed; compact-only app)
+            let viewName;
             let isPromptLibraryOpen = false;
             try {
                 viewName = await event.sender.executeJavaScript(
                     'window.cheddar && window.cheddar.getCurrentView ? window.cheddar.getCurrentView() : "main"'
                 );
-                layoutMode =
-                    (await event.sender.executeJavaScript(
-                        'window.cheddar && window.cheddar.getLayoutMode ? window.cheddar.getLayoutMode() : "normal"'
-                    )) || 'normal';
                 // Check if the Prompt Library modal is open (boolean or function)
                 isPromptLibraryOpen = await event.sender.executeJavaScript(
                     '(() => { try { const c = window.cheddar; const v = c && c.isPromptLibraryOpen; return typeof v === "function" ? !!v() : !!v; } catch(e) { return false; } })()'
@@ -548,35 +547,39 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
             } catch (error) {
                 console.warn('Failed to get view/layout from renderer, using defaults:', error);
                 viewName = 'main';
-                layoutMode = 'normal';
                 isPromptLibraryOpen = false;
             }
 
 
             let targetWidth, targetHeight;
 
-            // Determine base size from layout mode
-            const baseWidth = layoutMode === 'compact' ? 700 : 900;
-            const baseHeight = layoutMode === 'compact' ? 300 : 400;
+            // Compact-only base size
+            const baseWidth = 700;
+            const baseHeight = 300;
 
             // Adjust height based on view
             switch (viewName) {
                 case 'customize':
                 case 'settings':
                     targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 500 : 600;
+                    targetHeight = 500;
+                    break;
+                case 'onboarding':
+                    // Compact-only onboarding still needs a taller window for proper layout.
+                    targetWidth = baseWidth;
+                    targetHeight = 500;
                     break;
                 case 'help':
                     targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 450 : 550;
+                    targetHeight = 450;
                     break;
                 case 'history':
                     targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 450 : 550;
+                    targetHeight = 450;
                     break;
                 case 'advanced':
                     targetWidth = baseWidth;
-                    targetHeight = layoutMode === 'compact' ? 400 : 500;
+                    targetHeight = 400;
                     break;
                 case 'assistant':
                     // Always open Assistant in expanded default size, regardless of compact setting
@@ -584,7 +587,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                     targetHeight = 500;
                     break;
                 case 'main':
-                case 'onboarding':
                 default:
                     targetWidth = baseWidth;
                     targetHeight = baseHeight;
@@ -601,7 +603,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 mainWindow,
                 targetWidth,
                 targetHeight,
-                `${viewName} view (${layoutMode})`,
+                `${viewName} view`,
                 viewName === 'assistant' ? false : !!isPromptLibraryOpen
             );
 

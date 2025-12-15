@@ -60,23 +60,7 @@
                 --glass-highlight: rgba(255, 255, 255, 0.22);
 
                 /* Layout-specific variables */
-                --header-padding: 10px 20px;
-                --header-font-size: 16px;
-                --header-gap: 12px;
-                --header-button-padding: 8px 16px;
-                --header-icon-padding: 8px;
-                --header-font-size-small: 13px;
-                --main-content-padding: 20px;
-                --main-content-margin-top: 10px;
-                --icon-size: 24px;
-                --border-radius: 12px;
-                --content-border-radius: 22px;
-                --primary-button-radius: 16px;
-                --primary-button-text: #ffffff;
-            }
-
-            /* Compact layout styles */
-            :root.compact-layout {
+                /* Compact is the ONLY supported layout mode */
                 --header-padding: 6px 12px;
                 --header-font-size: 13px;
                 --header-gap: 6px;
@@ -89,6 +73,7 @@
                 --border-radius: 4px;
                 --content-border-radius: 22px;
                 --primary-button-radius: 12px;
+                --primary-button-text: #ffffff;
             }
 
             html,
@@ -121,6 +106,14 @@
     </head>
     <body>
         <script src="assets/marked-4.3.0.min.js"></script>
+        <script>
+            // Compact mode is the ONLY supported layout mode.
+            // Ensure fresh installs never see "normal" mode.
+            (function () {
+                try { localStorage.setItem('layoutMode', 'compact'); } catch (_) {}
+                try { document.documentElement.classList.add('compact-layout'); } catch (_) {}
+            })();
+        </script>
         <script type="module" src="components/app/GhostPrepApp.js"></script>
 
         <ghostprep-app id="cheddar"></ghostprep-app>

@@ -113,7 +113,6 @@ export class GhostPrepApp extends LitElement {
         questions: { type: Array },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
-        layoutMode: { type: String },
         advancedMode: { type: Boolean },
         _viewInstances: { type: Object, state: true },
         _isClickThrough: { state: true },
@@ -126,6 +125,8 @@ export class GhostPrepApp extends LitElement {
 
     constructor() {
         super();
+        // Compact mode is the ONLY supported layout mode.
+        try { localStorage.setItem('layoutMode', 'compact'); } catch (_) {}
         // Check if onboarding has been completed
         const onboardingCompleted = localStorage.getItem('onboardingCompleted');
         this.currentView = onboardingCompleted ? 'main' : 'onboarding';
@@ -137,7 +138,6 @@ export class GhostPrepApp extends LitElement {
         this.selectedLanguage = localStorage.getItem('selectedLanguage') || 'en-US';
         this.selectedScreenshotInterval = localStorage.getItem('selectedScreenshotInterval') || '5';
         this.selectedImageQuality = localStorage.getItem('selectedImageQuality') || 'medium';
-        this.layoutMode = localStorage.getItem('layoutMode') || 'normal';
         this.advancedMode = localStorage.getItem('advancedMode') === 'true';
         this.responses = [];
         this.currentResponseIndex = -1;
@@ -149,8 +149,8 @@ export class GhostPrepApp extends LitElement {
         this.activeAssistantTab = 'chat';
         this.mainCollapsed = this.currentView === 'main';
 
-        // Apply layout mode to document root
-        this.updateLayoutMode();
+        // Apply compact layout to document root
+        this.applyCompactLayout();
     }
 
     connectedCallback() {
@@ -237,13 +237,9 @@ export class GhostPrepApp extends LitElement {
             window.cheddar = {};
         }
 
-        // Add functions to get current view and layout mode
+        // Add function to get current view
         window.cheddar.getCurrentView = () => {
             return this.currentView;
-        };
-
-        window.cheddar.getLayoutMode = () => {
-            return this.layoutMode;
         };
 
         // Provide browser-preview stubs for Electron renderer functions when unavailable
@@ -602,6 +598,9 @@ export class GhostPrepApp extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
+        // Compact mode is always enforced (even if storage was modified externally).
+        try { localStorage.setItem('layoutMode', 'compact'); } catch (_) {}
+        this.applyCompactLayout();
 
         // Only notify main process of view change if the view actually changed
         if (changedProperties.has('currentView') && window.require) {
@@ -637,9 +636,6 @@ export class GhostPrepApp extends LitElement {
         if (changedProperties.has('selectedImageQuality')) {
             localStorage.setItem('selectedImageQuality', this.selectedImageQuality);
         }
-        if (changedProperties.has('layoutMode')) {
-            this.updateLayoutMode();
-        }
         if (changedProperties.has('advancedMode')) {
             localStorage.setItem('advancedMode', this.advancedMode.toString());
         }
@@ -660,7 +656,6 @@ export class GhostPrepApp extends LitElement {
                     <main-view
                         .onStart=${() => this.handleStart()}
                         .onAPIKeyHelp=${() => this.handleAPIKeyHelp()}
-                        .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}
                     ></main-view>
                 `;
 
@@ -671,14 +666,12 @@ export class GhostPrepApp extends LitElement {
                         .selectedLanguage=${this.selectedLanguage}
                         .selectedScreenshotInterval=${this.selectedScreenshotInterval}
                         .selectedImageQuality=${this.selectedImageQuality}
-                        .layoutMode=${this.layoutMode}
                         .advancedMode=${this.advancedMode}
                         .onProfileChange=${profile => this.handleProfileChange(profile)}
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
                         .onTranscriptionModeChange=${mode => this.handleTranscriptionModeChange(mode)}
                         .onScreenshotIntervalChange=${interval => this.handleScreenshotIntervalChange(interval)}
                         .onImageQualityChange=${quality => this.handleImageQualityChange(quality)}
-                        .onLayoutModeChange=${layoutMode => this.handleLayoutModeChange(layoutMode)}
                         .onAdvancedModeChange=${advancedMode => this.handleAdvancedModeChange(advancedMode)}
                     ></customize-view>
                 `;
@@ -754,13 +747,8 @@ export class GhostPrepApp extends LitElement {
         `;
     }
 
-    updateLayoutMode() {
-        // Apply or remove compact layout class to document root
-        if (this.layoutMode === 'compact') {
-            document.documentElement.classList.add('compact-layout');
-        } else {
-            document.documentElement.classList.remove('compact-layout');
-        }
+    applyCompactLayout() {
+        try { document.documentElement.classList.add('compact-layout'); } catch (_) {}
     }
 
     handleMainToggle() {
@@ -769,23 +757,7 @@ export class GhostPrepApp extends LitElement {
         this.requestUpdate();
     }
 
-    async handleLayoutModeChange(layoutMode) {
-        this.layoutMode = layoutMode;
-        localStorage.setItem('layoutMode', layoutMode);
-        this.updateLayoutMode();
-
-        // Notify main process about layout change for window resizing
-        if (window.require) {
-            try {
-                const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('update-sizes');
-            } catch (error) {
-                console.error('Failed to update sizes in main process:', error);
-            }
-        }
-
-        this.requestUpdate();
-    }
+    // Layout mode switching removed: compact is always-on.
 
     // Prompt configuration panel controls (must be inside class)
     handlePromptConfigOpen() {

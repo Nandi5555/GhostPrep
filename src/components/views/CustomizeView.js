@@ -36,33 +36,22 @@ export class CustomizeView extends LitElement {
             height: 100%;
         }
 
+        /* Compact is the ONLY supported layout mode */
         .page {
             height: 100%;
-            padding: 14px;
+            padding: 10px;
             margin: 0 auto;
-            max-width: 1100px;
+            max-width: 980px;
             min-height: 0;
             overflow: hidden; /* prevent host-level overflow; internal panels handle scrolling */
         }
-
         .shell {
             display: grid;
-            grid-template-columns: 260px 1fr;
-            gap: 14px;
-            height: 100%;
-            min-height: 0;
-        }
-
-        :host-context(.compact-layout) .page {
-            padding: 10px;
-            max-width: 980px;
-        }
-
-        :host-context(.compact-layout) .shell {
-            /* Compact keeps the same structure (sidebar + content), just tighter */
             grid-template-columns: 220px 1fr;
             grid-template-rows: none;
             gap: 10px;
+            height: 100%;
+            min-height: 0;
         }
 
         .sidebar {
@@ -81,79 +70,33 @@ export class CustomizeView extends LitElement {
 
         .sidebar-scroll {
             height: 100%;
-            padding: 12px;
+            padding: 10px;
             overflow-x: hidden;
             overflow-y: auto;
             scrollbar-gutter: stable;
             overscroll-behavior: contain;
         }
 
-        :host-context(.compact-layout) .sidebar {
-            /* Use full height and allow scrolling, so all menu items remain reachable */
+        /* Compact-only: sidebar/content tightening */
+        .sidebar {
             max-height: none;
             height: 100%;
         }
-
-        :host-context(.compact-layout) .sidebar-scroll {
-            padding: 10px;
-        }
-
-        :host-context(.compact-layout) .nav {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        :host-context(.compact-layout) .nav-item {
-            min-width: 0;
-            padding: 8px 10px;
-        }
-
-        :host-context(.compact-layout) .nav-label {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        :host-context(.compact-layout) .sidebar-title {
-            font-size: 14px;
-        }
-
-        :host-context(.compact-layout) .sidebar-subtitle {
-            /* Prevent awkward header wrapping/misalignment in compact */
-            display: none;
-        }
-
-        :host-context(.compact-layout) .sidebar-header {
-            /* Stop header collisions in compact: stack the profile pill under title */
+        .sidebar-scroll { padding: 10px; }
+        .nav { display: flex; flex-direction: column; gap: 4px; }
+        .nav-item { min-width: 0; padding: 8px 10px; }
+        .nav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .sidebar-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .sidebar-subtitle { display: none; }
+        .sidebar-header {
             grid-template-columns: auto 1fr;
             grid-template-rows: auto auto;
             row-gap: 8px;
         }
-
-        :host-context(.compact-layout) .sidebar-headings {
-            overflow: hidden;
-        }
-
-        :host-context(.compact-layout) .sidebar-title {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        :host-context(.compact-layout) .sidebar-header .content-pill {
-            grid-column: 1 / -1;
-            justify-self: start;
-            max-width: 100%;
-        }
-
-        :host-context(.compact-layout) .content-header {
-            padding: 8px 6px 10px;
-        }
-
-        :host-context(.compact-layout) .content-title {
-            font-size: 16px;
-        }
+        .sidebar-headings { overflow: hidden; }
+        .sidebar-header .content-pill { grid-column: 1 / -1; justify-self: start; max-width: 100%; }
+        .content-header { padding: 8px 6px 10px; }
+        .content-title { font-size: 16px; }
 
         .sidebar-header {
             display: grid;
@@ -222,10 +165,7 @@ export class CustomizeView extends LitElement {
             position: relative;
         }
 
-        :host-context(.compact-layout) .nav-item {
-            padding: 9px 10px;
-            border-radius: 12px;
-        }
+        .nav-item { padding: 9px 10px; border-radius: 12px; }
 
         .nav-item:hover {
             background: rgba(255, 255, 255, 0.06);
@@ -318,38 +258,19 @@ export class CustomizeView extends LitElement {
             border-radius: 999px;
         }
 
-        @media (max-width: 860px) {
-            .shell {
-                grid-template-columns: 1fr;
-                grid-template-rows: auto 1fr;
-            }
-            .sidebar {
-                max-height: 240px;
-                border-radius: 16px;
-            }
-            .nav {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 6px;
-            }
-            .content {
-                padding-right: 0;
-            }
-        }
-
-        /* Even on narrow widths, compact-mode should preserve the sidebar layout */
-        @media (max-width: 860px) {
-            :host-context(.compact-layout) .shell {
-                grid-template-columns: 220px 1fr;
-                grid-template-rows: none;
-            }
-        }
+        /* Compact-only app: keep the sidebar + vertical nav even on narrower windows.
+           (Do NOT switch the nav into a 2-column grid; it breaks the compact UX.) */
 
         .settings-section {
             background: rgba(255, 255, 255, 0.035);
             border: 1px solid rgba(255, 255, 255, 0.10);
             border-radius: 16px;
             padding: 16px;
+        }
+
+        /* Compact spacing: keep sections separated but tight */
+        .settings-section + .settings-section {
+            margin-top: 10px;
         }
 
         .section-title {
@@ -791,7 +712,6 @@ export class CustomizeView extends LitElement {
         selectedTranscriptionMode: { type: String },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
-        layoutMode: { type: String },
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
         undetectableEnabled: { type: Boolean },
@@ -804,7 +724,6 @@ export class CustomizeView extends LitElement {
         onTranscriptionModeChange: { type: Function },
         onScreenshotIntervalChange: { type: Function },
         onImageQualityChange: { type: Function },
-        onLayoutModeChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
         // Prompt library modal state
@@ -822,7 +741,6 @@ export class CustomizeView extends LitElement {
         this.selectedTranscriptionMode = localStorage.getItem('selectedTranscriptionMode') || 'manual';
         this.selectedScreenshotInterval = '5';
         this.selectedImageQuality = 'medium';
-        this.layoutMode = 'normal';
         this.keybinds = this.getDefaultKeybinds();
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
@@ -830,7 +748,6 @@ export class CustomizeView extends LitElement {
         this.onTranscriptionModeChange = () => {};
         this.onScreenshotIntervalChange = () => {};
         this.onImageQualityChange = () => {};
-        this.onLayoutModeChange = () => {};
         this.onAdvancedModeChange = () => {};
 
         // Google Search default
@@ -867,8 +784,6 @@ export class CustomizeView extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
-        // Load layout mode for display purposes
-        this.loadLayoutMode();
         // Resize window for this view
         resizeLayout();
         // Initialize multi-prompt library from legacy key if present
@@ -1000,11 +915,7 @@ export class CustomizeView extends LitElement {
         this.onImageQualityChange(e.target.value);
     }
 
-    handleLayoutModeSelect(e) {
-        this.layoutMode = e.target.value;
-        localStorage.setItem('layoutMode', this.layoutMode);
-        this.onLayoutModeChange(e.target.value);
-    }
+    // Layout mode removed: compact is always-on.
 
     handleCustomPromptInput(e) {
         const active = getActivePrompt();
@@ -1045,7 +956,7 @@ export class CustomizeView extends LitElement {
             window.cheddar.isPromptLibraryOpen = false;
         } catch (_) {}
 
-        // Restore normal resizable behavior for Customize view
+        // Restore default resizable behavior for Customize view
         try {
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
@@ -1330,12 +1241,7 @@ export class CustomizeView extends LitElement {
         this.requestUpdate();
     }
 
-    loadLayoutMode() {
-        const savedLayoutMode = localStorage.getItem('layoutMode');
-        if (savedLayoutMode) {
-            this.layoutMode = savedLayoutMode;
-        }
-    }
+    // Layout mode removed: compact is always-on.
 
     loadAdvancedModeSettings() {
         const advancedMode = localStorage.getItem('advancedMode');
@@ -1638,27 +1544,7 @@ export class CustomizeView extends LitElement {
                     <div class="settings-section">
                         <div class="section-title"><span>Interface Layout</span></div>
                         <div class="form-grid">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label">
-                                        Layout Mode
-                                        <span class="current-selection">${this.layoutMode === 'compact' ? 'Compact' : 'Normal'}</span>
-                                    </label>
-                                    <gp-select
-                                        .value=${this.layoutMode}
-                                        .options=${[
-                                            { value: 'normal', label: 'Normal' },
-                                            { value: 'compact', label: 'Compact' },
-                                        ]}
-                                        @gp-change=${e => this.handleLayoutModeSelect({ target: { value: e.detail.value } })}
-                                    ></gp-select>
-                                    <div class="form-description">
-                                        ${this.layoutMode === 'compact'
-                                            ? 'Smaller window size with reduced padding and font sizes for minimal screen footprint'
-                                            : 'Standard layout with comfortable spacing and font sizes'}
-                                    </div>
-                                </div>
-                            </div>
+                           
 
                             <div class="form-group full-width">
                                 <div class="slider-container">

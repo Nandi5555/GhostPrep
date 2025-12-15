@@ -192,7 +192,6 @@ export class MainView extends LitElement {
     static properties = {
         onStart: { type: Function },
         isInitializing: { type: Boolean },
-        onLayoutModeChange: { type: Function },
         showApiKeyError: { type: Boolean },
         toastText: { type: String },
         toastState: { type: String },
@@ -203,7 +202,6 @@ export class MainView extends LitElement {
         super();
         this.onStart = () => {};
         this.isInitializing = false;
-        this.onLayoutModeChange = () => {};
         this.showApiKeyError = false;
         this.boundKeydownHandler = this.handleKeydown.bind(this);
         this.toastText = '';
@@ -221,8 +219,6 @@ export class MainView extends LitElement {
         // Add keyboard event listener for Ctrl+Enter (or Cmd+Enter on Mac)
         document.addEventListener('keydown', this.boundKeydownHandler);
 
-        // Load and apply layout mode on startup
-        this.loadLayoutMode();
         // Resize window for this view
         resizeLayout();
     }
@@ -266,13 +262,7 @@ export class MainView extends LitElement {
         window.location.reload();
     }
 
-    loadLayoutMode() {
-        const savedLayoutMode = localStorage.getItem('layoutMode');
-        if (savedLayoutMode && savedLayoutMode !== 'normal') {
-            // Notify parent component to apply the saved layout mode
-            this.onLayoutModeChange(savedLayoutMode);
-        }
-    }
+    // Layout mode removed: compact is always-on.
 
     // Method to trigger the red blink animation
     triggerApiKeyError() {
