@@ -24,11 +24,12 @@ export const scrollbarStyles = css`
 
   /* For Firefox */
   scrollbar-width: thin;
-  scrollbar-color: #555rgba(83, 83, 83, 0.47);
+  /* Syntax: scrollbar-color: <thumb> <track> */
+  scrollbar-color: #555 rgba(83, 83, 83, 0.47);
 
   /* For all scrollable elements */
   :host {
     scrollbar-width: thin;
-    scrollbar-color: 555rgba(83, 83, 83, 0.47);;
+    scrollbar-color: #555 rgba(83, 83, 83, 0.47);
   }
 `;
