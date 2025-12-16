@@ -60,7 +60,7 @@ class ModelAdapter {
      * Generate a single text response.
      * This is intentionally non-streaming; UI streaming is implemented separately if needed.
      */
-    async generateText({ systemInstruction, userText, history, images, generationConfig } = {}) {
+    async generateText({ systemInstruction, userText, history, images, generationConfig, timeoutMs = 12000 } = {}) {
         const model = await this.resolveModelName();
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
@@ -75,11 +75,19 @@ class ModelAdapter {
             body.generationConfig = generationConfig;
         }
 
-        const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeout = controller && timeoutMs ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1)) : null;
+        let resp;
+        try {
+            resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                ...(controller ? { signal: controller.signal } : {}),
+            });
+        } finally {
+            if (timeout) clearTimeout(timeout);
+        }
 
         if (!resp.ok) {
             const txt = await resp.text().catch(() => '');
@@ -100,7 +108,7 @@ class ModelAdapter {
      * Calls `onDelta(deltaText)` as soon as each text chunk arrives.
      * Returns the final full text (trimmed).
      */
-    async generateTextStream({ systemInstruction, userText, history, images, generationConfig, onDelta } = {}) {
+    async generateTextStream({ systemInstruction, userText, history, images, generationConfig, onDelta, timeoutMs = 20000 } = {}) {
         const model = await this.resolveModelName();
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.apiKey)}`;
 
@@ -114,11 +122,19 @@ class ModelAdapter {
             body.generationConfig = generationConfig;
         }
 
-        const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeout = controller && timeoutMs ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1)) : null;
+        let resp;
+        try {
+            resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                ...(controller ? { signal: controller.signal } : {}),
+            });
+        } finally {
+            if (timeout) clearTimeout(timeout);
+        }
 
         if (!resp.ok) {
             const txt = await resp.text().catch(() => '');
@@ -147,47 +163,54 @@ class ModelAdapter {
 
         // SSE parsing: events are separated by a blank line.
         // Each event may include one or more "data:" lines.
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            // Normalize line endings for robust SSE parsing.
-            if (buffer.includes('\r\n')) buffer = buffer.replace(/\r\n/g, '\n');
+        try {
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                // Normalize line endings for robust SSE parsing.
+                if (buffer.includes('\r\n')) buffer = buffer.replace(/\r\n/g, '\n');
 
-            let sepIndex;
-            while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
-                const event = buffer.slice(0, sepIndex);
-                buffer = buffer.slice(sepIndex + 2);
+                let sepIndex;
+                while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+                    const event = buffer.slice(0, sepIndex);
+                    buffer = buffer.slice(sepIndex + 2);
 
-                const lines = event.split('\n');
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed.startsWith('data:')) continue;
-                    const payload = trimmed.slice(5).trim();
-                    if (!payload) continue;
-                    if (payload === '[DONE]') continue;
+                    const lines = event.split('\n');
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed.startsWith('data:')) continue;
+                        const payload = trimmed.slice(5).trim();
+                        if (!payload) continue;
+                        if (payload === '[DONE]') continue;
 
-                    let json;
-                    try {
-                        json = JSON.parse(payload);
-                    } catch (_) {
-                        continue;
-                    }
+                        let json;
+                        try {
+                            json = JSON.parse(payload);
+                        } catch (_) {
+                            continue;
+                        }
 
-                    const candidates = Array.isArray(json?.candidates) ? json.candidates : [];
-                    const parts = candidates?.[0]?.content?.parts;
-                    const chunkText = Array.isArray(parts) ? parts.map(p => p?.text || '').join('') : '';
-                    if (!chunkText) continue;
+                        const candidates = Array.isArray(json?.candidates) ? json.candidates : [];
+                        const parts = candidates?.[0]?.content?.parts;
+                        const chunkText = Array.isArray(parts) ? parts.map(p => p?.text || '').join('') : '';
+                        if (!chunkText) continue;
 
-                    // Some servers send cumulative text; some send deltas.
-                    // Convert cumulative -> delta when possible.
-                    if (chunkText.startsWith(fullText)) {
-                        emit(chunkText.slice(fullText.length));
-                    } else {
-                        emit(chunkText);
+                        // Some servers send cumulative text; some send deltas.
+                        // Convert cumulative -> delta when possible.
+                        if (chunkText.startsWith(fullText)) {
+                            emit(chunkText.slice(fullText.length));
+                        } else {
+                            emit(chunkText);
+                        }
                     }
                 }
             }
+        } catch (e) {
+            // If streaming is aborted/times out, return whatever we managed to collect.
+            const msg = String(e?.name || '') + ':' + String(e?.message || '');
+            const aborted = msg.toLowerCase().includes('abort');
+            if (!aborted) throw e;
         }
 
         // Flush any remaining decoded text (in case stream didn't end with \n\n)

@@ -22,6 +22,13 @@ const DEBUG_AUDIO_IPC = process.env.DEBUG_AUDIO_IPC === '1';
  let lastTurnCompleteAt = 0;
  let lastSpeechStartAt = 0;
  let lastSpeechEndAt = 0;
+ // Assist snapshot helpers (to make Ctrl/Cmd+Enter timing-safe)
+ let lastNonEmptyTranscript = '';
+ let lastNonEmptyTranscriptAt = 0;
+ let lastCompletedTurnTranscript = '';
+ let lastCompletedTurnAt = 0;
+ let lastAssistSubmitAt = 0;
+ let assistSubmitInFlight = false;
 
 // Audio capture variables
  let systemAudioProc = null;
@@ -38,7 +45,8 @@ let transcriptionMode = 'manual';
 let autoSubmitInFlight = false;
 const DEFAULT_ASSIST_ACTION_PROMPT =
     'Answer the question directly. Treat the transcript as an interviewer question and assume it may contain minor speech-to-text errors. ' +
-    'Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.';
+    'Silently correct obvious transcription mistakes and answer the intended question. If the transcript is incomplete (partial words), infer the likely intended question and answer it directly. ' +
+    'Do not mention transcription errors, do not ask clarifying questions.';
 
  // Adapter for on-demand model calls (guarded & model-agnostic)
  let modelAdapter = null;
@@ -332,11 +340,20 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         const t = message.serverContent.inputTranscription.text;
                         currentTranscription += t;
                         lastTranscriptChunkAt = Date.now();
+                        // Keep a recent non-empty snapshot for "instant Assist" clicks.
+                        if (String(currentTranscription || '').trim().length > 0) {
+                            lastNonEmptyTranscript = currentTranscription;
+                            lastNonEmptyTranscriptAt = Date.now();
+                        }
                         try { sendToRenderer('update-transcript-stream', t); } catch (_) {}
                     }
 
                     if (message.serverContent?.turnComplete) {
                         lastTurnCompleteAt = Date.now();
+                        if (String(currentTranscription || '').trim().length > 0) {
+                            lastCompletedTurnTranscript = currentTranscription;
+                            lastCompletedTurnAt = Date.now();
+                        }
                         sendToRenderer('update-status', 'Listening...');
                         try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
 
@@ -432,10 +449,18 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             const t = message.serverContent.inputTranscription.text;
                             currentTranscription += t;
                             lastTranscriptChunkAt = Date.now();
+                            if (String(currentTranscription || '').trim().length > 0) {
+                                lastNonEmptyTranscript = currentTranscription;
+                                lastNonEmptyTranscriptAt = Date.now();
+                            }
                             try { sendToRenderer('update-transcript-stream', t); } catch (_) {}
                         }
                         if (message.serverContent?.turnComplete) {
                             lastTurnCompleteAt = Date.now();
+                            if (String(currentTranscription || '').trim().length > 0) {
+                                lastCompletedTurnTranscript = currentTranscription;
+                                lastCompletedTurnAt = Date.now();
+                            }
                             sendToRenderer('update-status', 'Listening...');
                             try { sendToRenderer('transcript-turn-complete'); } catch (_) {}
                             if (transcriptionMode === 'auto') {
@@ -704,6 +729,45 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function normalizeTranscript(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Pick the best available transcript at the exact moment Assist is triggered.
+ *
+ * Key properties:
+ * - No waiting for turnComplete/settle (user clicks immediately in interviews)
+ * - Never returns stale text from a previous question when we can detect staleness
+ * - Falls back to last non-empty live snapshot when the buffer is currently empty
+ */
+function pickBestTranscriptForAssist() {
+    const now = Date.now();
+    const speakingOngoing =
+        !!lastSpeechStartAt && (!lastSpeechEndAt || lastSpeechEndAt < lastSpeechStartAt);
+
+    const cur = normalizeTranscript(currentTranscription);
+    if (cur) {
+        const stale =
+            !speakingOngoing &&
+            lastTranscriptChunkAt &&
+            (now - lastTranscriptChunkAt) > 12000;
+        if (!stale) return cur;
+    }
+
+    const recentNonEmpty = normalizeTranscript(lastNonEmptyTranscript);
+    const nonEmptyFresh = recentNonEmpty && lastNonEmptyTranscriptAt && (now - lastNonEmptyTranscriptAt) <= 2500;
+    const nonEmptyLikelyCurrentTurn = !lastSpeechStartAt || (lastNonEmptyTranscriptAt >= (lastSpeechStartAt - 50));
+    if (nonEmptyFresh && nonEmptyLikelyCurrentTurn) return recentNonEmpty;
+
+    const recentTurn = normalizeTranscript(lastCompletedTurnTranscript);
+    const turnFresh = recentTurn && lastCompletedTurnAt && (now - lastCompletedTurnAt) <= 2500;
+    const turnAfterLastSubmit = lastAssistSubmitAt ? (lastCompletedTurnAt > lastAssistSubmitAt) : true;
+    if (turnFresh && turnAfterLastSubmit) return recentTurn;
+
+    return '';
+}
+
 /**
  * Wait (bounded) for the streamed transcription buffer to "settle" so a quick
  * Ctrl/Cmd+Enter right after speaking still submits the full question.
@@ -908,53 +972,25 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     });
 
     ipcMain.handle('send-current-transcription', async (event, payload) => {
-        if (!modelAdapter) return { success: false, error: 'Model not initialized' };
+        if (!modelAdapter) {
+            // Ensure UI placeholder is always finalized even if backend isn't ready.
+            try { sendToRenderer('update-response', 'Model not initialized'); } catch (_) {}
+            try { sendToRenderer('update-status', 'Listening...'); } catch (_) {}
+            return { success: false, error: 'Model not initialized' };
+        }
         try {
-            // Try to use whatever we have; if the user submits while the user/interviewer
-            // is STILL speaking, do not rush. Wait (bounded) for speech to end / transcript
-            // to settle so we don't answer an incomplete question.
             process.stdout.write('!');
-            const waitStartedAt = Date.now();
 
-            // Heuristic: if renderer VAD says speech started but hasn't ended yet,
-            // we are likely mid-question. Also treat "recent transcript chunk" as unstable.
-            const speakingOngoing =
-                !!lastSpeechStartAt && (!lastSpeechEndAt || lastSpeechEndAt < lastSpeechStartAt);
-            const msSinceLastChunk = lastTranscriptChunkAt ? (Date.now() - lastTranscriptChunkAt) : 999999;
-            let text = (currentTranscription || '').trim();
-
-            const shouldWait =
-                speakingOngoing ||
-                // If chunks are still arriving, don't submit mid-stream.
-                msSinceLastChunk < 140 ||
-                // If we have very little text, it's often a partial first word.
-                (text.length > 0 && text.length < 14 && msSinceLastChunk < 400);
-
-            if (shouldWait) {
-                // Show a clear loader-like status while we wait for the question to complete.
-                // If the answer ends up fast, this will be visible only briefly.
-                sendToRenderer('update-status', 'Processing...');
-
-                await waitForTranscriptionToSettle({
-                    waitStartedAt,
-                    // Longer bound only when speech is ongoing; otherwise keep it tight.
-                    maxWaitMs: speakingOngoing ? 1800 : 600,
-                    // Quiet period to consider transcript "stable"
-                    quietMs: speakingOngoing ? 140 : 90,
-                    pollMs: 20,
-                });
-
-                text = (currentTranscription || '').trim();
-            } else if (!text) {
-                // Very short bound to avoid empty-submit when user clicks immediately.
-                await waitForTranscriptionToSettle({
-                    waitStartedAt,
-                    maxWaitMs: 450,
-                    quietMs: 90,
-                    pollMs: 15,
-                });
-                text = (currentTranscription || '').trim();
+            // Avoid overlapping submissions: overlapping streams can attach to the wrong placeholder.
+            if (assistSubmitInFlight) {
+                try { sendToRenderer('update-response', 'Already generating an answer…'); } catch (_) {}
+                try { sendToRenderer('update-status', 'Listening...'); } catch (_) {}
+                return { success: true, ignored: true };
             }
+            assistSubmitInFlight = true;
+
+            // Instant snapshot (no waiting): pick the best available transcript so far.
+            let text = pickBestTranscriptForAssist();
 
             const actionName = (payload && payload.actionName) ? String(payload.actionName).trim() : '';
             let actionPrompt = (payload && payload.actionPrompt) ? String(payload.actionPrompt).trim() : '';
@@ -965,6 +1001,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
 
             // Snapshot complete; now clear the buffer (we only submit what was present at the time of user action)
+            lastAssistSubmitAt = Date.now();
             currentTranscription = '';
 
             sendToRenderer('update-status', 'Submitting...');
@@ -982,6 +1019,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             const hasText = !!text;
 
             if (!hasText && !hasImages) {
+                // Never leave the UI stuck on loader for a "too-early" Assist click.
+                try { sendToRenderer('update-response', 'No transcript yet—press Assist again as soon as a word appears.'); } catch (_) {}
+                sendToRenderer('update-status', 'Listening...');
                 return { success: false, error: 'No transcription or screen available' };
             }
 
@@ -1046,7 +1086,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return { success: true };
         } catch (error) {
             console.error('Error sending current transcription:', error);
+            // Always finalize the pending UI slot.
+            try { sendToRenderer('update-response', 'Unable to generate an answer right now. Please press Assist again.'); } catch (_) {}
+            try { sendToRenderer('update-status', 'Listening...'); } catch (_) {}
             return { success: false, error: error.message };
+        } finally {
+            assistSubmitInFlight = false;
         }
     });
 
