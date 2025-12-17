@@ -11,6 +11,14 @@ const DEFAULT_MODEL_CANDIDATES = [
     'gemini-2.0-flash-exp',
 ];
 
+// Keep this reasonably high so detailed interview answers aren't cut off by small defaults.
+// This is a cap, not a target — the model can still respond briefly when appropriate.
+const DEFAULT_GENERATION_CONFIG = {
+    temperature: 0.4,
+    topP: 0.95,
+    maxOutputTokens: 1024,
+};
+
 function buildContents({ userText, history = [], images = [] }) {
     const contents = [];
 
@@ -71,9 +79,10 @@ class ModelAdapter {
         if (systemInstruction && String(systemInstruction).trim()) {
             body.systemInstruction = { parts: [{ text: String(systemInstruction).trim() }] };
         }
-        if (generationConfig && typeof generationConfig === 'object') {
-            body.generationConfig = generationConfig;
-        }
+        const cfg = (generationConfig && typeof generationConfig === 'object')
+            ? { ...DEFAULT_GENERATION_CONFIG, ...generationConfig }
+            : DEFAULT_GENERATION_CONFIG;
+        body.generationConfig = cfg;
 
         const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
         const timeout = controller && timeoutMs ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1)) : null;
@@ -108,7 +117,7 @@ class ModelAdapter {
      * Calls `onDelta(deltaText)` as soon as each text chunk arrives.
      * Returns the final full text (trimmed).
      */
-    async generateTextStream({ systemInstruction, userText, history, images, generationConfig, onDelta, timeoutMs = 20000 } = {}) {
+    async generateTextStream({ systemInstruction, userText, history, images, generationConfig, onDelta, timeoutMs = 45000 } = {}) {
         const model = await this.resolveModelName();
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.apiKey)}`;
 
@@ -118,9 +127,10 @@ class ModelAdapter {
         if (systemInstruction && String(systemInstruction).trim()) {
             body.systemInstruction = { parts: [{ text: String(systemInstruction).trim() }] };
         }
-        if (generationConfig && typeof generationConfig === 'object') {
-            body.generationConfig = generationConfig;
-        }
+        const cfg = (generationConfig && typeof generationConfig === 'object')
+            ? { ...DEFAULT_GENERATION_CONFIG, ...generationConfig }
+            : DEFAULT_GENERATION_CONFIG;
+        body.generationConfig = cfg;
 
         const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
         const timeout = controller && timeoutMs ? setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1)) : null;

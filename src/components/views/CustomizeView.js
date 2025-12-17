@@ -1530,7 +1530,7 @@ export class CustomizeView extends LitElement {
                                     title="Read-only. Use Manage Prompts to edit."
                                 ></textarea>
                                 <div class="form-description">
-                                    Personalize the AI's behavior with specific instructions that will be added to the
+                                    Personalize the AI's behavior with specific instructions that will override the
                                     ${profileNames[this.selectedProfile] || 'selected profile'} base prompts. This field is read-only — use
                                     "Manage Prompts" to edit.
                                 </div>

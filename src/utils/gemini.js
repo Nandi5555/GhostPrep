@@ -51,6 +51,7 @@ const DEFAULT_ASSIST_ACTION_PROMPT =
  // Adapter for on-demand model calls (guarded & model-agnostic)
  let modelAdapter = null;
  let activeSystemPrompt = '';
+ let activeHasCustomPrompt = false;
 
 // Reconnection tracking variables
 let reconnectionAttempts = 0;
@@ -290,6 +291,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     const enabledTools = await getEnabledTools();
     const googleSearchEnabled = enabledTools.some(tool => tool.googleSearch);
 
+    activeHasCustomPrompt = !!String(customPrompt || '').trim();
     const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled);
     activeSystemPrompt = systemPrompt;
     try {
@@ -545,7 +547,11 @@ async function autoSubmitLatestTurn() {
             const result = await submitBufferedTranscript({
                 transcript: snapshotText,
                 actionName: '',
-                actionPrompt: DEFAULT_ASSIST_ACTION_PROMPT,
+                // IMPORTANT:
+                // If the user provided a custom/personalized system prompt, do not prepend extra
+                // user-level "assist" coaching prompts. Those can conflict with or water down
+                // the user's required response format (Cluly-style adherence).
+                actionPrompt: activeHasCustomPrompt ? '' : DEFAULT_ASSIST_ACTION_PROMPT,
                 systemInstruction: activeSystemPrompt,
                 conversationHistory,
                 images: snapshotImages,
@@ -997,7 +1003,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             // Fix: The old flow expects "Assist" to intelligently correct imperfect speech.
             // Some call sites still pass "Assist!" as a placeholder; replace it with a real instruction prompt.
             if (!actionPrompt || actionPrompt === 'Assist!' || (actionName && actionName.toLowerCase() === 'assist' && actionPrompt.length < 12)) {
-                actionPrompt = DEFAULT_ASSIST_ACTION_PROMPT;
+                actionPrompt = activeHasCustomPrompt ? '' : DEFAULT_ASSIST_ACTION_PROMPT;
             }
 
             // Snapshot complete; now clear the buffer (we only submit what was present at the time of user action)
