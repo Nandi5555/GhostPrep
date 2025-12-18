@@ -1238,14 +1238,6 @@ scrollToTop() {
                         // is unavailable (startup/init edge cases), we must still show UI feedback and
                         // submit the buffered transcription.
 
-                        // Instant UI bubble (no delay): show the action label immediately.
-                        try {
-                            if (window.require) {
-                                const { ipcRenderer } = window.require('electron');
-                                ipcRenderer.send('ui-action-triggered', { label: 'Assist' });
-                            }
-                        } catch (_) {}
-
                         // Do NOT wait for screenshot: waiting here creates a visible delay after Enter.
                         // If available, capture a manual screenshot best-effort.
                         try {
@@ -1270,8 +1262,6 @@ scrollToTop() {
                     try {
                         if (window.require) {
                             const { ipcRenderer } = window.require('electron');
-                            // Instant UI bubble (no delay): show the action label immediately.
-                            try { ipcRenderer.send('ui-action-triggered', { label: 'Assist' }); } catch (_) {}
                             ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
                         }
                     } catch (_) {}
@@ -1374,7 +1364,9 @@ scrollToTop() {
     }
 
 scrollToBottom() {
-    // Disabled (no auto-scroll to bottom)
+    const container = this.shadowRoot?.querySelector('#responseContainer');
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
 }
 
 
@@ -1386,7 +1378,8 @@ scrollToBottom() {
         try {
             const container = this.shadowRoot?.querySelector('#responseContainer');
             if (container && !this._resizeObserver) {
-                this._resizeObserver = new ResizeObserver(() => this.fitActiveViewport());
+                // Keep the observer for layout stability, but do not force active block sizing.
+                this._resizeObserver = new ResizeObserver(() => {});
                 this._resizeObserver.observe(container);
             }
         } catch (_) {}
@@ -1430,22 +1423,8 @@ if (changedProperties.has('currentResponseIndex')) {
     }
 
  fitActiveViewport() {
-    const container = this.shadowRoot?.querySelector('#responseContainer');
-    if (!container) return;
-
-    const active = container.querySelector('#active-block');
-    if (!active) return;
-
-    // Get container padding
-    const cs = getComputedStyle(container);
-    const pt = parseFloat(cs.paddingTop) || 0;
-    const pb = parseFloat(cs.paddingBottom) || 0;
-
-    // The visible height of the container
-    const visibleHeight = container.clientHeight - pt - pb;
-
-    // Set a minimum height so active block always occupies the whole visible pane
-    active.style.minHeight = `${visibleHeight}px`;
+    // Cluely-style chat: do not force the newest block to fill the viewport.
+    // We keep a normal scrollable chat history and optionally auto-scroll to bottom.
 }
 
 
@@ -1478,10 +1457,7 @@ updateResponseContent() {
     // is incrementally appended by the app.
     const ansText = ((this.responses || [])[i] || '');
 
-    const ansRendered = this.renderMarkdown(
-        ansText,
-        isCurrent && this.isStreaming
-    );
+    const ansRendered = this.renderMarkdown(ansText, false);
 
     const isLatest = i === maxLen - 1;
 
@@ -1583,19 +1559,10 @@ updateResponseContent() {
             });
     }
 
-    // Adjust layout height
-    this.fitActiveViewport();
-
-    // --- Scroll newest question to TOP (ONCE ONLY) ---
-  if (this._snapToActivePending) {
-    try {
-        const active = container.querySelector('#active-block');
-        if (active) container.scrollTop = active.offsetTop;
-    } catch (_) {}
-    this._snapToActivePending = false;
-}
-
-    // IMPORTANT: ❌ REMOVE THE SECOND SCROLL BLOCK
+    // Auto-scroll like chat when enabled
+    if (this.autoScrollEnabled) {
+        try { this.scrollToBottom(); } catch (_) {}
+    }
 }
 
 
@@ -1687,12 +1654,38 @@ updateResponseContent() {
     }
 
     _handleStreamDeltaChange() {
-        // No-op: deltas are applied upstream into `responses[]`.
+        // Append streaming deltas to the active answer bubble without re-rendering the whole chat.
+        try {
+            if (!this.isStreaming) return;
+            const delta = String(this.streamDelta || '');
+            if (!delta) return;
+            const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.responses || []).length - 1);
+            const el = this.shadowRoot?.querySelector(`#answer-${idx}`);
+            if (!el) return;
+            // During streaming, show plain text to avoid expensive markdown parsing per token.
+            // Final render will replace with markdown once `responses[idx]` is set on completion.
+            const existing = el.dataset.streamText || '';
+            const next = existing + delta;
+            el.dataset.streamText = next;
+            // Use textContent for stable appends (no DOM reflow from innerHTML rebuild).
+            el.textContent = next;
+            if (this.autoScrollEnabled) {
+                try { this.scrollToBottom(); } catch (_) {}
+            }
+        } catch (_) {}
     }
 
     _handleStreamingStateChange() {
         // When streaming ends, responses[] already contains the final content.
         if (!this.isStreaming) {
+            // Clear any temporary streaming buffer markers
+            try {
+                const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.responses || []).length - 1);
+                const el = this.shadowRoot?.querySelector(`#answer-${idx}`);
+                if (el) {
+                    delete el.dataset.streamText;
+                }
+            } catch (_) {}
             this.updateResponseContent();
         }
     }
@@ -1817,8 +1810,6 @@ updateResponseContent() {
         try {
             if (!window.require) return;
             const { ipcRenderer } = window.require('electron');
-            // Instant UI bubble (no delay): show the action label immediately.
-            try { ipcRenderer.send('ui-action-triggered', { label: String(actionName || '').trim() || 'Assist' }); } catch (_) {}
             // If Use Screen is enabled, allow screen-only submissions by capturing first.
             try {
                 const useScreen = localStorage.getItem('assistantUseScreen') === 'true';

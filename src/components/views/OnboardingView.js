@@ -440,7 +440,7 @@ export class OnboardingView extends LitElement {
                 icon: 'assets/onboarding/welcome.svg',
                 title: 'Welcome to Firefox',
                 content:
-                    'Your AI assistant that listens and watches, then provides intelligent suggestions automatically during interviews and meetings.',
+                    'Your AI assistant that listens and watches, then provides fast, ready-to-say answers during interviews and meetings when you trigger it.',
             },
             {
                 icon: 'assets/onboarding/security.svg',
@@ -462,7 +462,7 @@ export class OnboardingView extends LitElement {
             {
                 icon: 'assets/onboarding/ready.svg',
                 title: 'Ready to Go',
-                content: 'Add your Gemini API key in settings and start getting AI-powered assistance in real-time.',
+                content: 'Add your Deepgram + OpenAI API keys in Customize → AI Providers, then start your session.',
             },
         ];
 

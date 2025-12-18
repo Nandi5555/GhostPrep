@@ -120,6 +120,10 @@ export class GhostPrepApp extends LitElement {
         transcriptText: { type: String },
         activeAssistantTab: { type: String },
         mainCollapsed: { type: Boolean },
+        // Toast for non-silent failures
+        toastText: { type: String },
+        toastState: { type: String },
+        toastType: { type: String },
     };
 
     constructor() {
@@ -144,6 +148,11 @@ export class GhostPrepApp extends LitElement {
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
         this.mainCollapsed = this.currentView === 'main';
+
+        this.toastText = '';
+        this.toastState = 'hide';
+        this.toastType = 'info';
+        this._toastTimer = null;
     }
 
     connectedCallback() {
@@ -177,32 +186,31 @@ export class GhostPrepApp extends LitElement {
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
             });
-            ipcRenderer.on('update-transcript-stream', (_, delta) => {
-                if (typeof delta === 'string' && delta.length) {
-                    this.transcriptText += delta;
-                    this.requestUpdate();
-                }
-            });
-            ipcRenderer.on('transcript-turn-complete', () => {
-                this.transcriptText += '\n';
-                this.requestUpdate();
-            });
-            // When the user explicitly submits the buffered transcript, record it as a user turn in the chat thread.
-            ipcRenderer.on('transcription-submitted', (_, payload) => {
+            ipcRenderer.on('ui-error', (_, payload) => {
                 try {
-                    // UI rule: show only the action label for transcript-triggered actions.
-                    const display = (payload && (payload.displayText || payload.actionName || payload.text)) ? String(payload.displayText || payload.actionName || payload.text) : '';
-                    if (!display.trim()) return;
-
-                    // IMPORTANT: immutable updates so Lit propagates changes to AssistantView
-                    const nextQuestions = [...(this.questions || []), display.trim()];
+                    const msg = String(payload?.message || 'Unknown error');
+                    this.showToast(msg, 'error');
+                } catch (_) {}
+            });
+            // Cluely-style transcript streaming:
+            // - interim replaces the current draft
+            // - final commits into finalText (with newlines) without duplication
+            ipcRenderer.on('update-transcript', (_, payload) => {
+                try {
+                    const finalText = String(payload?.finalText || '');
+                    const draftText = String(payload?.draftText || '');
+                    this.transcriptText = `${finalText}${draftText}`;
+                    this.requestUpdate();
+                } catch (_) {}
+            });
+            // Cluely-style: voice-based submits also create a real chat user bubble with transcript snapshot.
+            ipcRenderer.on('chat-user-turn', (_, payload) => {
+                try {
+                    const text = String(payload?.text || '').trim();
+                    if (!text) return;
+                    const nextQuestions = [...(this.questions || []), text];
                     let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
-
-                    // Keep arrays aligned: create a placeholder answer slot for this user turn.
-                    if (nextResponses.length < nextQuestions.length) {
-                        nextResponses.push('');
-                    }
-
+                    if (nextResponses.length < nextQuestions.length) nextResponses.push('');
                     this.questions = nextQuestions;
                     this.responses = nextResponses;
                     this.currentResponseIndex = nextQuestions.length - 1;
@@ -223,10 +231,24 @@ export class GhostPrepApp extends LitElement {
             ipcRenderer.removeAllListeners('update-response-stream');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
-            ipcRenderer.removeAllListeners('update-transcript-stream');
-            ipcRenderer.removeAllListeners('transcript-turn-complete');
-            ipcRenderer.removeAllListeners('transcription-submitted');
+            ipcRenderer.removeAllListeners('update-transcript');
+            ipcRenderer.removeAllListeners('chat-user-turn');
+            ipcRenderer.removeAllListeners('ui-error');
         }
+    }
+
+    showToast(message, type = 'info') {
+        this.toastText = message || '';
+        this.toastType = type;
+        this.toastState = 'show';
+        if (this._toastTimer) {
+            clearTimeout(this._toastTimer);
+        }
+        this._toastTimer = setTimeout(() => {
+            this.toastState = 'hide';
+            this.requestUpdate();
+        }, 3200);
+        this.requestUpdate();
     }
 
     setupCheddarCallbacks() {
@@ -244,8 +266,8 @@ export class GhostPrepApp extends LitElement {
         const isMac = navigator.platform.includes('Mac');
         const isLinux = navigator.platform.includes('Linux');
 
-        if (typeof window.cheddar.initializeGemini !== 'function') {
-            window.cheddar.initializeGemini = async () => true;
+        if (typeof window.cheddar.initializeAi !== 'function') {
+            window.cheddar.initializeAi = async () => true;
         }
         if (typeof window.cheddar.startCapture !== 'function') {
             window.cheddar.startCapture = () => {};
@@ -309,8 +331,8 @@ export class GhostPrepApp extends LitElement {
         try {
             if (!partial || typeof partial !== 'string') return;
 
-            // Start streaming on first chunk. We keep showing the dots loader until the FINAL
-            // answer arrives, so we do NOT render partial tokens into `responses[]`.
+            // Start streaming on first chunk.
+            // Cluely-style: stream tokens into the latest answer bubble immediately.
             if (!this._isStreaming) {
                 this._isStreaming = true;
                 this._streamCumulativeTarget = '';
@@ -449,7 +471,7 @@ export class GhostPrepApp extends LitElement {
             // Close the session
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('close-session');
+                await ipcRenderer.invoke('close-ai-session');
             }
             this.sessionActive = false;
             this.currentView = 'main';
@@ -471,23 +493,25 @@ export class GhostPrepApp extends LitElement {
 
     // Main view event handlers
     async handleStart() {
-        // check if api key is empty do nothing
-        const apiKey = localStorage.getItem('apiKey')?.trim();
-        if (!apiKey || apiKey === '') {
-            // Trigger the red blink animation on the API key input
+        // Cluely-style: require provider keys (stored in Customize)
+        const deepgramApiKey = localStorage.getItem('deepgramApiKey')?.trim();
+        const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
+        if (!deepgramApiKey || !openaiApiKey) {
             const mainView = this.shadowRoot.querySelector('main-view');
-            if (mainView && mainView.triggerApiKeyError) {
+            if (mainView && typeof mainView.showToast === 'function') {
+                mainView.showToast('Set Deepgram + OpenAI keys in Customize → AI Providers', 'error');
+            } else if (mainView && mainView.triggerApiKeyError) {
                 mainView.triggerApiKeyError();
             }
             return;
         }
 
         if (window.cheddar) {
-            const success = await window.cheddar.initializeGemini(this.selectedProfile, this.selectedLanguage);
-            if (!success) {
+            const result = await window.cheddar.initializeAi(this.selectedProfile, this.selectedLanguage);
+            if (!result) {
                 const mainView = this.shadowRoot.querySelector('main-view');
                 if (mainView && typeof mainView.showToast === 'function') {
-                    mainView.showToast('Invalid API key', 'error');
+                    mainView.showToast('Failed to start AI session', 'error');
                 }
                 return;
             }
@@ -708,6 +732,14 @@ export class GhostPrepApp extends LitElement {
         const mainContentClass = `main-content ${baseClass} ${collapseClass}`;
 
         return html`
+            <div
+                class="toast ${this.toastState} ${this.toastType}"
+                style="position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:9999; padding:10px 14px; border-radius:12px; color:var(--text-color); background:var(--glass-bg); border:1px solid var(--glass-border); box-shadow: var(--glass-shadow); opacity:${this.toastState === 'show' ? '1' : '0'}; pointer-events:none; transition: opacity 220ms ease;"
+                role="alert"
+                aria-live="polite"
+            >
+                <span>${this.toastText}</span>
+            </div>
             <div class="window-container">
                 <div class="container">
                     <app-header

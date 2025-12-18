@@ -241,11 +241,9 @@ export class MainView extends LitElement {
     }
 
     handleInput(e) {
-        localStorage.setItem('apiKey', e.target.value);
-        // Clear error state when user starts typing
-        if (this.showApiKeyError) {
-            this.showApiKeyError = false;
-        }
+        // Keys are configured in Customize → AI Providers (Deepgram + OpenAI).
+        // Keep this handler as a no-op to preserve layout without storing legacy keys.
+        if (this.showApiKeyError) this.showApiKeyError = false;
     }
 
     handleStartClick() {
@@ -368,9 +366,9 @@ export class MainView extends LitElement {
             <div class="input-group">
                 <input
                     type="password"
-                    placeholder="Enter your Gemini API Key"
-                    .value=${localStorage.getItem('apiKey') || ''}
-                    @input=${this.handleInput}
+                    placeholder="Set Deepgram + OpenAI keys in Customize → AI Providers"
+                    .value=${''}
+                    disabled
                     class="${this.showApiKeyError ? 'api-key-error' : ''}"
                 />
                 <button @click=${this.handleStartClick} class="start-button ${this.isInitializing ? 'initializing' : ''}">

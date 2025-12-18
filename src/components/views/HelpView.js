@@ -393,7 +393,7 @@ export class HelpView extends LitElement {
                         <span>How to Use</span>
                     </div>
                     <div class="usage-steps">
-                        <div class="usage-step"><strong>Start a Session:</strong> Enter your Gemini API key and click "Start Session"</div>
+                        <div class="usage-step"><strong>Start a Session:</strong> Set Deepgram + OpenAI keys in Customize → AI Providers, then click "Start Session"</div>
                         <div class="usage-step"><strong>Customize:</strong> Choose your profile and language in the settings</div>
                         <div class="usage-step">
                             <strong>Position Window:</strong> Use keyboard shortcuts to move the window to your desired location
@@ -402,7 +402,7 @@ export class HelpView extends LitElement {
                             <strong>Click-through Mode:</strong> Use ${this.formatKeybind(this.keybinds.toggleClickThrough)} to make the window
                             click-through
                         </div>
-                        <div class="usage-step"><strong>Get AI Help:</strong> The AI will analyze your screen and audio to provide assistance</div>
+                        <div class="usage-step"><strong>Get AI Help:</strong> Press Ctrl/Cmd+Enter to instantly generate an answer from the current transcript (and optional screen)</div>
                         <div class="usage-step"><strong>Text Messages:</strong> Type questions or requests to the AI using the text input</div>
                         <div class="usage-step">
                             <strong>Navigate Responses:</strong> Use ${this.formatKeybind(this.keybinds.previousResponse)} and

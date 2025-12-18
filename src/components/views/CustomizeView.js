@@ -718,6 +718,10 @@ export class CustomizeView extends LitElement {
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         activeCategory: { type: String },
+        // AI provider keys (stored in localStorage, same pattern as other settings)
+        deepgramApiKey: { type: String },
+        openaiApiKey: { type: String },
+        openaiModel: { type: String },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
         onAudioModeChange: { type: Function },
@@ -766,6 +770,11 @@ export class CustomizeView extends LitElement {
         this.fontSize = 20;
 
         this.activeCategory = 'profile';
+
+        // AI providers (required to start a session)
+        this.deepgramApiKey = localStorage.getItem('deepgramApiKey') || '';
+        this.openaiApiKey = localStorage.getItem('openaiApiKey') || '';
+        this.openaiModel = localStorage.getItem('openaiModel') || 'gpt-4.1-nano';
 
         this.loadKeybinds();
         this.loadGoogleSearchSettings();
@@ -1343,6 +1352,7 @@ export class CustomizeView extends LitElement {
 
         const navItems = [
             { id: 'profile', label: 'Profile' },
+            { id: 'providers', label: 'AI Providers' },
             { id: 'appearance', label: 'Appearance' },
             { id: 'audio', label: 'Audio' },
             { id: 'language', label: 'Language' },
@@ -1434,6 +1444,11 @@ export class CustomizeView extends LitElement {
                     <path d="M11 5 7 9H4v6h3l4 4V5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
                     <path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                     <path d="M18.8 6.2a8 8 0 0 1 0 11.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.8"/>
+                </svg>`;
+            case 'providers':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 3 4 7v6c0 5 3 8 8 8s8-3 8-8V7l-8-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M9.5 12l1.7 1.7L14.8 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
             case 'language':
                 return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1533,6 +1548,60 @@ export class CustomizeView extends LitElement {
                                     Personalize the AI's behavior with specific instructions that will be added to the
                                     ${profileNames[this.selectedProfile] || 'selected profile'} base prompts. This field is read-only — use
                                     "Manage Prompts" to edit.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+            case 'providers':
+                return html`
+                    <div class="settings-section">
+                        <div class="section-title"><span>AI Providers</span></div>
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label class="form-label">Deepgram Streaming ASR API Key</label>
+                                <input
+                                    class="form-control"
+                                    type="password"
+                                    autocomplete="off"
+                                    placeholder="dg_..."
+                                    .value=${this.deepgramApiKey || ''}
+                                    @input=${e => this.handleDeepgramKeyInput(e)}
+                                />
+                                <div class="form-description">
+                                    Used only for streaming speech-to-text. Required to start a session.
+                                </div>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label class="form-label">OpenAI Answer LLM API Key</label>
+                                <input
+                                    class="form-control"
+                                    type="password"
+                                    autocomplete="off"
+                                    placeholder="sk-..."
+                                    .value=${this.openaiApiKey || ''}
+                                    @input=${e => this.handleOpenAiKeyInput(e)}
+                                />
+                                <div class="form-description">
+                                    Used only for answer generation (text + optional screenshots). Required to start a session.
+                                </div>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label class="form-label">OpenAI Model (Answer Generation)</label>
+                                <gp-select
+                                    .value=${this.openaiModel || 'gpt-4.1-nano'}
+                                    .options=${[
+                                        { value: 'gpt-4.1-nano', label: 'GPT-4.1 nano (fastest / low latency)' },
+                                        { value: 'gpt-4o-mini', label: 'GPT-4o mini (fast + strong)' },
+                                        { value: 'gpt-5-mini', label: 'GPT-5 mini (if available)' },
+                                    ]}
+                                    @gp-change=${e => this.handleOpenAiModelSelect({ target: { value: e.detail.value } })}
+                                ></gp-select>
+                                <div class="form-description">
+                                    Default is GPT-4.1 nano for lowest latency. If unavailable on your account, the app will fall back automatically.
                                 </div>
                             </div>
                         </div>
@@ -1857,6 +1926,25 @@ export class CustomizeView extends LitElement {
             default:
                 return html``;
         }
+    }
+
+    handleDeepgramKeyInput(e) {
+        const v = String(e?.target?.value || '');
+        this.deepgramApiKey = v;
+        try { localStorage.setItem('deepgramApiKey', v); } catch (_) {}
+    }
+
+    handleOpenAiKeyInput(e) {
+        const v = String(e?.target?.value || '');
+        this.openaiApiKey = v;
+        try { localStorage.setItem('openaiApiKey', v); } catch (_) {}
+    }
+
+    handleOpenAiModelSelect(e) {
+        const v = String(e?.target?.value || '').trim() || 'gpt-4.1-nano';
+        this.openaiModel = v;
+        try { localStorage.setItem('openaiModel', v); } catch (_) {}
+        this.requestUpdate();
     }
 }
 

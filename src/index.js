@@ -1,13 +1,16 @@
 // Disable TLS certificate verification to work behind corporate SSL inspection
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// Suppress npm update notices in logs
+process.env.npm_config_update_notifier = 'false';
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
 
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
-const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
+const { setupAiIpcHandlers, stopMacOSSystemAudioCapture, sendToRenderer } = require('./utils/aiPipeline');
 
+// Legacy param kept for window shortcut wiring; AI pipeline is managed internally.
 const geminiSessionRef = { current: null };
 let mainWindow = null;
 
@@ -18,19 +21,19 @@ function createMainWindow() {
 
 app.whenReady().then(() => {
     createMainWindow();
-    setupGeminiIpcHandlers(geminiSessionRef);
+    setupAiIpcHandlers();
     setupGeneralIpcHandlers();
 });
 
 app.on('window-all-closed', () => {
-    stopMacOSAudioCapture();
+    stopMacOSSystemAudioCapture();
     if (process.platform !== 'darwin') {
         app.quit();
     }
 });
 
 app.on('before-quit', () => {
-    stopMacOSAudioCapture();
+    stopMacOSSystemAudioCapture();
 });
 
 app.on('activate', () => {
@@ -42,7 +45,7 @@ app.on('activate', () => {
 function setupGeneralIpcHandlers() {
     ipcMain.handle('quit-application', async event => {
         try {
-            stopMacOSAudioCapture();
+            stopMacOSSystemAudioCapture();
             app.quit();
             return { success: true };
         } catch (error) {

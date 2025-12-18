@@ -10,7 +10,7 @@ let audioProcessor = null;
   // Smaller chunks reduce end-to-end latency for very short questions (more IPC overhead, but still light).
   const AUDIO_CHUNK_DURATION = 0.02;
   const BUFFER_SIZE = 256;
-  let audioPauseUntil = 0;
+  // Cluely-style: never pause/hold audio around submits; ASR should run continuously.
   // Simple VAD config for auto end-of-speech detection
   // Lower default silence improves "speak then immediately Ctrl+Enter" responsiveness.
   // If this feels too aggressive in noisy rooms, increase via localStorage: vadSilenceMs.
@@ -56,7 +56,7 @@ let tokenTracker = {
         this.cleanOldTokens();
     },
 
-    // Calculate image tokens based on Gemini 2.0 rules
+    // Calculate image tokens (used only for local throttling of screenshot capture)
     calculateImageTokens(width, height) {
         // Images ≤384px in both dimensions = 258 tokens
         if (width <= 384 && height <= 384) {
@@ -146,9 +146,11 @@ function convertFloat32ToInt16(float32Array) {
 
 // Renderer-side base64 conversion removed to reduce main-thread CPU; raw PCM sent to main.
 
-async function initializeGemini(profile = 'interview', language = 'en-US') {
-    const apiKey = localStorage.getItem('apiKey')?.trim();
-    if (apiKey) {
+async function initializeAi(profile = 'interview', language = 'en-US') {
+    const deepgramApiKey = localStorage.getItem('deepgramApiKey')?.trim();
+    const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
+    const openaiModel = (localStorage.getItem('openaiModel') || 'gpt-4.1-nano').trim();
+    if (deepgramApiKey && openaiApiKey) {
         // Determine active custom prompt content from the prompt library.
         // Fallback to legacy single customPrompt if no library/active prompt is set.
         let activeCustomPrompt = '';
@@ -166,34 +168,25 @@ async function initializeGemini(profile = 'interview', language = 'en-US') {
             activeCustomPrompt = localStorage.getItem('customPrompt') || '';
         }
 
-        // Preflight: validate API key via a lightweight models listing call
-        try {
-            const resp = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
-                { method: 'GET', cache: 'no-store' }
-            );
-            if (!resp.ok) {
-                cheddar.e().setStatus('Invalid API key');
-                return false;
-            }
-        } catch (_) {
-            // Network errors: treat as failure so we don't proceed to live connect
-            cheddar.e().setStatus('Network error');
-            return false;
-        }
-
-        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, activeCustomPrompt, profile, language);
-        if (success) {
+        const result = await ipcRenderer.invoke('initialize-ai', {
+            deepgramApiKey,
+            openaiApiKey,
+            openaiModel,
+            customPrompt: activeCustomPrompt,
+            profile,
+            language,
+        });
+        if (result && result.success) {
             cheddar.e().setStatus('Live');
-            try { window.__geminiLiveReady = true; } catch (_) {}
+            try { window.__aiReady = true; } catch (_) {}
             return true;
         } else {
-            cheddar.e().setStatus('error');
-            try { window.__geminiLiveReady = false; } catch (_) {}
+            cheddar.e().setStatus((result && result.error) ? String(result.error) : 'error');
+            try { window.__aiReady = false; } catch (_) {}
             return false;
         }
     }
-    try { window.__geminiLiveReady = false; } catch (_) {}
+    try { window.__aiReady = false; } catch (_) {}
     return false;
 }
 
@@ -202,15 +195,10 @@ ipcRenderer.on('update-status', (event, status) => {
     cheddar.e().setStatus(status);
 });
 
-// Listen for responses - REMOVED: This is handled in GhostPrepApp.js to avoid duplicates
-// ipcRenderer.on('update-response', (event, response) => {
-//     console.log('Gemini response:', response);
-//     cheddar.e().setResponse(response);
-//     // You can add UI elements to display the response if needed
-// });
+// Listen for responses - handled in GhostPrepApp.js to avoid duplicates
 
 async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
-    if (!window.__geminiLiveReady) {
+    if (!window.__aiReady) {
         return;
     }
     // Store the image quality for manual screenshots
@@ -226,7 +214,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             if (audioMode === 'speaker') {
                 // Start macOS system audio capture
-                const audioResult = await ipcRenderer.invoke('start-macos-audio');
+                const audioResult = await ipcRenderer.invoke('start-macos-system-audio');
                 if (!audioResult.success) {
                     throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
                 }
@@ -383,7 +371,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 }
 
 async function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
-    if (!window.__geminiLiveReady) return;
+    if (!window.__aiReady) return;
     const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
     if (!useScreen) return;
     // Inform main process that screen is enabled (await to avoid race with first capture)
@@ -403,7 +391,7 @@ async function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, image
 // Expose renderer utilities to app shell
 try {
     window.cheddar = window.cheddar || {};
-    window.cheddar.initializeGemini = initializeGemini;
+    window.cheddar.initializeAi = initializeAi;
     window.cheddar.startCapture = startCapture;
 } catch (_) {}
 
@@ -418,9 +406,6 @@ function setupLinuxMicProcessing(micStream) {
 
     micProcessor.onaudioprocess = async e => {
         lastAudioProcessTs = Date.now();
-        if (audioPauseUntil && Date.now() < audioPauseUntil) {
-            return;
-        }
         const inputData = e.inputBuffer.getChannelData(0);
 
         // Voice activity detection (Linux mic) - used for UI indicators and to signal end-of-speech;
@@ -484,9 +469,6 @@ function setupWindowsLoopbackProcessing() {
 
     audioProcessor.onaudioprocess = async e => {
         lastAudioProcessTs = Date.now();
-        if (audioPauseUntil && Date.now() < audioPauseUntil) {
-            return;
-        }
         const inputData = e.inputBuffer.getChannelData(0);
 
         // Voice activity detection (Windows loopback) - used for UI indicators and to signal end-of-speech;
@@ -558,7 +540,9 @@ function startAudioHealthMonitor() {
 }
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
-    // Capturing screenshot
+    try {
+        console.log('[AI][RENDERER] Screenshot capture start', { quality: imageQuality, isManual });
+    } catch (_) {}
     if (!mediaStream) return { success: false, error: 'No media stream' };
 
     // Check rate limiting for automated screenshots only
@@ -653,12 +637,15 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                             // Track image tokens after successful send
                             const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
                             tokenTracker.addTokens(imageTokens, 'image');
+                            try { console.log('[AI][RENDERER] Screenshot capture complete', { ok: true }); } catch (_) {}
                             return resolve({ success: true });
                         }
                         console.error('Failed to send image:', result?.error);
+                        try { console.log('[AI][RENDERER] Screenshot capture complete', { ok: false, error: result?.error }); } catch (_) {}
                         return resolve({ success: false, error: result?.error || 'Failed to send image' });
                     } catch (e) {
                         console.error('Error sending image:', e);
+                        try { console.log('[AI][RENDERER] Screenshot capture complete', { ok: false, error: e?.message }); } catch (_) {}
                         return resolve({ success: false, error: e?.message || 'Error sending image' });
                     }
                 };
@@ -701,7 +688,7 @@ function stopCapture() {
 
     // Stop macOS audio capture if running
     if (isMacOS) {
-        ipcRenderer.invoke('stop-macos-audio').catch(err => {
+        ipcRenderer.invoke('stop-macos-system-audio').catch(err => {
             console.error('Error stopping macOS audio:', err);
         });
     }
@@ -738,7 +725,7 @@ function stopScreenCapture() {
     try { ipcRenderer.invoke('set-use-screen-enabled', false).catch(() => {}); } catch (_) {}
 }
 
-// Send text message to Gemini
+// Send text message to the Answer LLM (OpenAI)
 async function sendTextMessage(text) {
     if (!text || text.trim().length === 0) {
         console.warn('Cannot send empty text message');
@@ -897,6 +884,7 @@ async function handleShortcut(shortcutKey) {
     const currentView = window.cheddar.getCurrentView ? window.cheddar.getCurrentView() : null;
 
     if (shortcutKey === 'ctrl+enter' || shortcutKey === 'cmd+enter') {
+        try { console.log('[AI][RENDERER] Ctrl/Cmd+Enter detected', { currentView }); } catch (_) {}
         if (currentView === 'main') {
             // Trigger the start session from main view
 
@@ -919,15 +907,12 @@ async function handleShortcut(shortcutKey) {
                 }
             }
         } else {
-            // Instant UI bubble (no delay): show the action label immediately.
-            try { ipcRenderer.send('ui-action-triggered', { label: 'Assist' }); } catch (_) {}
             const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
             if (useScreen) {
                 // Best-effort only: do not block the send action on screenshot capture,
                 // otherwise there is a noticeable delay after Ctrl+Enter.
                 try { captureManualScreenshot().catch?.(() => {}); } catch (_) {}
             }
-            audioPauseUntil = Date.now() + 120;
             ipcRenderer
                 .invoke('send-current-transcription', {
                     actionName: 'Assist',
@@ -949,7 +934,7 @@ async function handleShortcut(shortcutKey) {
 }
 
     window.cheddar = {
-        initializeGemini,
+        initializeAi,
         startCapture,
         stopCapture,
         startScreenCaptureScheduling,

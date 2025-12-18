@@ -248,6 +248,8 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
         try {
             globalShortcut.register(keybinds.nextStep, async () => {
                 try {
+                    // Debug visibility: confirm the OS-level shortcut fired (Cluely-style "instant submit" depends on this).
+                    try { console.log('[AI][SUBMIT] Global shortcut triggered:', keybinds.nextStep); } catch (_) {}
                     // Determine the shortcut key format
                     const isMac = process.platform === 'darwin';
                     const shortcutKey = isMac ? 'cmd+enter' : 'ctrl+enter';
