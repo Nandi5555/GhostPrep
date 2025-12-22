@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { formatAnswer } from '../../utils/answerFormatter.js';
 
 export class AssistantView extends LitElement {
     static styles = css`
@@ -1457,7 +1458,8 @@ updateResponseContent() {
     // is incrementally appended by the app.
     const ansText = ((this.responses || [])[i] || '');
 
-    const ansRendered = this.renderMarkdown(ansText, false);
+    const formattedText = formatAnswer(ansText, q, null);
+    const ansRendered = this.renderMarkdown(formattedText, false);
 
     const isLatest = i === maxLen - 1;
 
