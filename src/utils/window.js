@@ -10,6 +10,23 @@ const MIN_ASSISTANT_H = 450;
 const MAX_ASSISTANT_W = 635;
 const MAX_ASSISTANT_H = 635;
 
+// Runtime content protection state:
+// - undetectableEnabledRuntime: driven by the user's Undetectable toggle
+// - aiCaptureExclusionRuntime: driven by our internal AI capture session (screen/video stream)
+// Effective contentProtection = undetectableEnabledRuntime || aiCaptureExclusionRuntime
+let undetectableEnabledRuntime = false;
+let aiCaptureExclusionRuntime = false;
+
+function applyContentProtectionState(mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const next = !!undetectableEnabledRuntime || !!aiCaptureExclusionRuntime;
+    try {
+        mainWindow.setContentProtection(next);
+    } catch (e) {
+        console.error('Failed to apply content protection state:', e);
+    }
+}
+
 function createWindow(sendToRenderer, geminiSessionRef) {
     // Compact mode is the ONLY supported layout mode.
     // Start directly in compact sizing (fresh installs should never see "normal").
@@ -90,7 +107,8 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         if (mainWindow.isDestroyed()) return;
         const contentProtection = await readUndetectableFromStorage();
         try {
-            mainWindow.setContentProtection(!!contentProtection);
+            undetectableEnabledRuntime = !!contentProtection;
+            applyContentProtectionState(mainWindow);
         } catch (e) {
             console.error('Failed to apply content protection:', e);
         }
@@ -130,7 +148,8 @@ function createWindow(sendToRenderer, geminiSessionRef) {
                 })
                 .catch(() => {
                     // Default to content protection OFF (visible)
-                    mainWindow.setContentProtection(false);
+                    undetectableEnabledRuntime = false;
+                    applyContentProtectionState(mainWindow);
                     updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
                     try {
                         mainWindow.showInactive();
@@ -320,6 +339,26 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
 }
 
 function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
+    // Internal AI capture exclusion:
+    // We must exclude THIS window from the screen/video stream used for AI screenshots,
+    // regardless of the user's Undetectable toggle, but without persisting it.
+    // This is done by keeping contentProtection enabled for the entire capture session.
+    ipcMain.handle('set-ai-capture-exclusion', async (_event, enabled) => {
+        try {
+            if (mainWindow.isDestroyed()) return { success: false, error: 'Window destroyed' };
+            aiCaptureExclusionRuntime = !!enabled;
+            applyContentProtectionState(mainWindow);
+            return {
+                success: true,
+                enabled: aiCaptureExclusionRuntime,
+                undetectable: undetectableEnabledRuntime,
+                effective: !!undetectableEnabledRuntime || !!aiCaptureExclusionRuntime,
+            };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
+        }
+    });
+
     ipcMain.on('view-changed', (event, view) => {
         if (mainWindow.isDestroyed()) return;
         // Enable full-window resizing when Assistant view is active
@@ -374,7 +413,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
                 return { success: false, error: 'Window has been destroyed' };
             }
             const on = !!enabled;
-            mainWindow.setContentProtection(on);
+            undetectableEnabledRuntime = on;
+            applyContentProtectionState(mainWindow);
             return { success: true };
         } catch (error) {
             console.error('Error setting undetectable mode:', error);
@@ -400,6 +440,40 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         const [width, height] = mainWindow.getSize();
         const [x, y] = mainWindow.getPosition();
         return { x, y, width, height };
+    });
+
+    // New: expose display metrics so renderer can accurately redact the app window from AI screenshots
+    ipcMain.handle('get-primary-display-metrics', () => {
+        try {
+            const d = screen.getPrimaryDisplay();
+            return {
+                bounds: d.bounds,
+                workArea: d.workArea,
+                scaleFactor: d.scaleFactor,
+                size: d.size,
+                workAreaSize: d.workAreaSize,
+            };
+        } catch (e) {
+            return { bounds: null, workArea: null, scaleFactor: 1, size: null, workAreaSize: null };
+        }
+    });
+
+    // New: expose the display that currently contains the app window (more accurate than primary).
+    ipcMain.handle('get-window-display-metrics', () => {
+        try {
+            if (mainWindow.isDestroyed()) return { bounds: null, workArea: null, scaleFactor: 1, size: null, workAreaSize: null };
+            const b = mainWindow.getBounds();
+            const d = screen.getDisplayMatching(b);
+            return {
+                bounds: d.bounds,
+                workArea: d.workArea,
+                scaleFactor: d.scaleFactor,
+                size: d.size,
+                workAreaSize: d.workAreaSize,
+            };
+        } catch (e) {
+            return { bounds: null, workArea: null, scaleFactor: 1, size: null, workAreaSize: null };
+        }
     });
 
     ipcMain.handle('set-window-bounds', (event, bounds) => {

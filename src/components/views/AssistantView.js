@@ -158,6 +158,58 @@ export class AssistantView extends LitElement {
         .message-block .chat-row.right { margin-bottom: 0; }
         .chat-row.actions { margin-top: 0; margin-bottom: 0; }
 
+        /* Cluely-style: "Sent with screenshot" + hover preview */
+        .screenshot-meta-row {
+            display: flex;
+            justify-content: flex-end;
+            margin: 4px 6px 0 0;
+        }
+        .screenshot-meta {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.55);
+        }
+        .screenshot-meta .icon {
+            width: 14px;
+            height: 14px;
+            opacity: 0.7;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .screenshot-meta:hover { color: rgba(255, 255, 255, 0.75); }
+        .screenshot-popover {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: calc(100% + 8px);
+            transform: none;
+            width: min(320px, 72vw);
+            max-height: min(240px, calc(100vh - 140px));
+            padding: 8px;
+            border-radius: 12px;
+            background: rgba(20, 22, 28, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(10px);
+            z-index: 50;
+            overflow: auto;
+        }
+        .screenshot-meta[data-popover-pos="up"] .screenshot-popover {
+            top: auto;
+            bottom: calc(100% + 8px);
+        }
+        .screenshot-meta:hover .screenshot-popover { display: block; }
+        .screenshot-popover img {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+            display: block;
+        }
+
         .answer-block.placeholder {
             min-height: var(--answer-placeholder-height, 120px);
         }
@@ -1284,14 +1336,25 @@ scrollToTop() {
             this._snapToActivePending = true;
 
             this.requestUpdate(); 
+            // Capture a screenshot exactly at submit time (no interval).
+            let screenshotPreviewDataUrl = '';
+            try {
+                if (this.useScreen && typeof window.captureManualScreenshotWithPreview === 'function') {
+                    const quality = localStorage.getItem('selectedImageQuality') || 'medium';
+                    const cap = await window.captureManualScreenshotWithPreview(quality);
+                    if (cap && cap.success && cap.previewDataUrl) {
+                        screenshotPreviewDataUrl = cap.previewDataUrl;
+                    }
+                }
+            } catch (_) {}
 
-            await this.onSendText(message);
+            await this.onSendText(message, { screenshotPreviewDataUrl });
         }
     }
 
     
 
-    handleTextKeydown(e) {
+    async handleTextKeydown(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             const textInput = this.shadowRoot?.querySelector('#textInput');
@@ -1305,11 +1368,13 @@ scrollToTop() {
                         // is unavailable (startup/init edge cases), we must still show UI feedback and
                         // submit the buffered transcription.
 
-                        // Do NOT wait for screenshot: waiting here creates a visible delay after Enter.
-                        // If available, capture a manual screenshot best-effort.
                         try {
-                            if (typeof window.captureManualScreenshot === 'function') {
-                                window.captureManualScreenshot().catch?.(() => {});
+                            if (typeof window.captureManualScreenshotWithPreview === 'function') {
+                                const quality = localStorage.getItem('selectedImageQuality') || 'medium';
+                                const cap = await window.captureManualScreenshotWithPreview(quality);
+                                if (cap && cap.success && cap.previewDataUrl) {
+                                    try { window.__stashNextChatScreenshotPreview?.(cap.previewDataUrl); } catch (_) {}
+                                }
                             }
                         } catch (_) {}
 
@@ -1398,20 +1463,6 @@ scrollToTop() {
                     await ipcRenderer.invoke('set-use-screen-enabled', this.useScreen);
                 }
             } catch (_) {}
-
-            if (this.useScreen) {
-                const interval = localStorage.getItem('selectedScreenshotInterval') || '5';
-                const quality = localStorage.getItem('selectedImageQuality') || 'medium';
-                if (window.cheddar && typeof window.cheddar.startScreenCaptureScheduling === 'function') {
-                    await window.cheddar.startScreenCaptureScheduling(interval, quality);
-                } else if (window.cheddar && typeof window.cheddar.startCapture === 'function') {
-                    await window.cheddar.startCapture(interval, quality);
-                }
-            } else {
-                if (window.cheddar && typeof window.cheddar.stopScreenCapture === 'function') {
-                    await window.cheddar.stopScreenCapture();
-                }
-            }
         } catch (_) {}
         this.requestUpdate();
     }
@@ -1542,7 +1593,12 @@ updateResponseContent() {
     let htmlStr = '';
 
     for (let i = 0; i < maxLen; i++) {
-        const q = (this.questions || [])[i] || '';
+        const qItem = (this.questions || [])[i] || '';
+        const q = typeof qItem === 'string' ? qItem : String(qItem?.text || '');
+        const screenshotPreview =
+            typeof qItem === 'object' && qItem?.screenshot?.previewDataUrl
+                ? String(qItem.screenshot.previewDataUrl)
+                : '';
         const isCurrent = i === this.currentResponseIndex;
 
     // We render the response from `responses[]` directly so the first streamed token
@@ -1574,6 +1630,23 @@ updateResponseContent() {
                     </button>
                 </div>
             </div>`;
+        if (screenshotPreview) {
+            htmlStr += `
+                <div class="screenshot-meta-row">
+                    <div class="screenshot-meta" aria-label="Sent with screenshot">
+                        <span>Sent with screenshot</span>
+                        <span class="icon" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" opacity="0.9"/>
+                                <path d="M7 15l2.5-3 3 4 3.5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+                            </svg>
+                        </span>
+                        <div class="screenshot-popover" role="dialog" aria-label="Captured screenshot preview">
+                            <img src="${escape(screenshotPreview)}" alt="Captured screenshot preview" />
+                        </div>
+                    </div>
+                </div>`;
+        }
     }
 
     if ((thinkingText && thinkingText.trim()) || (isCurrent && this.isThinking)) {
@@ -1644,6 +1717,22 @@ updateResponseContent() {
             } else if (type === 'answer') {
                 this.copyAnswer(idx);
             }
+        });
+    }
+
+    // Keep screenshot preview popover within the visible viewport by flipping up/down on hover.
+    if (!this._screenshotPopoverBound) {
+        this._screenshotPopoverBound = true;
+        container.addEventListener('mouseover', (e) => {
+            const meta = e.target?.closest?.('.screenshot-meta');
+            if (!meta) return;
+            // Estimate desired popover height; if there's not enough room below, flip upward.
+            const rect = meta.getBoundingClientRect();
+            const desired = 240;
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            const pos = (spaceBelow < desired && spaceAbove > spaceBelow) ? 'up' : 'down';
+            try { meta.dataset.popoverPos = pos; } catch (_) {}
         });
     }
 
@@ -1996,12 +2085,14 @@ updateResponseContent() {
         try {
             if (!window.require) return;
             const { ipcRenderer } = window.require('electron');
-            // If Use Screen is enabled, allow screen-only submissions by capturing first.
             try {
                 const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
-                if (useScreen && typeof window.captureManualScreenshot === 'function') {
-                    // Best-effort. Waiting here causes a visible "nothing happens" gap after click.
-                    window.captureManualScreenshot().catch?.(() => {});
+                if (useScreen && typeof window.captureManualScreenshotWithPreview === 'function') {
+                    const quality = localStorage.getItem('selectedImageQuality') || 'medium';
+                    const cap = await window.captureManualScreenshotWithPreview(quality);
+                    if (cap && cap.success && cap.previewDataUrl) {
+                        try { window.__stashNextChatScreenshotPreview?.(cap.previewDataUrl); } catch (_) {}
+                    }
                 }
             } catch (_) {}
             await ipcRenderer.invoke('send-current-transcription', {

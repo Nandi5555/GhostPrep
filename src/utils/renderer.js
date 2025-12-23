@@ -23,6 +23,7 @@ let hiddenVideo = null;
 let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
+let pendingScreenshotPreviewDataUrl = null; // attach to the next chat-user-turn (Assist/voice submit)
 
 // Transcription mode:
 // - manual: buffer transcription continuously, generate answers only on explicit user action
@@ -217,6 +218,10 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     tokenTracker.reset();
 
     try {
+        // Ensure this window is excluded from the capture stream used for AI screenshots.
+        // Critical: must be set BEFORE getDisplayMedia so the stream never contains our UI.
+        try { await ipcRenderer.invoke('set-ai-capture-exclusion', true); } catch (_) {}
+
         const audioMode = (localStorage.getItem('selectedAudioMode') || 'speaker').toLowerCase();
         audioModeCurrent = audioMode;
         if (isMacOS) {
@@ -353,25 +358,16 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
         // MediaStream obtained
 
-        // Start capturing screenshots only if Use Screen is enabled
+        // IMPORTANT: keep the old capture pipeline (display media stream),
+        // but do NOT do interval-based screenshots anymore.
+        // We will capture only at the moment the user submits a question.
         const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
-        // Inform main process of current screen gate state at session start
         try { await ipcRenderer.invoke('set-use-screen-enabled', useScreen); } catch (_) {}
-        if (useScreen) {
-            // check if manual mode
-            if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
-                // Don't start automatic capture in manual mode
-            } else {
-                const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
-                screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
-
-                // Capture first screenshot immediately
-                setTimeout(() => captureScreenshot(imageQuality), 100);
-            }
-        }
     } catch (err) {
         console.error('Error starting capture:', err);
         cheddar.e().setStatus('error');
+        // If capture did not start, revert capture-only exclusion.
+        try { await ipcRenderer.invoke('set-ai-capture-exclusion', false); } catch (_) {}
     }
 
     try {
@@ -380,21 +376,8 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 }
 
 async function startScreenCaptureScheduling(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
-    if (!window.__aiReady) return;
-    const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
-    if (!useScreen) return;
-    // Inform main process that screen is enabled (await to avoid race with first capture)
-    try { await ipcRenderer.invoke('set-use-screen-enabled', true); } catch (_) {}
-    if (screenshotIntervalSeconds === 'manual' || screenshotIntervalSeconds === 'Manual') {
-        return;
-    }
-    const intervalMilliseconds = parseInt(screenshotIntervalSeconds) * 1000;
-    if (screenshotInterval) {
-        try { clearInterval(screenshotInterval); } catch (_) {}
-        screenshotInterval = null;
-    }
-    screenshotInterval = setInterval(() => captureScreenshot(imageQuality), intervalMilliseconds);
-    setTimeout(() => captureScreenshot(imageQuality), 100);
+    // Deprecated: interval scheduling removed. Keep as no-op for backward compatibility.
+    return;
 }
 
 // Expose renderer utilities to app shell
@@ -585,6 +568,8 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
         return { success: false, error: 'Video not ready' };
     }
 
+    // Avoid flicker: do NOT hide/opacity-toggle the app window here.
+    // The window should already be excluded from the stream via set-ai-capture-exclusion(true).
     offscreenContext.drawImage(hiddenVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
     // Check if image was drawn properly by sampling a pixel
@@ -625,7 +610,8 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                 const reader = new FileReader();
                 reader.onloadend = async () => {
                     try {
-                        const base64data = reader.result.split(',')[1];
+                        const dataUrl = String(reader.result || '');
+                        const base64data = dataUrl.split(',')[1];
 
                         // Validate base64 data
                         if (!base64data || base64data.length < 100) {
@@ -647,7 +633,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                             const imageTokens = tokenTracker.calculateImageTokens(offscreenCanvas.width, offscreenCanvas.height);
                             tokenTracker.addTokens(imageTokens, 'image');
                             try { console.log('[AI][RENDERER] Screenshot capture complete', { ok: true }); } catch (_) {}
-                            return resolve({ success: true });
+                            return resolve({ success: true, previewDataUrl: dataUrl });
                         }
                         console.error('Failed to send image:', result?.error);
                         try { console.log('[AI][RENDERER] Screenshot capture complete', { ok: false, error: result?.error }); } catch (_) {}
@@ -673,6 +659,24 @@ async function captureManualScreenshot(imageQuality = null) {
 
 // Expose functions to global scope for external access
 window.captureManualScreenshot = captureManualScreenshot;
+
+// Capture + return preview for UI chip
+async function captureManualScreenshotWithPreview(imageQuality = null) {
+    const res = await captureManualScreenshot(imageQuality);
+    if (res && res.success && res.previewDataUrl) return { success: true, previewDataUrl: res.previewDataUrl };
+    return { success: false, error: res?.error || 'Capture failed' };
+}
+window.captureManualScreenshotWithPreview = captureManualScreenshotWithPreview;
+
+// Allow voice/assist submits to attach the preview to the next chat turn
+window.__stashNextChatScreenshotPreview = (dataUrl) => {
+    try { pendingScreenshotPreviewDataUrl = String(dataUrl || '') || null; } catch (_) { pendingScreenshotPreviewDataUrl = null; }
+};
+window.__popNextChatScreenshotPreview = () => {
+    const v = pendingScreenshotPreviewDataUrl;
+    pendingScreenshotPreviewDataUrl = null;
+    return v;
+};
 
 function stopCapture() {
     if (screenshotInterval) {
@@ -715,6 +719,9 @@ function stopCapture() {
         try { clearInterval(audioHealthInterval); } catch (_) {}
         audioHealthInterval = null;
     }
+
+    // End capture-only exclusion (Undetectable may still keep protection enabled).
+    try { ipcRenderer.invoke('set-ai-capture-exclusion', false).catch(() => {}); } catch (_) {}
 }
 
 function stopScreenCapture() {
@@ -732,6 +739,9 @@ function stopScreenCapture() {
     offscreenContext = null;
     // Inform main process to disable and clear buffered screenshots
     try { ipcRenderer.invoke('set-use-screen-enabled', false).catch(() => {}); } catch (_) {}
+
+    // End capture-only exclusion when screen capture is stopped.
+    try { ipcRenderer.invoke('set-ai-capture-exclusion', false).catch(() => {}); } catch (_) {}
 }
 
 // Send text message to the Answer LLM (OpenAI)
@@ -918,9 +928,16 @@ async function handleShortcut(shortcutKey) {
         } else {
             const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
             if (useScreen) {
-                // Best-effort only: do not block the send action on screenshot capture,
-                // otherwise there is a noticeable delay after Ctrl+Enter.
-                try { captureManualScreenshot().catch?.(() => {}); } catch (_) {}
+                // Capture now so this submit includes the screenshot.
+                try {
+                    if (typeof window.captureManualScreenshotWithPreview === 'function') {
+                        const quality = localStorage.getItem('selectedImageQuality') || 'medium';
+                        const cap = await window.captureManualScreenshotWithPreview(quality);
+                        if (cap && cap.success && cap.previewDataUrl) {
+                            try { window.__stashNextChatScreenshotPreview?.(cap.previewDataUrl); } catch (_) {}
+                        }
+                    }
+                } catch (_) {}
             }
             ipcRenderer
                 .invoke('send-current-transcription', {

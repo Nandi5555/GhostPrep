@@ -52,6 +52,14 @@ const DEFAULT_ASSIST_ACTION_PROMPT =
     'Answer the question directly. Treat the transcript as an interviewer question and assume it may contain minor speech-to-text errors. ' +
     'Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.';
 
+const SCREEN_ONLY_ASSIST_PROMPT =
+    'Assist using ONLY the current screen context (screenshot).\n' +
+    '- If the screen shows a question/prompt: answer it directly.\n' +
+    '- If the screen shows code: infer what is being asked (output prediction vs logic explanation vs purpose) and answer accordingly.\n' +
+    '- If the screen shows UI/content: infer the user intent from visible context and help immediately.\n' +
+    '- Be concise, correct, and action-oriented.\n' +
+    '- Do NOT ask clarifying questions unless absolutely necessary.';
+
 // Runtime visibility / debug state
 let asrStatus = 'disconnected'; // connected|disconnected|error|connecting
 let llmStatus = 'ready'; // ready|error
@@ -475,10 +483,10 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         return { success: false, error: 'No transcript or screen available' };
     }
 
-    // For voice-based submits, emit a real chat user bubble with the action label.
-    // The transcript is sent to the model but not displayed in the UI.
-    // This matches Cluely's behavior: voice submissions show the action label, not the transcript.
-    if (!overrideText && snapshotText) {
+    // For "answer now" submits (Ctrl/Cmd+Enter, Assist button, prompt buttons), emit a real chat user bubble
+    // with the action label EVEN WHEN there is no transcript (screen-only).
+    // This matches Cluely behavior: action submits show "Assist" in the UI while using transcript/screen as hidden context.
+    if (!overrideText && (snapshotText || hasImages)) {
         const displayText = actionName && String(actionName).trim() ? String(actionName).trim() : 'Assist';
         emitChatUserTurn({ text: displayText, source: 'voice', actionName });
     }
@@ -530,10 +538,18 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
             ? `${prompt}\n\n${snapshotText}`
             : snapshotText;
     } else {
-        // Screen-only submission (no transcript)
-        userText = actionPrompt && String(actionPrompt).trim()
-            ? String(actionPrompt).trim()
-            : 'Analyze the screenshot and provide the best possible answer based only on what you see.';
+        // Screen-only submission (no transcript).
+        // If this is Assist (or a transcript-focused Assist prompt), use a screen-aware instruction set.
+        const name = String(actionName || '').trim().toLowerCase();
+        const prompt = String(actionPrompt || '').trim();
+        const isAssistLike =
+            !name ||
+            name.includes('assist') ||
+            prompt === DEFAULT_ASSIST_ACTION_PROMPT ||
+            prompt === 'Assist!';
+        userText = isAssistLike
+            ? SCREEN_ONLY_ASSIST_PROMPT
+            : (prompt ? prompt : 'Analyze the screenshot and provide the best possible answer based only on what you see.');
     }
 
     let finalText = '';

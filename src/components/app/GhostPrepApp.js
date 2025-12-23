@@ -218,7 +218,18 @@ export class GhostPrepApp extends LitElement {
                 try {
                     const text = String(payload?.text || '').trim();
                     if (!text) return;
-                    const nextQuestions = [...(this.questions || []), text];
+                    // Attach screenshot preview for this submit (if Use Screen was ON).
+                    let preview = '';
+                    try {
+                        if (typeof window.__popNextChatScreenshotPreview === 'function') {
+                            preview = String(window.__popNextChatScreenshotPreview() || '');
+                        }
+                    } catch (_) {
+                        preview = '';
+                    }
+                    const qItem = preview ? { text, screenshot: { previewDataUrl: preview } } : text;
+
+                    const nextQuestions = [...(this.questions || []), qItem];
                     let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
                     if (nextResponses.length < nextQuestions.length) nextResponses.push('');
                     this.questions = nextQuestions;
@@ -660,10 +671,12 @@ export class GhostPrepApp extends LitElement {
     }
 
     // Assistant view event handlers
-    async handleSendText(message) {
+    async handleSendText(message, { screenshotPreviewDataUrl = '' } = {}) {
         if (window.cheddar) {
             try {
-                const nextQuestions = [...(this.questions || []), message];
+                const preview = String(screenshotPreviewDataUrl || '');
+                const qItem = preview ? { text: message, screenshot: { previewDataUrl: preview } } : message;
+                const nextQuestions = [...(this.questions || []), qItem];
                 let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
                 if (nextResponses.length < nextQuestions.length) {
                     nextResponses.push('');
@@ -794,7 +807,7 @@ export class GhostPrepApp extends LitElement {
                         .thinkingSession=${this._thinkingSession}
                         .activeTab=${this.activeAssistantTab}
                         .transcriptText=${this.transcriptText}
-                        .onSendText=${message => this.handleSendText(message)}
+                        .onSendText=${(message, opts) => this.handleSendText(message, opts)}
                         .promptPanelOpen=${this.promptPanelOpen}
                         .onTabChange=${tab => this.handleAssistantTabChange(tab)}
                         @close-prompt-panel=${() => this.handleClosePromptPanel()}
