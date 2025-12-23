@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 
 const { getSystemPrompt } = require('./prompts');
 const { streamResponse, warmup } = require('./llm/openaiResponsesClient');
+const { generateContent: geminiGenerateContent, generateContentStream: geminiGenerateContentStream } = require('./llm/geminiClient');
 const { IntentBoundary } = require('./intentBoundary');
 
 // ASR
@@ -29,6 +30,10 @@ let deepgramClient = null;
 let deepgramApiKey = '';
 let openaiApiKey = '';
 let openaiModelName = 'gpt-4.1-nano';
+let geminiApiKey = '';
+let geminiModelName = 'gemini-3-flash';
+let geminiThinkingEnabled = true;
+let llmEnsembleEnabled = true;
 let activeSystemPrompt = '';
 
 // Transcript buffers:
@@ -103,6 +108,113 @@ function sendToRenderer(channel, data) {
     }
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function simulateStreamToRenderer(channel, text, { chunkSize = 10, delayMs = 18 } = {}) {
+    const t = String(text || '');
+    if (!t) return;
+    let i = 0;
+    while (i < t.length) {
+        const chunk = t.slice(i, i + chunkSize);
+        i += chunkSize;
+        try { sendToRenderer(channel, chunk); } catch (_) {}
+        // Keep UI feeling "live" but don't drag too long.
+        // Small texts will finish almost immediately.
+        await sleep(delayMs);
+    }
+}
+
+function splitThinkingAnswer(raw) {
+    const s = String(raw || '');
+    const tMarker = '<<THINKING>>';
+    const aMarker = '<<ANSWER>>';
+    const tIdx = s.indexOf(tMarker);
+    const aIdx = s.indexOf(aMarker);
+    if (tIdx !== -1 && aIdx !== -1 && aIdx > tIdx) {
+        const thinking = s.slice(tIdx + tMarker.length, aIdx).trim();
+        const answer = s.slice(aIdx + aMarker.length).trim();
+        return { thinking, answer };
+    }
+    // Fallback: no markers, treat as answer.
+    return { thinking: '', answer: s.trim() };
+}
+
+function looksLikeModelNotFound(msg = '') {
+    const m = String(msg || '').toLowerCase();
+    return (
+        (m.includes('model') && (m.includes('not found') || m.includes('does not exist') || m.includes('not available'))) ||
+        m.includes('not supported') ||
+        m.includes('invalid argument')
+    );
+}
+
+async function geminiCallWithFallback(args, preferredModel) {
+    const tryModels = [
+        String(preferredModel || '').trim(),
+        'gemini-3-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+    ].filter(Boolean);
+
+    let lastErr = null;
+    for (const m of tryModels) {
+        try {
+            return await geminiGenerateContent({ ...args, model: m });
+        } catch (e) {
+            lastErr = e;
+            const msg = e?.message || String(e || '');
+            if (!looksLikeModelNotFound(msg)) {
+                throw e;
+            }
+            // try next model
+        }
+    }
+    throw lastErr || new Error('Gemini call failed');
+}
+
+async function synthesizeFinalAnswer({ questionText, openaiDraft, geminiDraft } = {}) {
+    // Use Gemini Flash as the default synthesizer (fast). If Gemini not available, return OpenAI draft.
+    const q = String(questionText || '').trim();
+    const a = String(openaiDraft || '').trim();
+    const g = String(geminiDraft || '').trim();
+    if (!g && a) return a;
+    if (!a && g) return g;
+    if (!a && !g) return '';
+
+    if (!geminiApiKey) return a || g;
+
+    const prompt =
+        `Combine the two drafts into ONE best final answer.\n` +
+        `- Keep it concise and correct.\n` +
+        `- Preserve helpful structure (short headings / bullets).\n` +
+        `- Remove duplicates.\n` +
+        `- Do NOT mention that there were multiple models.\n\n` +
+        `Question:\n${q}\n\n` +
+        `Draft A:\n${a}\n\n` +
+        `Draft B:\n${g}\n\n` +
+        `Final answer:`;
+
+    try {
+        const out = await geminiCallWithFallback(
+            {
+                apiKey: geminiApiKey,
+                systemPrompt: '',
+                history: [],
+                userText: prompt,
+                images: [],
+                temperature: 0,
+                maxOutputTokens: 900,
+            },
+            geminiModelName
+        );
+        return String(out || '').trim() || (a || g);
+    } catch (_) {
+        return a || g;
+    }
+}
+
 function clearPendingImages() {
     pendingImages = [];
 }
@@ -139,12 +251,13 @@ function saveConversationTurn(transcription, aiResponse, meta = {}) {
 }
 
 function getHistoryForOpenAI(conversationHistoryInput, { includeScreenTurns = true } = {}) {
-    // Reuse existing history builder but map role names for OpenAI.
-    const base = buildHistoryForModel(conversationHistoryInput, { includeScreenTurns });
-    return base.map(h => ({
-        role: h.role === 'model' ? 'assistant' : 'user',
-        text: h.text,
-    }));
+    // Returns: array of { role: 'user'|'assistant', text }
+    return buildHistoryForModel(conversationHistoryInput, {
+        includeScreenTurns,
+        // Keep larger context inside the same live session.
+        maxMessages: 40,
+        maxChars: 12000,
+    });
 }
 
 function getTranscriptForUi() {
@@ -187,13 +300,19 @@ async function initializeAiSession({
     deepgramKey,
     openaiKey,
     openaiModel = 'gpt-4.1-nano',
+    geminiKey,
+    geminiModel = 'gemini-3-flash',
+    geminiThinking = true,
+    llmEnsemble = true,
     customPrompt = '',
     profile = 'interview',
     language = 'en-US',
 } = {}) {
     if (isInitializingSession) return { success: false, error: 'Session initialization in progress' };
     if (!deepgramKey || !String(deepgramKey).trim()) return { success: false, error: 'Deepgram API key missing' };
-    if (!openaiKey || !String(openaiKey).trim()) return { success: false, error: 'OpenAI API key missing' };
+    const hasOpenAi = !!(openaiKey && String(openaiKey).trim());
+    const hasGemini = !!(geminiKey && String(geminiKey).trim());
+    if (!hasOpenAi && !hasGemini) return { success: false, error: 'OpenAI or Gemini API key required' };
 
     isInitializingSession = true;
     sendToRenderer('session-initializing', true);
@@ -209,16 +328,31 @@ async function initializeAiSession({
 
     try {
         deepgramApiKey = String(deepgramKey).trim();
-        openaiApiKey = String(openaiKey).trim();
+        openaiApiKey = hasOpenAi ? String(openaiKey).trim() : '';
         openaiModelName = String(openaiModel || 'gpt-4.1-nano').trim() || 'gpt-4.1-nano';
-        log('[AI][LLM] OpenAI key present, model:', openaiModelName);
+
+        geminiApiKey = hasGemini ? String(geminiKey).trim() : '';
+        geminiModelName = String(geminiModel || 'gemini-3-flash').trim() || 'gemini-3-flash';
+        geminiThinkingEnabled = geminiThinking !== false;
+        llmEnsembleEnabled = llmEnsemble !== false;
+
+        log('[AI][LLM] Providers ready', {
+            openai: !!openaiApiKey,
+            openaiModel: openaiModelName,
+            gemini: !!geminiApiKey,
+            geminiModel: geminiModelName,
+            thinking: geminiThinkingEnabled,
+            ensemble: llmEnsembleEnabled,
+        });
 
         // Fire-and-forget warmup to reduce first-token latency on the first real answer.
         try {
             setImmediate(() => {
-                warmup({ apiKey: openaiApiKey, model: openaiModelName })
-                    .then(ok => log('[AI][LLM] Warmup', ok ? 'ok' : 'failed'))
-                    .catch(() => {});
+                if (openaiApiKey) {
+                    warmup({ apiKey: openaiApiKey, model: openaiModelName })
+                        .then(ok => log('[AI][LLM] Warmup', ok ? 'ok' : 'failed'))
+                        .catch(() => {});
+                }
             });
         } catch (_) {}
 
@@ -317,8 +451,8 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         surfaceUiError('ASR/LLM session not active', 'submitNow');
         return { success: false, error: 'No active session' };
     }
-    if (!openaiApiKey) {
-        surfaceUiError('OpenAI key missing / LLM not initialized', 'submitNow');
+    if (!openaiApiKey && !geminiApiKey) {
+        surfaceUiError('No LLM provider configured (OpenAI or Gemini)', 'submitNow');
         return { success: false, error: 'Model not initialized' };
     }
 
@@ -406,45 +540,198 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
     try {
         llmStatus = 'ready';
         pushAiStatus();
-        log('[AI][LLM] Sending request to', openaiModelName);
         const t0 = Date.now();
-        let firstTokenAt = 0;
-        const doCall = async (modelName) =>
-            await streamResponse({
-            apiKey: openaiApiKey,
-            model: modelName,
-            temperature: 0,
-            systemPrompt: activeSystemPrompt,
-            history,
-            userText,
-            images: hasImages ? imagesToUse : [],
-            maxOutputTokens: 900,
-            onDelta: delta => {
-                if (!firstTokenAt) {
-                    firstTokenAt = Date.now();
-                    log('[AI][LLM] First token received', { ms: firstTokenAt - t0 });
-                }
-                try { sendToRenderer('update-response-stream', String(delta || '')); } catch (_) {}
-            },
-            });
 
-        try {
-            finalText = await doCall(openaiModelName);
-        } catch (e) {
-            const msg = String(e?.message || e || '');
-            // Fallback: if GPT-5 mini isn't available on this key/account, retry with gpt-4o-mini.
-            if (
-                openaiModelName !== 'gpt-4o-mini' &&
-                (msg.includes('model') && (msg.includes('not found') || msg.includes('does not exist') || msg.includes('not available') || msg.includes('Invalid'))) 
-            ) {
-                logErr('[AI][LLM] Model failed, retrying with gpt-4o-mini', msg);
-                openaiModelName = 'gpt-4o-mini';
-                finalText = await doCall(openaiModelName);
-            } else {
+        // Kick off BOTH LLMs in parallel:
+        // - Gemini: "thinking" (Cluely-style panel) + draft answer (single call, non-stream) then simulated streaming to UI.
+        // - OpenAI: draft answer (streamed internally but buffered until thinking completes).
+
+        let openaiDraft = '';
+        let openaiErr = null;
+        let openaiFirstTokenMs = null;
+        const openaiPromise = (async () => {
+            if (!openaiApiKey) return '';
+            log('[AI][LLM] OpenAI request started', { model: openaiModelName });
+            let buf = '';
+            const doCall = async (modelName) =>
+                await streamResponse({
+                    apiKey: openaiApiKey,
+                    model: modelName,
+                    temperature: 0,
+                    systemPrompt: activeSystemPrompt,
+                    history,
+                    userText,
+                    images: hasImages ? imagesToUse : [],
+                    maxOutputTokens: 900,
+                    onDelta: delta => {
+                        const d = String(delta || '');
+                        if (!d) return;
+                        // Stream immediately to renderer (ChatGPT/Cluely style).
+                        // We still keep a buffer so we can set the final response text reliably.
+                        buf += d;
+                        if (openaiFirstTokenMs === null) {
+                            openaiFirstTokenMs = Date.now() - t0;
+                            log('[AI][LLM] OpenAI first token', { ms: openaiFirstTokenMs });
+                        }
+                        try { sendToRenderer('update-response-stream', d); } catch (_) {}
+                    },
+                });
+
+            try {
+                buf = await doCall(openaiModelName);
+                return String(buf || '').trim();
+            } catch (e) {
+                const msg = String(e?.message || e || '');
+                // Fallback: if GPT-5 mini isn't available on this key/account, retry with gpt-4o-mini.
+                if (
+                    openaiModelName !== 'gpt-4o-mini' &&
+                    (msg.toLowerCase().includes('model') && (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('does not exist') || msg.toLowerCase().includes('not available') || msg.toLowerCase().includes('invalid')))
+                ) {
+                    logErr('[AI][LLM] OpenAI model failed, retrying with gpt-4o-mini', msg);
+                    openaiModelName = 'gpt-4o-mini';
+                    buf = await doCall(openaiModelName);
+                    return String(buf || '').trim();
+                }
                 throw e;
             }
+        })().then(t => (openaiDraft = t)).catch(e => (openaiErr = e));
+
+        let geminiThinkingText = '';
+        let geminiDraft = '';
+        const THINKING_BUDGET_MS = 900; // keep "thinking" short so answers feel fast
+        const THINKING_MAX_CHARS = 650; // avoid long thinking blocks (UI + latency)
+        const ENSEMBLE_BUDGET_MS = 900; // do not wait too long for 2nd model when synthesizing
+
+        // Gemini thinking is a separate lightweight call so it returns quickly.
+        let geminiThinkingErr = null;
+        const geminiThinkingPromise = (async () => {
+            if (!geminiApiKey || !geminiThinkingEnabled) return '';
+            const thinkingInstruction =
+                `Write a VERY SHORT "thinking" note (max 60 words).\n` +
+                `Format EXACTLY:\n` +
+                `Question: ...\n` +
+                `Main Point: ...\n` +
+                `Supporting Explanation: ...\n` +
+                `No answer. No extra sections.`;
+
+            log('[AI][LLM] Gemini thinking started', { model: geminiModelName });
+            const raw = await geminiCallWithFallback(
+                {
+                    apiKey: geminiApiKey,
+                    systemPrompt: activeSystemPrompt,
+                    history,
+                    userText: `${thinkingInstruction}\n\nUser prompt:\n${userText}`,
+                    images: hasImages ? imagesToUse : [],
+                    temperature: 0,
+                    maxOutputTokens: 140,
+                },
+                geminiModelName
+            );
+            return String(raw || '').trim();
+        })()
+            .then(t => (geminiThinkingText = String(t || '').trim()))
+            .catch(e => (geminiThinkingErr = e));
+
+        // Gemini answer draft is only needed for:
+        // - fallback (when OpenAI key is missing or OpenAI fails)
+        // - ensemble (combine both drafts)
+        let geminiAnswerErr = null;
+        const needGeminiAnswer = !!geminiApiKey && (!openaiApiKey || llmEnsembleEnabled);
+        const geminiAnswerPromise = needGeminiAnswer
+            ? (async () => {
+                  log('[AI][LLM] Gemini answer started', { model: geminiModelName, ensemble: llmEnsembleEnabled });
+
+                  // If OpenAI is NOT configured, stream Gemini answer tokens to UI (fast, ChatGPT-like).
+                  // If OpenAI is configured, Gemini is used only as a draft/ensemble input, so no UI streaming.
+                  const shouldStreamGeminiToUi = !openaiApiKey;
+                  const raw = shouldStreamGeminiToUi
+                      ? await geminiGenerateContentStream({
+                            apiKey: geminiApiKey,
+                            model: geminiModelName,
+                            systemPrompt: activeSystemPrompt,
+                            history,
+                            userText,
+                            images: hasImages ? imagesToUse : [],
+                            temperature: 0,
+                            maxOutputTokens: 900,
+                            onDelta: d => {
+                                const s = String(d || '');
+                                if (!s) return;
+                                try { sendToRenderer('update-response-stream', s); } catch (_) {}
+                            },
+                        })
+                      : await geminiCallWithFallback(
+                            {
+                                apiKey: geminiApiKey,
+                                systemPrompt: activeSystemPrompt,
+                                history,
+                                userText,
+                                images: hasImages ? imagesToUse : [],
+                                temperature: 0,
+                                maxOutputTokens: 900,
+                            },
+                            geminiModelName
+                        );
+                  return String(raw || '').trim();
+              })()
+                  .then(t => (geminiDraft = String(t || '').trim()))
+                  .catch(e => (geminiAnswerErr = e))
+            : Promise.resolve();
+
+        // Thinking panel: show immediately, then finalize once Gemini returns (OpenAI continues in parallel).
+        if (geminiThinkingEnabled && geminiApiKey) {
+            try {
+                // Start thinking stream (simulate)
+                try { sendToRenderer('update-thinking-stream', ''); } catch (_) {}
+                await simulateStreamToRenderer('update-thinking-stream', 'Thinking...\n', { chunkSize: 10, delayMs: 18 });
+
+                // Wait a bit for Gemini; do not block indefinitely.
+                await Promise.race([geminiThinkingPromise, sleep(THINKING_BUDGET_MS)]);
+
+                if (geminiThinkingText) {
+                    // Stream the thinking text (then set final to replace any placeholder text in UI state).
+                    const clipped = geminiThinkingText.length > THINKING_MAX_CHARS
+                        ? `${geminiThinkingText.slice(0, THINKING_MAX_CHARS)}…`
+                        : geminiThinkingText;
+                    await simulateStreamToRenderer('update-thinking-stream', clipped, { chunkSize: 24, delayMs: 8 });
+                    try { sendToRenderer('update-thinking-final', clipped); } catch (_) {}
+                } else {
+                    const fallbackThinking = geminiThinkingErr ? 'Thinking unavailable (Gemini error).' : 'Done.';
+                    await simulateStreamToRenderer('update-thinking-stream', fallbackThinking, { chunkSize: 24, delayMs: 10 });
+                    try { sendToRenderer('update-thinking-final', fallbackThinking); } catch (_) {}
+                }
+            } catch (_) {}
         }
-        log('[AI][LLM] Stream completed', { ms: Date.now() - t0, chars: finalText.length });
+
+        // Resolve answer drafts with speed-bounded waits.
+        // Always wait for OpenAI if configured; Gemini answer waits only if needed.
+        await Promise.allSettled([openaiPromise]);
+        if (!openaiDraft && needGeminiAnswer) {
+            await Promise.allSettled([geminiAnswerPromise]);
+        } else if (llmEnsembleEnabled && openaiDraft && needGeminiAnswer) {
+            // Try to get Gemini draft, but don't wait too long.
+            await Promise.race([geminiAnswerPromise, sleep(ENSEMBLE_BUDGET_MS)]);
+        }
+
+        if (openaiErr) logErr('[AI][LLM] OpenAI failed', openaiErr?.message || String(openaiErr));
+        if (geminiThinkingErr) logErr('[AI][LLM] Gemini thinking failed', geminiThinkingErr?.message || String(geminiThinkingErr));
+        if (geminiAnswerErr) logErr('[AI][LLM] Gemini answer failed', geminiAnswerErr?.message || String(geminiAnswerErr));
+
+        // Pick final answer (IMPORTANT):
+        // We may use multiple models internally, but the user should see ONLY ONE answer.
+        // If OpenAI is configured, it is the single streamed output; do NOT replace it later
+        // with a synthesized/second answer (that causes flicker / "double response" perception).
+        //
+        // If OpenAI is not configured, Gemini is streamed and becomes the single final answer.
+        finalText = openaiDraft || geminiDraft || '';
+
+        log('[AI][LLM] Completed', {
+            ms: Date.now() - t0,
+            openai: !!openaiDraft,
+            gemini: !!geminiDraft,
+            chars: (finalText || '').length,
+        });
+
         sendToRenderer('update-response', finalText || '');
         listening = true;
         pushAiStatus();
@@ -580,6 +867,10 @@ function closeAiSession() {
     listening = false;
     deepgramApiKey = '';
     openaiApiKey = '';
+    geminiApiKey = '';
+    geminiModelName = 'gemini-3-flash';
+    geminiThinkingEnabled = true;
+    llmEnsembleEnabled = true;
     activeSystemPrompt = '';
     displayFinal = '';
     displayDraft = '';
@@ -598,6 +889,10 @@ function setupAiIpcHandlers() {
             deepgramKey: p.deepgramApiKey,
             openaiKey: p.openaiApiKey,
             openaiModel: p.openaiModel,
+            geminiKey: p.geminiApiKey,
+            geminiModel: p.geminiModel,
+            geminiThinking: p.geminiThinking,
+            llmEnsemble: p.llmEnsemble,
             customPrompt: p.customPrompt || '',
             profile: p.profile || 'interview',
             language: p.language || 'en-US',

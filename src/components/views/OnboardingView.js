@@ -462,7 +462,7 @@ export class OnboardingView extends LitElement {
             {
                 icon: 'assets/onboarding/ready.svg',
                 title: 'Ready to Go',
-                content: 'Add your Deepgram + OpenAI API keys in Customize → AI Providers, then start your session.',
+                content: 'Add your Deepgram + (OpenAI or Gemini) API keys in Customize → AI Providers, then start your session.',
             },
         ];
 

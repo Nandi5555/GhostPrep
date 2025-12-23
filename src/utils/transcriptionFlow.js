@@ -1,16 +1,46 @@
-function buildHistoryForModel(conversationHistory, { includeScreenTurns = true } = {}) {
-    return (conversationHistory || [])
-        .filter(turn => {
-            if (!includeScreenTurns && turn && turn.usedScreen) return false;
-            return true;
-        })
-        .flatMap(turn => {
-            const out = [];
-            if (turn?.transcription) out.push({ role: 'user', text: turn.transcription });
-            if (turn?.ai_response) out.push({ role: 'model', text: turn.ai_response });
-            return out;
-        })
-        .slice(-8);
+function buildHistoryForModel(
+    conversationHistory,
+    {
+        includeScreenTurns = true,
+        // Keep much more context than before (ChatGPT/Cluely style), but still bounded.
+        // NOTE: One "turn" becomes up to 2 messages (user + assistant).
+        maxMessages = 40,
+        maxChars = 12000,
+    } = {}
+) {
+    const turns = (conversationHistory || []).filter(turn => {
+        if (!includeScreenTurns && turn && turn.usedScreen) return false;
+        return true;
+    });
+
+    // Build full message list (chronological).
+    const messages = [];
+    for (const turn of turns) {
+        const userText = String(turn?.transcription || '').trim();
+        const assistantText = String(turn?.ai_response || '').trim();
+        if (userText) messages.push({ role: 'user', text: userText });
+        if (assistantText) messages.push({ role: 'assistant', text: assistantText });
+    }
+
+    if (!messages.length) return [];
+
+    // Enforce bounds from the end (most recent first), then reverse back to chronological.
+    const selected = [];
+    let totalChars = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        const t = String(m?.text || '');
+        if (!t.trim()) continue;
+
+        const nextChars = totalChars + t.length;
+        if (selected.length >= maxMessages) break;
+        if (selected.length > 0 && nextChars > maxChars) break;
+
+        selected.push(m);
+        totalChars = nextChars;
+    }
+
+    return selected.reverse();
 }
 
 function formatSubmittedQuestion({ actionName, transcript }) {

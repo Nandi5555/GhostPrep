@@ -162,6 +162,58 @@ export class AssistantView extends LitElement {
             min-height: var(--answer-placeholder-height, 120px);
         }
 
+        /* Cluely-style "Thinking" panel (horizontally scrollable) */
+        details.thinking-details {
+            width: 100%;
+            max-width: 78%;
+            margin: 0 0 8px 0;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+                rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+            overflow: hidden;
+        }
+        details.thinking-details > summary {
+            list-style: none;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            font-size: 12px;
+            letter-spacing: 0.2px;
+            color: var(--description-color, rgba(255, 255, 255, 0.62));
+        }
+        details.thinking-details > summary::-webkit-details-marker { display: none; }
+        .thinking-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .thinking-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(59, 130, 246, 0.9);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
+        .thinking-scroll {
+            padding: 10px 12px 12px 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.10);
+            white-space: pre; /* preserve newlines + allow horizontal scroll for long lines */
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 140px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+            font-size: 12px;
+            line-height: 1.45;
+            color: rgba(255, 255, 255, 0.82);
+        }
+
         /* Loader: Cluely-style 3 dots (no container, no spinner) */
         .dots-loader {
             display: inline-flex;
@@ -848,6 +900,11 @@ export class AssistantView extends LitElement {
         streamDelta: { type: String },
         streamSession: { type: Number },
         streamIsFinal: { type: Boolean },
+        // Thinking inputs from parent component (separate stream)
+        thinkingByIndex: { type: Array },
+        isThinking: { type: Boolean },
+        thinkingDelta: { type: String },
+        thinkingSession: { type: Number },
         activeTab: { type: String },
         transcriptText: { type: String },
         onTabChange: { type: Function },
@@ -866,6 +923,10 @@ export class AssistantView extends LitElement {
         this.streamDelta = '';
         this.streamSession = 0;
         this.streamIsFinal = false;
+        this.thinkingByIndex = [];
+        this.isThinking = false;
+        this.thinkingDelta = '';
+        this.thinkingSession = 0;
         // Syntax highlighting library instance (loaded in connectedCallback)
         this.hljs = null;
         // Load toggles from localStorage
@@ -884,6 +945,7 @@ export class AssistantView extends LitElement {
         this._streamTypedText = '';
         this._streamTargetText = '';
         this._currentStreamSession = 0;
+        this._currentThinkingSession = 0;
         this._typingInterval = null;
         this._typingCharsPerTick = 6;
         this._typingMs = 8;
@@ -895,6 +957,10 @@ export class AssistantView extends LitElement {
         this.useScreen = localStorage.getItem('assistantUseScreen') === 'true';
         this.inputFocused = false;
         this._snapToActivePending = false;
+        // Streaming markdown rendering (throttled)
+        this._streamRenderTimer = null;
+        this._streamRenderLastAt = 0;
+        this._streamRenderMinIntervalMs = 65; // fast but avoids re-parsing markdown per token
     }
 
 scrollToTop() {
@@ -1370,6 +1436,16 @@ scrollToBottom() {
     container.scrollTop = container.scrollHeight;
 }
 
+scrollToActiveBlockTop() {
+    const container = this.shadowRoot?.querySelector('#responseContainer');
+    if (!container) return;
+    const active = container.querySelector('#active-block');
+    if (!active) return;
+    const pad = 12;
+    const nextTop = Math.max(0, (active.offsetTop || 0) - pad);
+    container.scrollTop = nextTop;
+}
+
 
     firstUpdated() {
         super.firstUpdated();
@@ -1392,7 +1468,9 @@ scrollToBottom() {
             changedProperties.has('responses') ||
             changedProperties.has('currentResponseIndex') ||
             changedProperties.has('isStreaming') ||
-            changedProperties.has('questions')
+            changedProperties.has('questions') ||
+            changedProperties.has('thinkingByIndex') ||
+            changedProperties.has('isThinking')
         ) {
             this.updateResponseContent();
         }
@@ -1401,12 +1479,26 @@ if (changedProperties.has('currentResponseIndex')) {
     this._snapToActivePending = true;
 }
 
+        // Auto-scroll: do it ONCE when a new question becomes active.
+        // Do NOT re-scroll when the final response arrives (stream completion), otherwise it "pushes" the
+        // question/answer and interrupts reading.
+        if (this._snapToActivePending && this.autoScrollEnabled) {
+            try { this.scrollToActiveBlockTop(); } catch (_) {}
+            this._snapToActivePending = false;
+        }
+
         // Streaming coordination
         if (changedProperties.has('streamSession')) {
             this._handleStreamSessionChange();
         }
         if (changedProperties.has('streamDelta')) {
             this._handleStreamDeltaChange();
+        }
+        if (changedProperties.has('thinkingSession')) {
+            this._handleThinkingSessionChange();
+        }
+        if (changedProperties.has('thinkingDelta')) {
+            this._handleThinkingDeltaChange();
         }
         if (changedProperties.has('isStreaming')) {
             this._handleStreamingStateChange();
@@ -1457,6 +1549,7 @@ updateResponseContent() {
     // appears immediately (no typewriter delay). While streaming, `responses[idx]`
     // is incrementally appended by the app.
     const ansText = ((this.responses || [])[i] || '');
+    const thinkingText = ((this.thinkingByIndex || [])[i] || '');
 
     const formattedText = formatAnswer(ansText, q, null);
     const ansRendered = this.renderMarkdown(formattedText, false);
@@ -1483,6 +1576,22 @@ updateResponseContent() {
             </div>`;
     }
 
+    if ((thinkingText && thinkingText.trim()) || (isCurrent && this.isThinking)) {
+        const shouldOpen = !(ansText && ansText.trim());
+        htmlStr += `
+            <div class="chat-row left" style="margin-bottom:0">
+                <details class="thinking-details" ${shouldOpen ? 'open' : ''}>
+                    <summary>
+                        <span class="thinking-title">
+                            <span class="thinking-dot"></span>
+                            Thinking
+                        </span>
+                    </summary>
+                    <div class="thinking-scroll" id="thinking-${i}">${escape(thinkingText)}</div>
+                </details>
+            </div>`;
+    }
+
     if (ansText && ansText.trim()) {
         htmlStr += `
             <div class="chat-row left" style="margin-bottom:0">
@@ -1499,14 +1608,19 @@ updateResponseContent() {
                 </div>
             </div>`;
     } else if (isCurrent) {
+        // IMPORTANT:
+        // - Always render an #answer-* element so streaming deltas can paint immediately.
+        // - While streaming, do NOT show the loader again (it looks like a second response).
+        const showDots = !this.isStreaming;
         htmlStr += `
             <div class="chat-row left">
-                <div class="answer-block placeholder">
+                <div class="answer-block placeholder" id="answer-${i}">
+                    ${showDots ? `
                     <span class="dots-loader" aria-label="Processing">
                         <span class="dot"></span>
                         <span class="dot"></span>
                         <span class="dot"></span>
-                    </span>
+                    </span>` : ``}
                 </div>
             </div>`;
     }
@@ -1561,10 +1675,10 @@ updateResponseContent() {
             });
     }
 
-    // Auto-scroll like chat when enabled
-    if (this.autoScrollEnabled) {
-        try { this.scrollToBottom(); } catch (_) {}
-    }
+    // IMPORTANT:
+    // Do NOT auto-scroll here. This method is called frequently (including on stream completion
+    // when markdown is finalized), and scrolling here causes the "jump/push up" issue.
+    // Auto-scroll is handled once per new active question in `updated()` and once at stream start.
 }
 
 
@@ -1652,11 +1766,54 @@ updateResponseContent() {
         // Keep session tracking only (no typewriter loop).
         if (typeof this.streamSession === 'number' && this.streamSession !== this._currentStreamSession) {
             this._currentStreamSession = this.streamSession;
+            // Reset per-session streamed HTML buffer
+            try {
+                const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.responses || []).length - 1);
+                const el = this.shadowRoot?.querySelector(`#answer-${idx}`);
+                if (el) {
+                    el.dataset.streamText = '';
+                    el.innerHTML = '';
+                }
+            } catch (_) {}
+            // Auto-scroll: snap to the START of the active message once, then never chase the bottom while streaming.
+            if (this.autoScrollEnabled) {
+                try { this.scrollToActiveBlockTop(); } catch (_) {}
+            }
         }
     }
 
+    _scheduleStreamMarkdownRender(el) {
+        try {
+            if (!el) return;
+            if (this._streamRenderTimer) return;
+            const now = Date.now();
+            const wait = Math.max(0, this._streamRenderMinIntervalMs - (now - (this._streamRenderLastAt || 0)));
+            this._streamRenderTimer = setTimeout(() => {
+                this._streamRenderTimer = null;
+                this._streamRenderLastAt = Date.now();
+                try {
+                    const txt = String(el.dataset.streamText || '');
+                    if (!txt) return;
+                    // Apply the same formatting rules during streaming as we do for the final render:
+                    // - wraps detected code blocks into fenced blocks
+                    // - ensures consistent labels + global structure rules
+                    // This prevents the "no highlighting while streaming, then sudden highlighting at the end" jump.
+                    const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.responses || []).length - 1);
+                    const q = (this.questions || [])[idx] || '';
+                    const formatted = formatAnswer(txt, q, null);
+                    el.innerHTML = this.renderMarkdown(formatted, false);
+                    // NOTE: renderMarkdown already highlights fenced code using hljs.highlight(),
+                    // so we do not call highlightElement() per-update (too expensive).
+                    // IMPORTANT: Do NOT auto-scroll during streaming. Keep viewport anchored near the top of the active answer.
+                } catch (_) {}
+            }, wait);
+        } catch (_) {}
+    }
+
     _handleStreamDeltaChange() {
-        // Append streaming deltas to the active answer bubble without re-rendering the whole chat.
+        // Append streaming deltas to the active answer bubble.
+        // We render markdown+highlight on a throttle so code is colored while streaming (ChatGPT/Cluely style),
+        // without re-parsing markdown on every single token.
         try {
             if (!this.isStreaming) return;
             const delta = String(this.streamDelta || '');
@@ -1664,16 +1821,43 @@ updateResponseContent() {
             const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.responses || []).length - 1);
             const el = this.shadowRoot?.querySelector(`#answer-${idx}`);
             if (!el) return;
-            // During streaming, show plain text to avoid expensive markdown parsing per token.
-            // Final render will replace with markdown once `responses[idx]` is set on completion.
             const existing = el.dataset.streamText || '';
             const next = existing + delta;
             el.dataset.streamText = next;
-            // Use textContent for stable appends (no DOM reflow from innerHTML rebuild).
-            el.textContent = next;
-            if (this.autoScrollEnabled) {
-                try { this.scrollToBottom(); } catch (_) {}
+            this._scheduleStreamMarkdownRender(el);
+        } catch (_) {}
+    }
+
+    _handleThinkingSessionChange() {
+        try {
+            if (typeof this.thinkingSession === 'number' && this.thinkingSession !== this._currentThinkingSession) {
+                this._currentThinkingSession = this.thinkingSession;
+                const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.thinkingByIndex || []).length - 1);
+                const el = this.shadowRoot?.querySelector(`#thinking-${idx}`);
+                if (el) {
+                    el.dataset.streamText = '';
+                    const base = String((this.thinkingByIndex || [])[idx] || '');
+                    el.textContent = base;
+                    try { el.scrollLeft = el.scrollWidth; } catch (_) {}
+                }
             }
+        } catch (_) {}
+    }
+
+    _handleThinkingDeltaChange() {
+        // Append thinking deltas to the active thinking panel without re-rendering the whole chat.
+        try {
+            if (!this.isThinking) return;
+            const delta = String(this.thinkingDelta || '');
+            // Allow empty delta as a "start" signal.
+            const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.thinkingByIndex || []).length - 1);
+            const el = this.shadowRoot?.querySelector(`#thinking-${idx}`);
+            if (!el) return;
+            const existing = el.dataset.streamText || el.textContent || '';
+            const next = existing + delta;
+            el.dataset.streamText = next;
+            el.textContent = next;
+            try { el.scrollLeft = el.scrollWidth; } catch (_) {}
         } catch (_) {}
     }
 

@@ -241,7 +241,7 @@ export class MainView extends LitElement {
     }
 
     handleInput(e) {
-        // Keys are configured in Customize → AI Providers (Deepgram + OpenAI).
+        // Keys are configured in Customize → AI Providers (Deepgram + OpenAI or Gemini).
         // Keep this handler as a no-op to preserve layout without storing legacy keys.
         if (this.showApiKeyError) this.showApiKeyError = false;
     }
@@ -366,7 +366,7 @@ export class MainView extends LitElement {
             <div class="input-group">
                 <input
                     type="password"
-                    placeholder="Set Deepgram + OpenAI keys in Customize → AI Providers"
+                    placeholder="Set Deepgram + (OpenAI or Gemini) keys in Customize → AI Providers"
                     .value=${''}
                     disabled
                     class="${this.showApiKeyError ? 'api-key-error' : ''}"
