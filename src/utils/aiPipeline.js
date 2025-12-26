@@ -819,6 +819,7 @@ async function startMacOSSystemAudioCapture() {
     await killExistingSystemAudioDump();
 
     const { app } = require('electron');
+    const fs = require('fs');
     const path = require('path');
 
     let systemAudioPath;
@@ -826,6 +827,23 @@ async function startMacOSSystemAudioCapture() {
         systemAudioPath = path.join(process.resourcesPath, 'SystemAudioDump');
     } else {
         systemAudioPath = path.join(__dirname, '../assets', 'SystemAudioDump');
+    }
+
+    // macOS: ensure the binary is executable, otherwise spawn() fails with EACCES.
+    // This can happen if the file mode wasn't preserved (e.g., zip download, git mode loss).
+    try {
+        fs.accessSync(systemAudioPath, fs.constants.X_OK);
+    } catch (_) {
+        try {
+            fs.chmodSync(systemAudioPath, 0o755);
+        } catch (e) {
+            return {
+                success: false,
+                error:
+                    `SystemAudioDump is not executable (${e?.message || e}). ` +
+                    `Fix by running: chmod +x "${systemAudioPath}"`,
+            };
+        }
     }
 
     systemAudioProc = spawn(systemAudioPath, [], { stdio: ['ignore', 'pipe', 'pipe'] });

@@ -19,7 +19,12 @@ let aiCaptureExclusionRuntime = false;
 
 function applyContentProtectionState(mainWindow) {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    const next = !!undetectableEnabledRuntime || !!aiCaptureExclusionRuntime;
+    // On macOS, setContentProtection affects OS-level screen sharing/screenshot capture.
+    // "Undetectable" should be controlled ONLY by the user's toggle.
+    // We keep aiCaptureExclusionRuntime for internal capture flows (primarily Windows),
+    // but do not let it force content protection on macOS.
+    const next =
+        !!undetectableEnabledRuntime || (process.platform === 'win32' ? !!aiCaptureExclusionRuntime : false);
     try {
         mainWindow.setContentProtection(next);
     } catch (e) {

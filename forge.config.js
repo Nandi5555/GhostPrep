@@ -1,8 +1,20 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+const fs = require('node:fs');
+const path = require('node:path');
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
+    hooks: {
+        // Ensure macOS helper binaries ship with executable permissions.
+        // (Do this at build/package time to avoid mutating signed app bundles at runtime.)
+        prePackage: async () => {
+            try {
+                const p = path.join(__dirname, 'src/assets/SystemAudioDump');
+                fs.chmodSync(p, 0o755);
+            } catch (_) {}
+        },
+    },
     packagerConfig: {
         asar: true,
         extraResource: ['./src/assets/SystemAudioDump'],

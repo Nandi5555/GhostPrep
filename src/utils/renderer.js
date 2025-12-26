@@ -572,6 +572,57 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     // The window should already be excluded from the stream via set-ai-capture-exclusion(true).
     offscreenContext.drawImage(hiddenVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
+    // Redact this app window from the screenshot so our overlay UI is never sent to the LLM.
+    // This avoids needing OS-level content protection (which on macOS would hide the app from meetings/screen share).
+    try {
+        const bounds = await ipcRenderer.invoke('get-window-bounds');
+        const display = await ipcRenderer.invoke('get-window-display-metrics');
+        if (bounds && display && display.bounds && (display.scaleFactor || display.scaleFactor === 0)) {
+            const scaleFactor = Number(display.scaleFactor) || 1;
+            const videoW = offscreenCanvas.width;
+            const videoH = offscreenCanvas.height;
+
+            const candW1 = display.size && display.size.width ? Number(display.size.width) : NaN;
+            const candH1 = display.size && display.size.height ? Number(display.size.height) : NaN;
+            const candW2 = Number(display.bounds.width) * scaleFactor;
+            const candH2 = Number(display.bounds.height) * scaleFactor;
+
+            const displayPixelW = isFinite(candW1) && Math.abs(candW1 - videoW) < Math.abs(candW2 - videoW) ? candW1 : candW2;
+            const displayPixelH = isFinite(candH1) && Math.abs(candH1 - videoH) < Math.abs(candH2 - videoH) ? candH1 : candH2;
+
+            const sx = displayPixelW ? videoW / displayPixelW : 1;
+            const sy = displayPixelH ? videoH / displayPixelH : 1;
+
+            // Window bounds + display bounds are in DIP; convert to pixels via scaleFactor, then scale to video space.
+            const relXDip = Number(bounds.x) - Number(display.bounds.x);
+            const relYDip = Number(bounds.y) - Number(display.bounds.y);
+            const wDip = Number(bounds.width);
+            const hDip = Number(bounds.height);
+
+            const x = Math.round(relXDip * scaleFactor * sx);
+            const y = Math.round(relYDip * scaleFactor * sy);
+            const w = Math.round(wDip * scaleFactor * sx);
+            const h = Math.round(hDip * scaleFactor * sy);
+
+            // Slight padding to cover shadows/borders.
+            const pad = Math.round(12 * scaleFactor * Math.max(sx, sy));
+            const rx = Math.max(0, x - pad);
+            const ry = Math.max(0, y - pad);
+            const rw = Math.min(videoW - rx, w + pad * 2);
+            const rh = Math.min(videoH - ry, h + pad * 2);
+
+            if (rw > 4 && rh > 4) {
+                offscreenContext.save();
+                offscreenContext.fillStyle = 'rgba(0, 0, 0, 1)';
+                offscreenContext.fillRect(rx, ry, rw, rh);
+                offscreenContext.restore();
+            }
+        }
+    } catch (e) {
+        // Best-effort: never fail screenshot capture if redaction fails.
+        try { console.warn('[AI][RENDERER] Redaction failed:', e?.message || e); } catch (_) {}
+    }
+
     // Check if image was drawn properly by sampling a pixel
     const imageData = offscreenContext.getImageData(0, 0, 1, 1);
     const isBlank = imageData.data.every((value, index) => {
