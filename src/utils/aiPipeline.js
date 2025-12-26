@@ -158,6 +158,30 @@ function looksLikeModelNotFound(msg = '') {
     );
 }
 
+function formatMergedTypedAndSpokenInput({ typedText = '', spokenText = '' } = {}) {
+    const t = String(typedText || '').trim();
+    const s = String(spokenText || '').trim();
+    if (!t && !s) return '';
+    if (t && !s) return t;
+    if (!t && s) return s;
+
+    // Heuristic: merge only when it likely matches the user's intent (Cluely-style paste + speak).
+    // Avoid accidentally gluing in long, stale transcripts when the user is purely typing.
+    const typedLooksLikePaste = t.length > 200 || t.split('\n').length >= 3;
+    const spokenLooksLikeInstruction = s.length > 0 && s.length <= 1200;
+    const spokenAlreadyInTyped = t.toLowerCase().includes(s.toLowerCase().slice(0, Math.min(40, s.length)));
+    const shouldMerge = !spokenAlreadyInTyped && (typedLooksLikePaste || spokenLooksLikeInstruction);
+    if (!shouldMerge) return t;
+
+    // Explicit structure so the model reliably associates the spoken instruction with the pasted content.
+    return (
+        `Pasted content (text input):\n` +
+        `${t}\n\n` +
+        `Spoken instruction (voice transcription):\n` +
+        `${s}\n`
+    ).trim();
+}
+
 async function geminiCallWithFallback(args, preferredModel) {
     const tryModels = [
         String(preferredModel || '').trim(),
@@ -263,8 +287,8 @@ function getHistoryForOpenAI(conversationHistoryInput, { includeScreenTurns = tr
     return buildHistoryForModel(conversationHistoryInput, {
         includeScreenTurns,
         // Keep larger context inside the same live session.
-        maxMessages: 40,
-        maxChars: 12000,
+        maxMessages: 60,
+        maxChars: 20000,
     });
 }
 
@@ -453,7 +477,7 @@ async function initializeAiSession({
     }
 }
 
-async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = false, textOverride = '' } = {}) {
+async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = false, textOverride = '', typedContext = '' } = {}) {
     log('[AI][SUBMIT] submitNow() called', { actionName: String(actionName || '').trim() || '(none)' });
     if (!sessionActive) {
         surfaceUiError('ASR/LLM session not active', 'submitNow');
@@ -466,14 +490,19 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
 
     // Snapshot immediately: NO settle wait, NO debounce, NO minimum length.
     const overrideText = String(textOverride || '').trim();
-    const snapshotText = overrideText ? overrideText : String(`${bufferFinal || ''}${bufferDraft || ''}`).trim();
+    const typedContextText = String(typedContext || '').trim();
+    const snapshotSpokenText = String(`${bufferFinal || ''}${bufferDraft || ''}`).trim();
+    const snapshotText = overrideText ? overrideText : snapshotSpokenText;
     const imagesToUse = useScreenEnabled ? pendingImages : [];
     const hasImages = Array.isArray(imagesToUse) && imagesToUse.length > 0;
     log('[AI][SUBMIT] Snapshot length:', `${snapshotText.length} chars`);
     log('[AI][SUBMIT] Screenshots attached:', hasImages ? imagesToUse.length : 0);
+    try {
+        log('[AI][SUBMIT] History size:', Array.isArray(conversationHistory) ? conversationHistory.length : 0);
+    } catch (_) {}
 
     // Allow very short questions. If the user submits with empty transcript, only allow if screen is enabled & we have images.
-    if (!snapshotText && !hasImages) {
+    if (!overrideText && !typedContextText && !snapshotSpokenText && !hasImages) {
         logErr('[AI][SUBMIT] Empty snapshot and no screenshots -> refusing to submit');
         if (asrStatus !== 'connected') {
             surfaceUiError('ASR not connected. Fix Deepgram connection first (check key), then try again.', 'submitNow');
@@ -486,16 +515,15 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
     // For "answer now" submits (Ctrl/Cmd+Enter, Assist button, prompt buttons), emit a real chat user bubble
     // with the action label EVEN WHEN there is no transcript (screen-only).
     // This matches Cluely behavior: action submits show "Assist" in the UI while using transcript/screen as hidden context.
-    if (!overrideText && (snapshotText || hasImages)) {
+    if (!overrideText && ((typedContextText || snapshotText) || hasImages)) {
         const displayText = actionName && String(actionName).trim() ? String(actionName).trim() : 'Assist';
         emitChatUserTurn({ text: displayText, source: 'voice', actionName });
     }
 
-    // Clear ONLY the question buffer (for transcript-triggered actions), not the display transcript.
-    if (!overrideText) {
-        bufferFinal = '';
-        bufferDraft = '';
-    }
+    // Clear the question buffer on ANY explicit submit (typed or voice).
+    // If we don't clear for typed submits, the next voice submit may include stale transcript and break context.
+    bufferFinal = '';
+    bufferDraft = '';
 
     // Clear image buffer once we decide to include it
     if (hasImages) clearPendingImages();
@@ -513,9 +541,13 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
 
     let userText = '';
     if (overrideText) {
-        // Typed text message: send exactly as typed.
-        userText = snapshotText;
-    } else if (snapshotText) {
+        // Typed text message: merge with the most recent voice buffer if present.
+        // This matches Cluely behavior where pasted content + spoken instruction is treated as one intent.
+        userText = formatMergedTypedAndSpokenInput({ typedText: overrideText, spokenText: snapshotSpokenText });
+    } else if (typedContextText || snapshotText) {
+        const merged = typedContextText
+            ? formatMergedTypedAndSpokenInput({ typedText: typedContextText, spokenText: snapshotSpokenText })
+            : snapshotText;
         // Voice submission: send transcript directly without prepending redundant action prompts.
         // The system prompt already has strong instructions for handling transcription errors
         // and understanding the intended question. Prepending additional instructions can
@@ -535,8 +567,8 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
             !prompt.toLowerCase().includes('answer the question directly'); // Skip redundant assist prompts
         
         userText = isSpecialAction
-            ? `${prompt}\n\n${snapshotText}`
-            : snapshotText;
+            ? `${prompt}\n\n${merged}`
+            : merged;
     } else {
         // Screen-only submission (no transcript).
         // If this is Assist (or a transcript-focused Assist prompt), use a screen-aware instruction set.
@@ -567,7 +599,8 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         let openaiFirstTokenMs = null;
         const openaiPromise = (async () => {
             if (!openaiApiKey) return '';
-            log('[AI][LLM] OpenAI request started', { model: openaiModelName });
+            const preferredModelName = String(openaiModelName || '').trim() || 'gpt-4.1-nano';
+            log('[AI][LLM] OpenAI request started', { model: preferredModelName });
             let buf = '';
             const doCall = async (modelName) =>
                 await streamResponse({
@@ -594,18 +627,23 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
                 });
 
             try {
-                buf = await doCall(openaiModelName);
+                buf = await doCall(preferredModelName);
                 return String(buf || '').trim();
             } catch (e) {
                 const msg = String(e?.message || e || '');
                 // Fallback: if GPT-5 mini isn't available on this key/account, retry with gpt-4o-mini.
                 if (
-                    openaiModelName !== 'gpt-4o-mini' &&
+                    preferredModelName !== 'gpt-4o-mini' &&
                     (msg.toLowerCase().includes('model') && (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('does not exist') || msg.toLowerCase().includes('not available') || msg.toLowerCase().includes('invalid')))
                 ) {
-                    logErr('[AI][LLM] OpenAI model failed, retrying with gpt-4o-mini', msg);
-                    openaiModelName = 'gpt-4o-mini';
-                    buf = await doCall(openaiModelName);
+                    const fallbackModelName = 'gpt-4o-mini';
+                    logErr('[AI][LLM] OpenAI model failed, retrying with gpt-4o-mini', {
+                        preferred: preferredModelName,
+                        fallback: fallbackModelName,
+                        error: msg,
+                    });
+                    // IMPORTANT: do NOT mutate the global openaiModelName; fallback is per-request only.
+                    buf = await doCall(fallbackModelName);
                     return String(buf || '').trim();
                 }
                 throw e;
@@ -754,7 +792,8 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         sendToRenderer('update-status', 'Listening...');
 
         try {
-            saveConversationTurn(snapshotText || '(screen only)', finalText || '', { usedScreen: hasImages });
+            const storedUserText = (overrideText || typedContextText || snapshotSpokenText) ? userText : '(screen only)';
+            saveConversationTurn(storedUserText || '(screen only)', finalText || '', { usedScreen: hasImages });
         } catch (_) {}
 
         lastUiError = '';
@@ -1027,6 +1066,7 @@ function setupAiIpcHandlers() {
             actionName: p.actionName || '',
             actionPrompt: p.actionPrompt || '',
             uiAlreadyShown: !!p.uiAlreadyShown,
+            typedContext: p.typedText || p.typedContext || '',
         });
     });
 

@@ -1045,7 +1045,8 @@ scrollToTop() {
 
     async copyQuestion(index) {
         try {
-            const q = ((this.questions || [])[index] || '').trim();
+            const qItem = (this.questions || [])[index] || '';
+            const q = (typeof qItem === 'string' ? qItem : String(qItem?.text || '')).trim();
             if (!q) return;
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(q);
@@ -1360,7 +1361,7 @@ scrollToTop() {
             const textInput = this.shadowRoot?.querySelector('#textInput');
             const hasText = !!textInput && textInput.value.trim().length > 0;
             if (hasText) {
-                this.handleSendText();
+                await this.handleSendText();
             } else {
                 if (this.useScreen) {
                     try {
@@ -1382,7 +1383,7 @@ scrollToTop() {
                         try {
                             if (window.require) {
                                 const { ipcRenderer } = window.require('electron');
-                                ipcRenderer.invoke('send-current-transcription', {
+                                await ipcRenderer.invoke('send-current-transcription', {
                                     actionName: 'Assist',
                                     actionPrompt: 'Assist!',
                                     uiAlreadyShown: true,
@@ -1394,7 +1395,7 @@ scrollToTop() {
                     try {
                         if (window.require) {
                             const { ipcRenderer } = window.require('electron');
-                            ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
+                            await ipcRenderer.invoke('send-current-transcription', { actionName: 'Assist', actionPrompt: 'Assist!', uiAlreadyShown: true });
                         }
                     } catch (_) {}
                 }
@@ -2095,10 +2096,21 @@ updateResponseContent() {
                     }
                 }
             } catch (_) {}
+            // If the user has pasted text/code but uses a prompt button (Assist),
+            // include the text input so voice + text are treated as one intent.
+            let typedText = '';
+            try {
+                const el = this.shadowRoot?.querySelector('#textInput');
+                typedText = el && el.value ? String(el.value) : '';
+            } catch (_) {
+                typedText = '';
+            }
+
             await ipcRenderer.invoke('send-current-transcription', {
                 actionName: String(actionName || '').trim(),
                 actionPrompt: String(actionPrompt || '').trim(),
                 uiAlreadyShown: true,
+                typedText,
             });
         } catch (error) {
             console.warn('Failed to submit buffered transcript action:', error?.message || error);

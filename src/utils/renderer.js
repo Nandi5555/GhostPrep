@@ -997,6 +997,16 @@ async function handleShortcut(shortcutKey) {
                         'Answer the question directly. Treat the transcript as an interviewer question and assume it may contain minor speech-to-text errors. ' +
                         'Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.',
                     uiAlreadyShown: true,
+                    // If the user has pasted content into the text box but is submitting via Ctrl/Cmd+Enter,
+                    // include it so voice + text are treated as one intent (Cluely-style).
+                    typedText: (() => {
+                        try {
+                            const el = document.querySelector('#textInput');
+                            return el && el.value ? String(el.value) : '';
+                        } catch (_) {
+                            return '';
+                        }
+                    })(),
                 })
                 .then(result => {
                     if (!result.success) {

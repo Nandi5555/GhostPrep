@@ -14,6 +14,7 @@ const BASE_RULES = `Base rules (apply only if not specified in custom instructio
 - No preface (no "Sure/Okay/Here's…").
 - Do not restate the question.
 - Do not ask clarifying questions.
+- This is a multi-turn conversation. Use prior turns as context. Resolve pronouns and follow-ups (e.g. "give an example", "explain more", "how does that work") as referring to the most recent relevant topic unless the user explicitly changes the subject.
 - The transcript may contain ASR mistakes, pronunciation errors, or partial words. Always infer the intended question from context and answer the correct interpreted question, not the raw incorrect text.
 - Silently correct obvious transcription mistakes and answer the intended question.
 - Never mention transcription errors.
