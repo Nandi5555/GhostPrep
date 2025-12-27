@@ -13,7 +13,7 @@ class DeepgramStreamingClient {
     constructor({
         apiKey,
         language = 'en-US',
-        model = 'nova-2',
+        model = 'nova-3',
         sampleRate = 24000,
         channels = 1,
         endpointingMs = 300,

@@ -214,58 +214,6 @@ export class AssistantView extends LitElement {
             min-height: var(--answer-placeholder-height, 120px);
         }
 
-        /* Cluely-style "Thinking" panel (horizontally scrollable) */
-        details.thinking-details {
-            width: 100%;
-            max-width: 78%;
-            margin: 0 0 8px 0;
-            border-radius: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-                rgba(255, 255, 255, 0.06);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.22);
-            overflow: hidden;
-        }
-        details.thinking-details > summary {
-            list-style: none;
-            cursor: pointer;
-            user-select: none;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 12px;
-            font-size: 12px;
-            letter-spacing: 0.2px;
-            color: var(--description-color, rgba(255, 255, 255, 0.62));
-        }
-        details.thinking-details > summary::-webkit-details-marker { display: none; }
-        .thinking-title {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .thinking-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: rgba(59, 130, 246, 0.9);
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-        }
-        .thinking-scroll {
-            padding: 10px 12px 12px 12px;
-            border-top: 1px solid rgba(255, 255, 255, 0.10);
-            white-space: pre; /* preserve newlines + allow horizontal scroll for long lines */
-            overflow-x: auto;
-            overflow-y: auto;
-            max-height: 140px;
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-            font-size: 12px;
-            line-height: 1.45;
-            color: rgba(255, 255, 255, 0.82);
-        }
-
         /* Loader: Cluely-style 3 dots (no container, no spinner) */
         .dots-loader {
             display: inline-flex;
@@ -953,10 +901,6 @@ export class AssistantView extends LitElement {
         streamSession: { type: Number },
         streamIsFinal: { type: Boolean },
         // Thinking inputs from parent component (separate stream)
-        thinkingByIndex: { type: Array },
-        isThinking: { type: Boolean },
-        thinkingDelta: { type: String },
-        thinkingSession: { type: Number },
         activeTab: { type: String },
         transcriptText: { type: String },
         onTabChange: { type: Function },
@@ -975,10 +919,6 @@ export class AssistantView extends LitElement {
         this.streamDelta = '';
         this.streamSession = 0;
         this.streamIsFinal = false;
-        this.thinkingByIndex = [];
-        this.isThinking = false;
-        this.thinkingDelta = '';
-        this.thinkingSession = 0;
         // Syntax highlighting library instance (loaded in connectedCallback)
         this.hljs = null;
         // Load toggles from localStorage
@@ -997,7 +937,6 @@ export class AssistantView extends LitElement {
         this._streamTypedText = '';
         this._streamTargetText = '';
         this._currentStreamSession = 0;
-        this._currentThinkingSession = 0;
         this._typingInterval = null;
         this._typingCharsPerTick = 6;
         this._typingMs = 8;
@@ -1520,9 +1459,7 @@ scrollToActiveBlockTop() {
             changedProperties.has('responses') ||
             changedProperties.has('currentResponseIndex') ||
             changedProperties.has('isStreaming') ||
-            changedProperties.has('questions') ||
-            changedProperties.has('thinkingByIndex') ||
-            changedProperties.has('isThinking')
+            changedProperties.has('questions')
         ) {
             this.updateResponseContent();
         }
@@ -1545,12 +1482,6 @@ if (changedProperties.has('currentResponseIndex')) {
         }
         if (changedProperties.has('streamDelta')) {
             this._handleStreamDeltaChange();
-        }
-        if (changedProperties.has('thinkingSession')) {
-            this._handleThinkingSessionChange();
-        }
-        if (changedProperties.has('thinkingDelta')) {
-            this._handleThinkingDeltaChange();
         }
         if (changedProperties.has('isStreaming')) {
             this._handleStreamingStateChange();
@@ -1606,8 +1537,6 @@ updateResponseContent() {
     // appears immediately (no typewriter delay). While streaming, `responses[idx]`
     // is incrementally appended by the app.
     const ansText = ((this.responses || [])[i] || '');
-    const thinkingText = ((this.thinkingByIndex || [])[i] || '');
-
     const formattedText = formatAnswer(ansText, q, null);
     const ansRendered = this.renderMarkdown(formattedText, false);
 
@@ -1648,22 +1577,6 @@ updateResponseContent() {
                     </div>
                 </div>`;
         }
-    }
-
-    if ((thinkingText && thinkingText.trim()) || (isCurrent && this.isThinking)) {
-        const shouldOpen = !(ansText && ansText.trim());
-        htmlStr += `
-            <div class="chat-row left" style="margin-bottom:0">
-                <details class="thinking-details" ${shouldOpen ? 'open' : ''}>
-                    <summary>
-                        <span class="thinking-title">
-                            <span class="thinking-dot"></span>
-                            Thinking
-                        </span>
-                    </summary>
-                    <div class="thinking-scroll" id="thinking-${i}">${escape(thinkingText)}</div>
-                </details>
-            </div>`;
     }
 
     if (ansText && ansText.trim()) {
@@ -1915,39 +1828,6 @@ updateResponseContent() {
             const next = existing + delta;
             el.dataset.streamText = next;
             this._scheduleStreamMarkdownRender(el);
-        } catch (_) {}
-    }
-
-    _handleThinkingSessionChange() {
-        try {
-            if (typeof this.thinkingSession === 'number' && this.thinkingSession !== this._currentThinkingSession) {
-                this._currentThinkingSession = this.thinkingSession;
-                const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.thinkingByIndex || []).length - 1);
-                const el = this.shadowRoot?.querySelector(`#thinking-${idx}`);
-                if (el) {
-                    el.dataset.streamText = '';
-                    const base = String((this.thinkingByIndex || [])[idx] || '');
-                    el.textContent = base;
-                    try { el.scrollLeft = el.scrollWidth; } catch (_) {}
-                }
-            }
-        } catch (_) {}
-    }
-
-    _handleThinkingDeltaChange() {
-        // Append thinking deltas to the active thinking panel without re-rendering the whole chat.
-        try {
-            if (!this.isThinking) return;
-            const delta = String(this.thinkingDelta || '');
-            // Allow empty delta as a "start" signal.
-            const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.thinkingByIndex || []).length - 1);
-            const el = this.shadowRoot?.querySelector(`#thinking-${idx}`);
-            if (!el) return;
-            const existing = el.dataset.streamText || el.textContent || '';
-            const next = existing + delta;
-            el.dataset.streamText = next;
-            el.textContent = next;
-            try { el.scrollLeft = el.scrollWidth; } catch (_) {}
         } catch (_) {}
     }
 

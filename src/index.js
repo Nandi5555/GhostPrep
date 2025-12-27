@@ -10,12 +10,10 @@ const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupAiIpcHandlers, stopMacOSSystemAudioCapture, sendToRenderer } = require('./utils/aiPipeline');
 
-// Legacy param kept for window shortcut wiring; AI pipeline is managed internally.
-const geminiSessionRef = { current: null };
 let mainWindow = null;
 
 function createMainWindow() {
-    mainWindow = createWindow(sendToRenderer, geminiSessionRef);
+    mainWindow = createWindow(sendToRenderer);
     return mainWindow;
 }
 
@@ -66,7 +64,7 @@ function setupGeneralIpcHandlers() {
 
     ipcMain.on('update-keybinds', (event, newKeybinds) => {
         if (mainWindow) {
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer);
         }
     });
 }

@@ -124,8 +124,6 @@ export class GhostPrepApp extends LitElement {
         toastText: { type: String },
         toastState: { type: String },
         toastType: { type: String },
-        // Cluely-style LLM thinking panel (per answer bubble)
-        thinkingByIndex: { type: Array },
     };
 
     constructor() {
@@ -145,7 +143,6 @@ export class GhostPrepApp extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.questions = [];
-        this.thinkingByIndex = [];
         this._isClickThrough = false;
         this.promptPanelOpen = false;
         this.transcriptText = '';
@@ -173,13 +170,6 @@ export class GhostPrepApp extends LitElement {
             // Streaming partial updates
             ipcRenderer.on('update-response-stream', (_, partial) => {
                 this.handleResponseStream(partial);
-            });
-            // Gemini "thinking" stream (simulated in main)
-            ipcRenderer.on('update-thinking-stream', (_, partial) => {
-                this.handleThinkingStream(partial);
-            });
-            ipcRenderer.on('update-thinking-final', (_, finalText) => {
-                this.handleThinkingFinal(finalText);
             });
             ipcRenderer.on('update-status', (_, status) => {
                 this.setStatus(status);
@@ -250,8 +240,6 @@ export class GhostPrepApp extends LitElement {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.removeAllListeners('update-response');
             ipcRenderer.removeAllListeners('update-response-stream');
-            ipcRenderer.removeAllListeners('update-thinking-stream');
-            ipcRenderer.removeAllListeners('update-thinking-final');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
             ipcRenderer.removeAllListeners('update-transcript');
@@ -350,12 +338,6 @@ export class GhostPrepApp extends LitElement {
     _streamIsFinal = false;
     _streamResponseIndex = -1;
 
-    // --- Thinking support (separate from answer streaming) ---
-    _isThinking = false;
-    _thinkingSession = 0;
-    _lastThinkingDelta = '';
-    _thinkingResponseIndex = -1;
-
     handleResponseStream(partial) {
         try {
             if (!partial || typeof partial !== 'string') return;
@@ -434,63 +416,6 @@ export class GhostPrepApp extends LitElement {
         }
     }
 
-    handleThinkingStream(partial) {
-        try {
-            if (typeof partial !== 'string') return;
-
-            // Start thinking on first chunk (even if empty string is used as a "start" signal).
-            if (!this._isThinking) {
-                this._isThinking = true;
-                const qLen = (this.questions || []).length;
-                let nextThinking = Array.isArray(this.thinkingByIndex) ? [...this.thinkingByIndex] : [];
-
-                if (qLen > 0) {
-                    while (nextThinking.length < qLen) nextThinking.push('');
-                    const idx = Math.min(
-                        Math.max(this.currentResponseIndex >= 0 ? this.currentResponseIndex : qLen - 1, 0),
-                        qLen - 1
-                    );
-                    this._thinkingResponseIndex = idx;
-                    this.currentResponseIndex = idx;
-                } else {
-                    // Edge case: no question exists; create a slot.
-                    this.questions = [...(this.questions || []), ''];
-                    nextThinking.push('');
-                    this._thinkingResponseIndex = nextThinking.length - 1;
-                    this.currentResponseIndex = this._thinkingResponseIndex;
-                }
-
-                this.thinkingByIndex = nextThinking;
-                this._thinkingSession++;
-                this._lastThinkingDelta = partial;
-            } else {
-                this._lastThinkingDelta = partial;
-            }
-
-            this.requestUpdate();
-        } catch (e) {
-            console.warn('handleThinkingStream error:', e);
-        }
-    }
-
-    handleThinkingFinal(finalText) {
-        try {
-            if (typeof finalText !== 'string') return;
-            const idx = this._thinkingResponseIndex >= 0 ? this._thinkingResponseIndex : this.currentResponseIndex;
-            let nextThinking = Array.isArray(this.thinkingByIndex) ? [...this.thinkingByIndex] : [];
-            const safeIdx = idx >= 0 ? idx : (nextThinking.length - 1);
-            if (safeIdx >= 0) {
-                while (nextThinking.length <= safeIdx) nextThinking.push('');
-                nextThinking[safeIdx] = finalText;
-                this.thinkingByIndex = nextThinking;
-            }
-        } finally {
-            this._isThinking = false;
-            this._lastThinkingDelta = '';
-            this._thinkingResponseIndex = -1;
-            this.requestUpdate();
-        }
-    }
 
     _applyTyping() {
         try {
@@ -583,11 +508,10 @@ export class GhostPrepApp extends LitElement {
         // Cluely-style: require provider keys (stored in Customize)
         const deepgramApiKey = localStorage.getItem('deepgramApiKey')?.trim();
         const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
-        const geminiApiKey = localStorage.getItem('geminiApiKey')?.trim();
-        if (!deepgramApiKey || (!openaiApiKey && !geminiApiKey)) {
+        if (!deepgramApiKey || !openaiApiKey) {
             const mainView = this.shadowRoot.querySelector('main-view');
             if (mainView && typeof mainView.showToast === 'function') {
-                mainView.showToast('Set Deepgram + (OpenAI or Gemini) keys in Customize → AI Providers', 'error');
+                mainView.showToast('Set Deepgram + OpenAI keys in Customize → AI Providers', 'error');
             } else if (mainView && mainView.triggerApiKeyError) {
                 mainView.triggerApiKeyError();
             }
@@ -608,7 +532,6 @@ export class GhostPrepApp extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.questions = [];
-        this.thinkingByIndex = [];
         this.transcriptText = '';
         this.startTime = Date.now();
         this.currentView = 'assistant';
@@ -794,7 +717,6 @@ export class GhostPrepApp extends LitElement {
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
                         .questions=${this.questions}
-                        .thinkingByIndex=${this.thinkingByIndex}
                         .selectedProfile=${this.selectedProfile}
                         .selectedLanguage=${this.selectedLanguage}
                         .statusText=${this.statusText}
@@ -802,9 +724,6 @@ export class GhostPrepApp extends LitElement {
                         .streamDelta=${this._lastStreamDelta}
                         .streamSession=${this._streamSession}
                         .streamIsFinal=${this._streamIsFinal}
-                        .isThinking=${this._isThinking}
-                        .thinkingDelta=${this._lastThinkingDelta}
-                        .thinkingSession=${this._thinkingSession}
                         .activeTab=${this.activeAssistantTab}
                         .transcriptText=${this.transcriptText}
                         .onSendText=${(message, opts) => this.handleSendText(message, opts)}

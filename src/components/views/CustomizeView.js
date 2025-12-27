@@ -722,10 +722,6 @@ export class CustomizeView extends LitElement {
         deepgramApiKey: { type: String },
         openaiApiKey: { type: String },
         openaiModel: { type: String },
-        geminiApiKey: { type: String },
-        geminiModel: { type: String },
-        geminiThinking: { type: Boolean },
-        llmEnsemble: { type: Boolean },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
         onAudioModeChange: { type: Function },
@@ -778,11 +774,7 @@ export class CustomizeView extends LitElement {
         // AI providers (required to start a session)
         this.deepgramApiKey = localStorage.getItem('deepgramApiKey') || '';
         this.openaiApiKey = localStorage.getItem('openaiApiKey') || '';
-        this.openaiModel = localStorage.getItem('openaiModel') || 'gpt-4.1-nano';
-        this.geminiApiKey = localStorage.getItem('geminiApiKey') || '';
-        this.geminiModel = localStorage.getItem('geminiModel') || 'gemini-3-flash';
-        this.geminiThinking = (localStorage.getItem('geminiThinking') || 'true') !== 'false';
-        this.llmEnsemble = (localStorage.getItem('llmEnsemble') || 'true') !== 'false';
+        this.openaiModel = localStorage.getItem('openaiModel') || 'gpt-4o-mini';
 
         this.loadKeybinds();
         this.loadGoogleSearchSettings();
@@ -1593,87 +1585,21 @@ export class CustomizeView extends LitElement {
                                     @input=${e => this.handleOpenAiKeyInput(e)}
                                 />
                                 <div class="form-description">
-                                    Used for answer generation (text + optional screenshots). Optional if Gemini is configured.
+                                    Used for answer generation (text + optional screenshots). Required to start a session.
                                 </div>
                             </div>
 
                             <div class="form-group full-width">
                                 <label class="form-label">OpenAI Model (Answer Generation)</label>
                                 <gp-select
-                                    .value=${this.openaiModel || 'gpt-4.1-nano'}
+                                    .value=${this.openaiModel || 'gpt-4o-mini'}
                                     .options=${[
-                                        { value: 'gpt-4.1-nano', label: 'GPT-4.1 nano (fastest / low latency)' },
                                         { value: 'gpt-4o-mini', label: 'GPT-4o mini (fast + strong)' },
-                                        { value: 'gpt-5-mini', label: 'GPT-5 mini (if available)' },
                                     ]}
                                     @gp-change=${e => this.handleOpenAiModelSelect({ target: { value: e.detail.value } })}
                                 ></gp-select>
                                 <div class="form-description">
-                                    Default is GPT-4.1 nano for lowest latency. If unavailable on your account, the app will fall back automatically.
-                                </div>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label class="form-label">Gemini API Key</label>
-                                <input
-                                    class="form-control"
-                                    type="password"
-                                    autocomplete="off"
-                                    placeholder="AIza..."
-                                    .value=${this.geminiApiKey || ''}
-                                    @input=${e => this.handleGeminiKeyInput(e)}
-                                />
-                                <div class="form-description">
-                                    Used for Cluely-style “Thinking” + fallback answer generation. Optional if OpenAI is configured.
-                                </div>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label class="form-label">Gemini Model</label>
-                                <gp-select
-                                    .value=${this.geminiModel || 'gemini-3-flash'}
-                                    .options=${[
-                                        { value: 'gemini-3-flash', label: 'Gemini 3 Flash (fastest)' },
-                                        { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (fallback)' },
-                                        { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (legacy fallback)' },
-                                    ]}
-                                    @gp-change=${e => this.handleGeminiModelSelect({ target: { value: e.detail.value } })}
-                                ></gp-select>
-                                <div class="form-description">
-                                    If your selected model isn’t available on your key, the app will automatically fall back.
-                                </div>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label class="form-label">Gemini Thinking Panel</label>
-                                <div class="toggle-group">
-                                    <input
-                                        id="gemini-thinking-toggle"
-                                        class="switch-input"
-                                        type="checkbox"
-                                        .checked=${!!this.geminiThinking}
-                                        @change=${this.handleGeminiThinkingToggle}
-                                    />
-                                    <label class="switch-label" for="gemini-thinking-toggle"></label>
-                                    <label class="switch-text" for="gemini-thinking-toggle">Show “Thinking” (Cluely-style) before the answer</label>
-                                </div>
-                            </div>
-
-                            <div class="form-group full-width">
-                                <label class="form-label">Use Both LLMs (Ensemble)</label>
-                                <div class="toggle-group">
-                                    <input
-                                        id="llm-ensemble-toggle"
-                                        class="switch-input"
-                                        type="checkbox"
-                                        .checked=${!!this.llmEnsemble}
-                                        @change=${this.handleLlmEnsembleToggle}
-                                    />
-                                    <label class="switch-label" for="llm-ensemble-toggle"></label>
-                                    <label class="switch-text" for="llm-ensemble-toggle">Combine OpenAI + Gemini drafts into one final answer</label>
-                                </div>
-                                <div class="form-description">
-                                    Recommended: improves quality and keeps automatic fallback if one provider fails.
+                                    Default is GPT-4o mini (fast + strong).
                                 </div>
                             </div>
                         </div>
@@ -2013,36 +1939,9 @@ export class CustomizeView extends LitElement {
     }
 
     handleOpenAiModelSelect(e) {
-        const v = String(e?.target?.value || '').trim() || 'gpt-4.1-nano';
+        const v = String(e?.target?.value || '').trim() || 'gpt-4o-mini';
         this.openaiModel = v;
         try { localStorage.setItem('openaiModel', v); } catch (_) {}
-        this.requestUpdate();
-    }
-
-    handleGeminiKeyInput(e) {
-        const v = String(e?.target?.value || '');
-        this.geminiApiKey = v;
-        try { localStorage.setItem('geminiApiKey', v); } catch (_) {}
-    }
-
-    handleGeminiModelSelect(e) {
-        const v = String(e?.target?.value || '').trim() || 'gemini-3-flash';
-        this.geminiModel = v;
-        try { localStorage.setItem('geminiModel', v); } catch (_) {}
-        this.requestUpdate();
-    }
-
-    handleGeminiThinkingToggle(e) {
-        const checked = !!(e?.target?.checked);
-        this.geminiThinking = checked;
-        try { localStorage.setItem('geminiThinking', checked ? 'true' : 'false'); } catch (_) {}
-        this.requestUpdate();
-    }
-
-    handleLlmEnsembleToggle(e) {
-        const checked = !!(e?.target?.checked);
-        this.llmEnsemble = checked;
-        try { localStorage.setItem('llmEnsemble', checked ? 'true' : 'false'); } catch (_) {}
         this.requestUpdate();
     }
 }

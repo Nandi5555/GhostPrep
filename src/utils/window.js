@@ -5,10 +5,10 @@ let mouseEventsIgnored = false;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
-const MIN_ASSISTANT_W = 635;
-const MIN_ASSISTANT_H = 450;
-const MAX_ASSISTANT_W = 635;
-const MAX_ASSISTANT_H = 635;
+const MIN_ASSISTANT_W = 730;
+const MIN_ASSISTANT_H = 500;
+const MAX_ASSISTANT_W = 730;
+const MAX_ASSISTANT_H = 750;
 
 // Runtime content protection state:
 // - undetectableEnabledRuntime: driven by the user's Undetectable toggle
@@ -32,7 +32,7 @@ function applyContentProtectionState(mainWindow) {
     }
 }
 
-function createWindow(sendToRenderer, geminiSessionRef) {
+function createWindow(sendToRenderer) {
     // Compact mode is the ONLY supported layout mode.
     // Start directly in compact sizing (fresh installs should never see "normal").
     let windowWidth = 700;
@@ -145,7 +145,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
 
                     await applyUndetectableSetting();
 
-                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer);
                     // Show the window after content protection has been applied
                     try {
                         mainWindow.showInactive();
@@ -155,7 +155,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
                     // Default to content protection OFF (visible)
                     undetectableEnabledRuntime = false;
                     applyContentProtectionState(mainWindow);
-                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef);
+                    updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer);
                     try {
                         mainWindow.showInactive();
                     } catch (_) {}
@@ -167,7 +167,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         await applyUndetectableSetting();
     });
 
-    setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef);
+    setupWindowIpcHandlers(mainWindow, sendToRenderer);
 
     return mainWindow;
 }
@@ -189,7 +189,7 @@ function getDefaultKeybinds() {
     };
 }
 
-function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef) {
+function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 
     // Unregister all existing shortcuts
     globalShortcut.unregisterAll();
@@ -343,7 +343,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     }
 }
 
-function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
+function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
     // Internal AI capture exclusion:
     // We must exclude THIS window from the screen/video stream used for AI screenshots,
     // regardless of the user's Undetectable toggle, but without persisting it.
@@ -389,7 +389,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
     ipcMain.on('update-keybinds', (event, newKeybinds) => {
         if (!mainWindow.isDestroyed()) {
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer);
         }
     });
 

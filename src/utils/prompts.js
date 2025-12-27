@@ -38,7 +38,7 @@ function getSystemPrompt(profile, customPrompt = '', _googleSearchEnabled = fals
 
     // If custom instructions exist, they are PRIMARY and override everything
     if (context) {
-        console.log('customPrompt', customPrompt);
+       
         return [
             roleLine,
             '',

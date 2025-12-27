@@ -150,13 +150,9 @@ function convertFloat32ToInt16(float32Array) {
 async function initializeAi(profile = 'interview', language = 'en-US') {
     const deepgramApiKey = localStorage.getItem('deepgramApiKey')?.trim();
     const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
-    const openaiModel = (localStorage.getItem('openaiModel') || 'gpt-4.1-nano').trim();
-    const geminiApiKey = localStorage.getItem('geminiApiKey')?.trim();
-    const geminiModel = (localStorage.getItem('geminiModel') || 'gemini-3-flash').trim();
-    const geminiThinking = (localStorage.getItem('geminiThinking') || 'true') !== 'false';
-    const llmEnsemble = (localStorage.getItem('llmEnsemble') || 'true') !== 'false';
+    const openaiModel = (localStorage.getItem('openaiModel') || 'gpt-4o-mini').trim();
 
-    if (deepgramApiKey && (openaiApiKey || geminiApiKey)) {
+    if (deepgramApiKey && openaiApiKey) {
         // Determine active custom prompt content from the prompt library.
         // Fallback to legacy single customPrompt if no library/active prompt is set.
         let activeCustomPrompt = '';
@@ -178,10 +174,6 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
             deepgramApiKey,
             openaiApiKey,
             openaiModel,
-            geminiApiKey,
-            geminiModel,
-            geminiThinking,
-            llmEnsemble,
             customPrompt: activeCustomPrompt,
             profile,
             language,
