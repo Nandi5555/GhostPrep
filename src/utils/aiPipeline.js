@@ -29,6 +29,7 @@ let deepgramClient = null;
 let deepgramApiKey = '';
 let openaiApiKey = '';
 let openaiModelName = 'gpt-4o-mini';
+let asrLanguage = 'en-US';
 let activeSystemPrompt = '';
 
 // Transcript buffers:
@@ -63,6 +64,16 @@ let lastUiError = '';
 let firstAudioChunkSeen = false;
 let audioChunkCount = 0;
 let lastInterimLogAt = 0;
+
+function getLastNonScreenTranscript(history = []) {
+    for (let i = history.length - 1; i >= 0; i--) {
+        const turn = history[i] || {};
+        if (turn.usedScreen) continue;
+        const t = String(turn.transcription || turn.transcript || '').trim();
+        if (t) return t;
+    }
+    return '';
+}
 
 function log(prefix, ...args) {
     try { console.log(prefix, ...args); } catch (_) {}
@@ -267,8 +278,9 @@ async function initializeAiSession({
     language = 'en-US',
 } = {}) {
     if (isInitializingSession) return { success: false, error: 'Session initialization in progress' };
-    if (!deepgramKey || !String(deepgramKey).trim()) return { success: false, error: 'Deepgram API key missing' };
+    const hasDeepgram = !!(deepgramKey && String(deepgramKey).trim());
     const hasOpenAi = !!(openaiKey && String(openaiKey).trim());
+    if (!hasDeepgram) return { success: false, error: 'Deepgram API key missing' };
     if (!hasOpenAi) return { success: false, error: 'OpenAI API key required' };
 
     isInitializingSession = true;
@@ -284,9 +296,12 @@ async function initializeAiSession({
     sendToRenderer('update-status', 'Connecting...');
 
     try {
-        deepgramApiKey = String(deepgramKey).trim();
+        asrLanguage = String(language || 'en-US').trim() || 'en-US';
+        deepgramApiKey = hasDeepgram ? String(deepgramKey).trim() : '';
         openaiApiKey = hasOpenAi ? String(openaiKey).trim() : '';
-        openaiModelName = String(openaiModel || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+        const normalizedModel = String(openaiModel || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+        const allowedModels = ['gpt-4o-mini'];
+        openaiModelName = allowedModels.includes(normalizedModel) ? normalizedModel : 'gpt-4o-mini';
 
         log('[AI][LLM] Providers ready', {
             openai: !!openaiApiKey,
@@ -313,11 +328,11 @@ async function initializeAiSession({
         initializeNewSession();
         sessionActive = true;
 
-        // Start Deepgram streaming ASR
+        // Start Deepgram ASR
         stopAsr();
         deepgramClient = new DeepgramStreamingClient({
             apiKey: deepgramApiKey,
-            language,
+            language: asrLanguage,
             // Prefer nova-3 for best accuracy/latency (Deepgram ASR).
             model: 'nova-3',
             sampleRate: 24000,
@@ -408,7 +423,7 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
     const overrideText = String(textOverride || '').trim();
     const typedContextText = String(typedContext || '').trim();
     const snapshotSpokenText = String(`${bufferFinal || ''}${bufferDraft || ''}`).trim();
-    const snapshotText = overrideText ? overrideText : snapshotSpokenText;
+    let snapshotText = overrideText ? overrideText : snapshotSpokenText;
     const imagesToUse = useScreenEnabled ? pendingImages : [];
     const hasImages = Array.isArray(imagesToUse) && imagesToUse.length > 0;
     log('[AI][SUBMIT] Snapshot length:', `${snapshotText.length} chars`);
@@ -417,11 +432,19 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         log('[AI][SUBMIT] History size:', Array.isArray(conversationHistory) ? conversationHistory.length : 0);
     } catch (_) {}
 
-    // Allow very short questions. If the user submits with empty transcript, only allow if screen is enabled & we have images.
+    // If no new input, fall back to the last non-screen transcript to avoid spurious errors
     if (!overrideText && !typedContextText && !snapshotSpokenText && !hasImages) {
+        const fallbackTranscript = getLastNonScreenTranscript(conversationHistory);
+        if (fallbackTranscript) {
+            snapshotText = fallbackTranscript;
+        }
+    }
+
+    // Allow very short questions. If the user submits with empty transcript, only allow if screen is enabled & we have images.
+    if (!overrideText && !typedContextText && !snapshotText && !hasImages) {
         logErr('[AI][SUBMIT] Empty snapshot and no screenshots -> refusing to submit');
         if (asrStatus !== 'connected') {
-            surfaceUiError('ASR not connected. Fix Deepgram connection first (check key), then try again.', 'submitNow');
+            surfaceUiError('ASR not connected. Fix ASR connection first (check key), then try again.', 'submitNow');
         } else {
             surfaceUiError('No transcript captured (and no screenshots). Speak first or enable Use Screen.', 'submitNow');
         }
@@ -509,6 +532,13 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         // OpenAI-only: stream tokens immediately to the renderer, then set one final answer at the end.
         const preferredModelName = String(openaiModelName || '').trim() || 'gpt-4o-mini';
         log('[AI][LLM] OpenAI request started', { model: preferredModelName });
+        try {
+            sendToRenderer('llm-start', {
+                provider: 'openai',
+                model: preferredModelName,
+                at: Date.now(),
+            });
+        } catch (_) {}
 
         let openaiFirstTokenMs = null;
         let buf = '';
@@ -554,6 +584,7 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         });
 
         sendToRenderer('update-response', finalText || '');
+        try { sendToRenderer('llm-end', { provider: 'openai', success: true, at: Date.now() }); } catch (_) {}
         listening = true;
         pushAiStatus();
         sendToRenderer('update-status', 'Listening...');
@@ -569,6 +600,7 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         return { success: true };
     } catch (e) {
         const msg = e?.message || String(e);
+        try { sendToRenderer('llm-end', { provider: 'openai', success: false, error: String(msg || ''), at: Date.now() }); } catch (_) {}
         llmStatus = 'error';
         listening = !!(asrStatus === 'connected');
         pushAiStatus();
@@ -614,11 +646,44 @@ function convertStereoToMono(stereoBuffer) {
     return monoBuffer;
 }
 
+function pcm16ToWav(pcmBuffer, sampleRate = 24000, channels = 1) {
+    const byteRate = sampleRate * channels * 2;
+    const blockAlign = channels * 2;
+    const dataSize = pcmBuffer.length;
+    const buffer = Buffer.alloc(44 + dataSize);
+
+    buffer.write('RIFF', 0);
+    buffer.writeUInt32LE(36 + dataSize, 4);
+    buffer.write('WAVE', 8);
+    buffer.write('fmt ', 12);
+    buffer.writeUInt32LE(16, 16); // PCM chunk size
+    buffer.writeUInt16LE(1, 20); // PCM format
+    buffer.writeUInt16LE(channels, 22);
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(byteRate, 28);
+    buffer.writeUInt16LE(blockAlign, 32);
+    buffer.writeUInt16LE(16, 34); // bits per sample
+    buffer.write('data', 36);
+    buffer.writeUInt32LE(dataSize, 40);
+    pcmBuffer.copy(buffer, 44);
+    return buffer;
+}
+
+function sendAudioToAsr(buf) {
+    if (!buf || !buf.length) return;
+    if (deepgramClient) {
+        try { deepgramClient.sendAudio(buf); } catch (_) {}
+    }
+}
+
 async function startMacOSSystemAudioCapture() {
     if (process.platform !== 'darwin') {
         return { success: false, error: 'System audio capture only available on macOS' };
     }
-    if (!sessionActive || !deepgramClient) {
+    if (!sessionActive) {
+        return { success: false, error: 'ASR not initialized' };
+    }
+    if (!deepgramClient) {
         return { success: false, error: 'ASR not initialized' };
     }
 
@@ -671,7 +736,7 @@ async function startMacOSSystemAudioCapture() {
             const chunk = audioBuffer.slice(0, CHUNK_SIZE);
             audioBuffer = audioBuffer.slice(CHUNK_SIZE);
             const monoChunk = CHANNELS === 2 ? convertStereoToMono(chunk) : chunk;
-            try { deepgramClient.sendAudio(monoChunk); } catch (_) {}
+            try { sendAudioToAsr(monoChunk); } catch (_) {}
         }
         const maxBufferSize = SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * 1;
         if (audioBuffer.length > maxBufferSize) {
@@ -757,7 +822,7 @@ function setupAiIpcHandlers() {
 
     // Audio ingest (from renderer)
     ipcMain.on('audio-chunk', (_event, payload) => {
-        if (!deepgramClient) return;
+        if (!sessionActive) return;
         try {
             audioChunkCount++;
             if (!firstAudioChunkSeen) {
@@ -773,11 +838,11 @@ function setupAiIpcHandlers() {
                           : ArrayBuffer.isView(payload.raw)
                                 ? Buffer.from(payload.raw.buffer, payload.raw.byteOffset, payload.raw.byteLength)
                                 : Buffer.from(payload.raw);
-                deepgramClient.sendAudio(buf);
+                sendAudioToAsr(buf);
             } else if (payload && typeof payload.data === 'string') {
                 // Legacy base64 path (avoid if possible)
                 const buf = Buffer.from(payload.data, 'base64');
-                deepgramClient.sendAudio(buf);
+                sendAudioToAsr(buf);
             }
         } catch (_) {}
     });

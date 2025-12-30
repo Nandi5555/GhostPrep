@@ -900,7 +900,6 @@ export class AssistantView extends LitElement {
         streamDelta: { type: String },
         streamSession: { type: Number },
         streamIsFinal: { type: Boolean },
-        // Thinking inputs from parent component (separate stream)
         activeTab: { type: String },
         transcriptText: { type: String },
         onTabChange: { type: Function },
@@ -1034,17 +1033,6 @@ scrollToTop() {
         // Check if marked is available
         if (typeof window !== 'undefined' && window.marked) {
             try {
-                const normalizeAndFenceCode = (raw) => {
-                    const input = String(raw || '').replace(/\r\n/g, '\n');
-                    if (!input.trim()) return input;
-                    // If the model emitted an odd number of fences, close it to avoid breaking parsing,
-                    // but DO NOT auto-wrap normal text in code fences. This guarantees only explicit
-                    // fenced blocks become code containers.
-                    const fenceCount = (input.match(/```/g) || []).length;
-                    if (fenceCount % 2 === 0) return input;
-                    return input + '\n```';
-                };
-
                 const escapeHtml = (str) =>
                     str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -1085,8 +1073,9 @@ scrollToTop() {
 
                 window.marked.use({ renderer });
 
-                const prepared = normalizeAndFenceCode(content);
-                const rendered = window.marked.parse(prepared);
+                // Do not "fix" or restructure model output here.
+                // Formatting is the model's responsibility via system/custom prompts.
+                const rendered = window.marked.parse(String(content || '').replace(/\r\n/g, '\n'));
                 return rendered;
             } catch (error) {
                 console.warn('Error parsing markdown:', error);

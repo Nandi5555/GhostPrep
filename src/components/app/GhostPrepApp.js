@@ -246,6 +246,7 @@ export class GhostPrepApp extends LitElement {
             ipcRenderer.removeAllListeners('chat-user-turn');
             ipcRenderer.removeAllListeners('ui-error');
         }
+        try { this.handleReasoningComplete(); } catch (_) {}
     }
 
     showToast(message, type = 'info') {
@@ -415,7 +416,6 @@ export class GhostPrepApp extends LitElement {
             // no-op
         }
     }
-
 
     _applyTyping() {
         try {

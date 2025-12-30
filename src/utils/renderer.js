@@ -152,6 +152,9 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
     const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
     const openaiModel = (localStorage.getItem('openaiModel') || 'gpt-4o-mini').trim();
 
+    const allowedOpenAiModels = ['gpt-4o-mini'];
+    const normalizedOpenaiModel = allowedOpenAiModels.includes(openaiModel) ? openaiModel : 'gpt-4o-mini';
+
     if (deepgramApiKey && openaiApiKey) {
         // Determine active custom prompt content from the prompt library.
         // Fallback to legacy single customPrompt if no library/active prompt is set.
@@ -173,7 +176,7 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
         const result = await ipcRenderer.invoke('initialize-ai', {
             deepgramApiKey,
             openaiApiKey,
-            openaiModel,
+            openaiModel: normalizedOpenaiModel,
             customPrompt: activeCustomPrompt,
             profile,
             language,

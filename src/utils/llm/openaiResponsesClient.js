@@ -119,10 +119,7 @@ async function streamResponse({
     const input = buildInput({ systemPrompt, history, userText, images });
     if (!input.length) throw new Error('No input to send');
 
-    // Some newer models reject certain parameters (e.g., GPT-5 nano may reject `temperature`).
-    // We keep the API call robust by omitting unsupported params by model family.
     const modelName = String(model || '').trim();
-    const isGpt5Family = modelName.startsWith('gpt-5');
 
     const body = {
         model: modelName,
@@ -130,9 +127,13 @@ async function streamResponse({
         max_output_tokens: maxOutputTokens,
         input,
     };
-    // Only include temperature when supported.
-    if (!isGpt5Family && typeof temperature === 'number') {
+    if (typeof temperature === 'number') {
         body.temperature = temperature;
+    }
+    // Persist request+response on OpenAI servers for Compare/Evaluate/logging.
+    // (Keep this enabled for the default model.)
+    if (modelName === 'gpt-4o-mini') {
+        body.store = true;
     }
 
     const resp = await fetch('https://api.openai.com/v1/responses', {
@@ -261,14 +262,13 @@ async function warmup({
     if (!apiKey) return false;
     try {
         const modelName = String(model || '').trim();
-        const isGpt5Family = modelName.startsWith('gpt-5');
         const body = {
             model: modelName,
             stream: false,
             max_output_tokens: 1,
             input: [{ role: 'user', content: [{ type: 'input_text', text: 'ok' }] }],
         };
-        if (!isGpt5Family) body.temperature = 0;
+        body.temperature = 0;
 
         // Tiny request to warm TLS + connection pools so the first "real" answer is faster.
         const resp = await fetch('https://api.openai.com/v1/responses', {

@@ -774,7 +774,9 @@ export class CustomizeView extends LitElement {
         // AI providers (required to start a session)
         this.deepgramApiKey = localStorage.getItem('deepgramApiKey') || '';
         this.openaiApiKey = localStorage.getItem('openaiApiKey') || '';
-        this.openaiModel = localStorage.getItem('openaiModel') || 'gpt-4o-mini';
+        const storedModel = localStorage.getItem('openaiModel');
+        const allowedModels = ['gpt-4o-mini'];
+        this.openaiModel = allowedModels.includes(storedModel) ? storedModel : 'gpt-4o-mini';
 
         this.loadKeybinds();
         this.loadGoogleSearchSettings();
@@ -1939,7 +1941,9 @@ export class CustomizeView extends LitElement {
     }
 
     handleOpenAiModelSelect(e) {
-        const v = String(e?.target?.value || '').trim() || 'gpt-4o-mini';
+        const raw = String(e?.target?.value || '').trim();
+        const allowedModels = ['gpt-4o-mini'];
+        const v = allowedModels.includes(raw) ? raw : 'gpt-4o-mini';
         this.openaiModel = v;
         try { localStorage.setItem('openaiModel', v); } catch (_) {}
         this.requestUpdate();
