@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
@@ -13,11 +14,40 @@ module.exports = {
                 const p = path.join(__dirname, 'src/assets/SystemAudioDump');
                 fs.chmodSync(p, 0o755);
             } catch (_) {}
+            try {
+                const helper = path.join(__dirname, 'src/assets/ScreenBehindDump');
+                const swiftSrc = path.join(__dirname, 'src/assets/ScreenBehindDump.swift');
+                if (!fs.existsSync(helper) && fs.existsSync(swiftSrc)) {
+                    try {
+                        spawnSync(
+                            'xcrun',
+                            [
+                                'swiftc',
+                                '-parse-as-library',
+                                swiftSrc,
+                                '-O',
+                                '-o',
+                                helper,
+                                '-framework',
+                                'ScreenCaptureKit',
+                                '-framework',
+                                'CoreGraphics',
+                                '-framework',
+                                'ImageIO',
+                                '-framework',
+                                'UniformTypeIdentifiers',
+                            ],
+                            { stdio: 'ignore' }
+                        );
+                    } catch (_) {}
+                }
+                fs.chmodSync(helper, 0o755);
+            } catch (_) {}
         },
     },
     packagerConfig: {
         asar: true,
-        extraResource: ['./src/assets/SystemAudioDump'],
+        extraResource: ['./src/assets/SystemAudioDump', './src/assets/ScreenBehindDump'],
         name: 'Firefox',
         icon: 'src/assets/logo',
         // use `security find-identity -v -p codesigning` to find your identity

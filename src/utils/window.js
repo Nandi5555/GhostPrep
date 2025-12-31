@@ -19,10 +19,6 @@ let aiCaptureExclusionRuntime = false;
 
 function applyContentProtectionState(mainWindow) {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    // On macOS, setContentProtection affects OS-level screen sharing/screenshot capture.
-    // "Undetectable" should be controlled ONLY by the user's toggle.
-    // We keep aiCaptureExclusionRuntime for internal capture flows (primarily Windows),
-    // but do not let it force content protection on macOS.
     const next =
         !!undetectableEnabledRuntime || (process.platform === 'win32' ? !!aiCaptureExclusionRuntime : false);
     try {
@@ -359,6 +355,101 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                 undetectable: undetectableEnabledRuntime,
                 effective: !!undetectableEnabledRuntime || !!aiCaptureExclusionRuntime,
             };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
+        }
+    });
+
+    ipcMain.handle('capture-screen-behind-app', async (_event, { imageQuality = 'medium' } = {}) => {
+        try {
+            if (process.platform !== 'darwin') {
+                return { success: false, error: 'Unsupported platform' };
+            }
+            if (!mainWindow || mainWindow.isDestroyed()) {
+                return { success: false, error: 'Window destroyed' };
+            }
+
+            const { spawnSync } = require('child_process');
+            const fs = require('node:fs');
+            const { app } = require('electron');
+
+            const quality = String(imageQuality || 'medium') === 'high' ? 0.9 : String(imageQuality || 'medium') === 'low' ? 0.5 : 0.7;
+
+            const bounds = mainWindow.getBounds();
+            const display = screen.getDisplayMatching(bounds);
+            const args = [
+                '--ownerPid',
+                String(process.pid),
+                '--displayId',
+                String(display?.id ?? ''),
+                '--quality',
+                String(quality),
+            ];
+
+            let helperPath;
+            if (app.isPackaged) {
+                helperPath = path.join(process.resourcesPath, 'ScreenBehindDump');
+            } else {
+                helperPath = path.join(__dirname, '../assets', 'ScreenBehindDump');
+                const swiftSrc = path.join(__dirname, '../assets', 'ScreenBehindDump.swift');
+                if (!fs.existsSync(helperPath) && fs.existsSync(swiftSrc)) {
+                    try {
+                        spawnSync(
+                            'xcrun',
+                            [
+                                'swiftc',
+                                '-parse-as-library',
+                                swiftSrc,
+                                '-O',
+                                '-o',
+                                helperPath,
+                                '-framework',
+                                'ScreenCaptureKit',
+                                '-framework',
+                                'CoreGraphics',
+                                '-framework',
+                                'ImageIO',
+                                '-framework',
+                                'UniformTypeIdentifiers',
+                            ],
+                            { stdio: 'ignore' }
+                        );
+                    } catch (_) {}
+                }
+            }
+
+            try {
+                fs.accessSync(helperPath, fs.constants.X_OK);
+            } catch (_) {
+                try {
+                    fs.chmodSync(helperPath, 0o755);
+                } catch (e) {
+                    return { success: false, error: `ScreenBehindDump not executable (${e?.message || e})` };
+                }
+            }
+
+            const out = spawnSync(helperPath, args, { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
+            if (out.error) {
+                return { success: false, error: out.error?.message || String(out.error) };
+            }
+            const stdout = String(out.stdout || '').trim();
+            if (!stdout) {
+                const stderr = String(out.stderr || '').trim();
+                return { success: false, error: stderr || 'No output from ScreenBehindDump' };
+            }
+
+            const lines = stdout.split('\n');
+            const first = String(lines[0] || '').trim();
+            const parts = first.split(/\s+/).filter(Boolean);
+            const width = Math.max(0, parseInt(parts[0] || '0', 10) || 0);
+            const height = Math.max(0, parseInt(parts[1] || '0', 10) || 0);
+            const base64 = lines.slice(1).join('').trim();
+            if (!base64 || base64.length < 100) {
+                const stderr = String(out.stderr || '').trim();
+                return { success: false, error: stderr || 'Invalid screenshot data' };
+            }
+
+            return { success: true, base64, mimeType: 'image/jpeg', width, height };
         } catch (e) {
             return { success: false, error: e?.message || String(e) };
         }
