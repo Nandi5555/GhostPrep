@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { PermissionsView } from './PermissionsView.js';
 
 export class OnboardingView extends LitElement {
     static styles = css`
@@ -212,6 +213,8 @@ export class OnboardingView extends LitElement {
         contextText: { type: String },
         onComplete: { type: Function },
         onClose: { type: Function },
+        startSlide: { type: Number },
+        permissionsGranted: { type: Boolean },
     };
 
     constructor() {
@@ -220,6 +223,8 @@ export class OnboardingView extends LitElement {
         this.contextText = '';
         this.onComplete = () => {};
         this.onClose = () => {};
+        this.startSlide = 0;
+        this.permissionsGranted = false;
         this.canvas = null;
         this.ctx = null;
         this.animationId = null;
@@ -268,7 +273,16 @@ export class OnboardingView extends LitElement {
                 [30, 40, 35], // Muted green
                 [5, 15, 10], // Almost black
             ],
-            // Slide 5 - Complete (Dark warm gray)
+            // Slide 5 - Permissions (Dark blue)
+            [
+                [18, 22, 36],
+                [12, 16, 30],
+                [22, 26, 44],
+                [8, 10, 22],
+                [26, 30, 52],
+                [5, 6, 18],
+            ],
+            // Slide 6 - Complete (Dark warm gray)
             [
                 [30, 25, 20], // Dark warm gray
                 [25, 20, 15], // Darker warm
@@ -278,6 +292,18 @@ export class OnboardingView extends LitElement {
                 [15, 10, 5], // Almost black
             ],
         ];
+    }
+
+    updated(changedProperties) {
+        super.updated?.(changedProperties);
+        if (changedProperties.has('startSlide')) {
+            const next = Number(this.startSlide || 0);
+            const slides = this.getSlides();
+            const max = Math.max(0, slides.length - 1);
+            if (!Number.isNaN(next)) {
+                this.currentSlide = Math.max(0, Math.min(next, max));
+            }
+        }
     }
 
     firstUpdated() {
@@ -385,11 +411,10 @@ export class OnboardingView extends LitElement {
     }
 
     nextSlide() {
-        if (this.currentSlide < 4) {
-            this.startColorTransition(this.currentSlide + 1);
-        } else {
-            this.completeOnboarding();
-        }
+        const slides = this.getSlides();
+        const last = Math.max(0, slides.length - 1);
+        if (this.currentSlide < last) this.startColorTransition(this.currentSlide + 1);
+        else this.completeOnboarding();
     }
 
     prevSlide() {
@@ -399,10 +424,30 @@ export class OnboardingView extends LitElement {
     }
 
     startColorTransition(newSlide) {
+        const slides = this.getSlides();
+        const permissionIndex = slides.findIndex(s => s && s.type === 'permissions');
+        const gatingEnabled = this._isPermissionGatingEnabled();
+
+        let next = newSlide;
+        if (gatingEnabled && permissionIndex >= 0 && next > permissionIndex && !this.permissionsGranted) {
+            next = permissionIndex;
+        }
+
         this.previousColorScheme = [...this.colorSchemes[this.currentSlide]];
-        this.currentSlide = newSlide;
+        this.currentSlide = next;
         this.isTransitioning = true;
         this.transitionStartTime = performance.now();
+    }
+
+    _isPermissionGatingEnabled() {
+        try {
+            const isMac = navigator.platform.includes('Mac');
+            const isWin = navigator.platform.toLowerCase().includes('win');
+            const windowsPermissionFlowEnabled = isWin && (localStorage.getItem('windowsPermissionFlowEnabled') === 'true');
+            return isMac || windowsPermissionFlowEnabled;
+        } catch (_) {
+            return false;
+        }
     }
 
     // Interpolate between two color schemes
@@ -434,11 +479,11 @@ export class OnboardingView extends LitElement {
         this.onComplete();
     }
 
-    getSlideContent() {
-        const slides = [
+    getSlides() {
+        return [
             {
                 icon: 'assets/onboarding/welcome.svg',
-                title: 'Welcome to Firefox',
+                title: 'Welcome to CueFlow',
                 content:
                     'Your AI assistant that listens and watches, then provides fast, ready-to-say answers during interviews and meetings when you trigger it.',
             },
@@ -460,17 +505,41 @@ export class OnboardingView extends LitElement {
                 showFeatures: true,
             },
             {
+                type: 'permissions',
+            },
+            {
                 icon: 'assets/onboarding/ready.svg',
                 title: 'Ready to Go',
                 content: 'Add your Deepgram + OpenAI API keys in Customize → AI Providers, then start your session.',
             },
         ];
+    }
 
+    getSlideContent() {
+        const slides = this.getSlides();
         return slides[this.currentSlide];
     }
 
     render() {
         const slide = this.getSlideContent();
+
+        if (slide?.type === 'permissions') {
+            return html`
+                <permissions-view
+                    .showBack=${true}
+                    .onBack=${() => this.prevSlide()}
+                    .onAllGranted=${() => {
+                        this.permissionsGranted = true;
+                        this.requestUpdate();
+                    }}
+                    .showContinue=${true}
+                    .onContinue=${() => this.nextSlide()}
+                ></permissions-view>
+            `;
+        }
+
+        const slides = this.getSlides();
+        const last = Math.max(0, slides.length - 1);
 
         return html`
             <div class="onboarding-container">
@@ -519,7 +588,7 @@ export class OnboardingView extends LitElement {
                     </button>
 
                     <div class="progress-dots">
-                        ${[0, 1, 2, 3, 4].map(
+                        ${Array.from({ length: slides.length }, (_, i) => i).map(
                             index => html`
                                 <div
                                     class="dot ${index === this.currentSlide ? 'active' : ''}"
@@ -534,12 +603,12 @@ export class OnboardingView extends LitElement {
                     </div>
 
                     <button class="nav-button" @click=${this.nextSlide}>
-                        ${this.currentSlide === 4
+                        ${this.currentSlide === last
                             ? 'Get Started'
                             : html`
-                                  <svg width="16px" height="16px" stroke-width="2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M9 6L15 12L9 18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
-                                  </svg>
+                                <svg width="16px" height="16px" stroke-width="2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 6L15 12L9 18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
                               `}
                     </button>
                 </div>

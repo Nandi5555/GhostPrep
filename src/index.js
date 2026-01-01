@@ -12,6 +12,15 @@ const { setupAiIpcHandlers, stopMacOSSystemAudioCapture, sendToRenderer } = requ
 
 let mainWindow = null;
 
+try {
+    if (process.platform === 'darwin') {
+        app.commandLine.appendSwitch('use-mock-keychain');
+    }
+    try {
+        app.setPasswordManagerEnabled(false);
+    } catch (_) {}
+} catch (_) {}
+
 function createMainWindow() {
     mainWindow = createWindow(sendToRenderer);
     return mainWindow;

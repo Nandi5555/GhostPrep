@@ -1,4 +1,4 @@
-const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
+const { BrowserWindow, globalShortcut, ipcMain, screen, systemPreferences, app } = require('electron');
 const path = require('node:path');
 
 let mouseEventsIgnored = false;
@@ -340,6 +340,64 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 }
 
 function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
+    ipcMain.handle('get-permission-status', async () => {
+        try {
+            if (process.platform !== 'darwin') {
+                return {
+                    success: true,
+                    platform: process.platform,
+                    supported: false,
+                    permissions: {},
+                    allGranted: true,
+                };
+            }
+
+            const safeGet = (kind) => {
+                try {
+                    const v = systemPreferences.getMediaAccessStatus(kind);
+                    return typeof v === 'string' ? v : 'unknown';
+                } catch (_) {
+                    return 'unknown';
+                }
+            };
+
+            const microphone = safeGet('microphone');
+            const screenRecording = safeGet('screen');
+
+            const allGranted = microphone === 'granted' && screenRecording === 'granted';
+
+            return {
+                success: true,
+                platform: process.platform,
+                supported: true,
+                identity: {
+                    name: app.getName(),
+                    isPackaged: app.isPackaged,
+                    appPath: app.getAppPath(),
+                },
+                permissions: {
+                    microphone,
+                    screenRecording,
+                },
+                allGranted,
+            };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
+        }
+    });
+
+    ipcMain.handle('request-microphone-permission', async () => {
+        try {
+            if (process.platform !== 'darwin') {
+                return { success: false, error: 'Unsupported platform' };
+            }
+            const granted = await systemPreferences.askForMediaAccess('microphone');
+            return { success: true, granted: !!granted };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
+        }
+    });
+
     // Internal AI capture exclusion:
     // We must exclude THIS window from the screen/video stream used for AI screenshots,
     // regardless of the user's Undetectable toggle, but without persisting it.
@@ -371,7 +429,6 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
 
             const { spawnSync } = require('child_process');
             const fs = require('node:fs');
-            const { app } = require('electron');
 
             const quality = String(imageQuality || 'medium') === 'high' ? 0.9 : String(imageQuality || 'medium') === 'low' ? 0.5 : 0.7;
 

@@ -8,6 +8,7 @@ import { HistoryView } from '../views/HistoryView.js';
 import { AssistantView } from '../views/AssistantView.js';
 import { OnboardingView } from '../views/OnboardingView.js';
 import { AdvancedView } from '../views/AdvancedView.js';
+import { PermissionsView } from '../views/PermissionsView.js';
 import { scrollbarStyles } from '../styles/scrollbarStyles.js';
 
 export class GhostPrepApp extends LitElement {
@@ -124,6 +125,7 @@ export class GhostPrepApp extends LitElement {
         toastText: { type: String },
         toastState: { type: String },
         toastType: { type: String },
+        permissionStatus: { type: Object },
     };
 
     constructor() {
@@ -153,6 +155,8 @@ export class GhostPrepApp extends LitElement {
         this.toastState = 'hide';
         this.toastType = 'info';
         this._toastTimer = null;
+
+        this.permissionStatus = null;
     }
 
     connectedCallback() {
@@ -671,6 +675,13 @@ export class GhostPrepApp extends LitElement {
     }
 
     renderCurrentView() {
+        if (this.currentView === 'permissions') {
+            return html`
+                <permissions-view
+                    .permissionStatus=${this.permissionStatus}
+                ></permissions-view>
+            `;
+        }
         switch (this.currentView) {
             case 'onboarding':
                 return html`
@@ -741,7 +752,7 @@ export class GhostPrepApp extends LitElement {
     }
 
     render() {
-        const baseClass = this.currentView === 'assistant' ? 'assistant-view' : this.currentView === 'onboarding' ? 'onboarding-view' : 'with-border';
+        const baseClass = this.currentView === 'assistant' ? 'assistant-view' : (this.currentView === 'onboarding' || this.currentView === 'permissions') ? 'onboarding-view' : 'with-border';
         const collapseClass = this.currentView === 'main' ? (this.mainCollapsed ? 'collapsed' : 'expanded') : '';
         const mainContentClass = `main-content ${baseClass} ${collapseClass}`;
 

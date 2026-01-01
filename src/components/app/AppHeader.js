@@ -341,15 +341,16 @@ export class AppHeader extends LitElement {
 
     getViewTitle() {
         const titles = {
-            onboarding: 'Welcome to Firefox',
-            main: 'Firefox',
+            onboarding: 'Welcome to CueFlow',
+            permissions: 'Permissions',
+            main: 'CueFlow',
             customize: 'Customize',
             help: 'Help & Shortcuts',
             history: 'Conversation History',
             advanced: 'Advanced Tools',
-            assistant: 'Firefox',
+            assistant: 'CueFlow',
         };
-        return titles[this.currentView] || 'Firefox';
+        return titles[this.currentView] || 'CueFlow';
     }
 
     getElapsedTime() {
