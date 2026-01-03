@@ -721,7 +721,11 @@ export class AppHeader extends LitElement {
                               </button>
                           `
                         : html`
-                              <button @click=${this.isNavigationView() ? this.onBackClick : this.onCloseClick} class="icon-button window-close">
+                              <button
+                                  @click=${this.currentView === 'main' ? this.onHideToggleClick : this.isNavigationView() ? this.onBackClick : this.onCloseClick}
+                                  class="icon-button window-close"
+                                  title=${this.currentView === 'main' ? `Hide (${window.cheddar?.isMacOS ? 'Cmd' : 'Ctrl'}+\\)` : 'Close'}
+                              >
                                   <?xml version="1.0" encoding="UTF-8"?><svg
                                       width="24px"
                                       height="24px"

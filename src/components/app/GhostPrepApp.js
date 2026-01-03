@@ -499,6 +499,13 @@ export class GhostPrepApp extends LitElement {
         }
     }
 
+    async handleQuitApplication() {
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            await ipcRenderer.invoke('quit-application');
+        }
+    }
+
     // Main view event handlers
     async handleStart() {
         // Cluely-style: require provider keys (stored in Customize)
@@ -675,6 +682,7 @@ export class GhostPrepApp extends LitElement {
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
                         .onTranscriptionModeChange=${mode => this.handleTranscriptionModeChange(mode)}
                         .onAdvancedModeChange=${advancedMode => this.handleAdvancedModeChange(advancedMode)}
+                        .onQuitApp=${() => this.handleQuitApplication()}
                     ></customize-view>
                 `;
 

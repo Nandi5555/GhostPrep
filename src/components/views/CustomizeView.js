@@ -726,6 +726,7 @@ export class CustomizeView extends LitElement {
         onTranscriptionModeChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
+        onQuitApp: { type: Function },
         // Prompt library modal state
         promptLibraryOpen: { type: Boolean },
         highlightColor: { type: String },
@@ -745,6 +746,7 @@ export class CustomizeView extends LitElement {
         this.onAudioModeChange = () => {};
         this.onTranscriptionModeChange = () => {};
         this.onAdvancedModeChange = () => {};
+        this.onQuitApp = () => {};
 
         // Google Search default
         this.googleSearchEnabled = true;
@@ -1379,6 +1381,16 @@ export class CustomizeView extends LitElement {
                                     </button>
                                 `
                             )}
+                            <button
+                                class="nav-item"
+                                aria-current="false"
+                                @click=${() => this.onQuitApp()}
+                            >
+                                <span class="nav-icon" aria-hidden="true">
+                                    ${this.renderNavIcon('quit')}
+                                </span>
+                                <span class="nav-label">Quit App</span>
+                            </button>
                         </nav>
                     </div>
                 </aside>
@@ -1456,6 +1468,11 @@ export class CustomizeView extends LitElement {
                     <path d="M12 3l10 18H2L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
                     <path d="M12 9v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                     <path d="M12 17h.01" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+                </svg>`;
+            case 'quit':
+                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M7.2 4.6a8.5 8.5 0 1 0 9.6 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                 </svg>`;
             default:
                 return html``;
