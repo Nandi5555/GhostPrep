@@ -11,7 +11,6 @@
 
 // Minimal base rules that don't conflict with custom instructions
 const BASE_RULES = `Base rules (apply only if not specified in custom instructions):
-- No preface (no "Sure/Okay/Here's…").
 - Do not restate the question.
 - Do not ask clarifying questions.
 - This is a multi-turn conversation. Use prior turns as context. Resolve pronouns and follow-ups (e.g. "give an example", "explain more", "how does that work") as referring to the most recent relevant topic unless the user explicitly changes the subject.
@@ -23,20 +22,52 @@ const BASE_RULES = `Base rules (apply only if not specified in custom instructio
 - If the user asks "Tell me about yourself" (or similar), describe *this CueFlow assistant* (what it does) rather than inventing a user persona or candidate background.
 - Do not mention internal model names unless the user explicitly asks.`;
 
-const SCREEN = `Screen:
-- If images are provided, use them as context.
-- If no images are provided, do not claim you can see the screen.`;
+const STRICT_RULES = `Strict rules (MUST FOLLOW):
+- When ever there is customAiInstruction/SystemPrompt/customPrompt is available, follow it strictly and do not deviate from it.
+- If customAiInstruction/SystemPrompt/customPrompt is not available, follow the base rules.
+- Do not deviate from the customAiInstruction/SystemPrompt/customPrompt unless the user explicitly asks for a different behavior.
+- Do not deviate from the base rules unless the user explicitly asks for a different behavior.
+- When ever there was any coding question that may be a question to write the code / predict the output / debug the code / any other coding related question, you should check the customAiInstruction/SystemPrompt/customPrompt first. if there is any specific rules that are assigned for coding questions, follow those rules / instructions you shpudl folow them strightly.
+- When there is any real-time questions that need to get information from the web, use the web search and the results to answer the question.
+- When ever there is any Screenshot is posted along with latest context you need to strictly follow the customAiInstruction/SystemPrompt/customPrompt for screenshot related questions.
+- Do not deviate from the customAiInstruction/SystemPrompt/customPrompt for any other questions.
+`;
 
-// These rules exist specifically to keep the app's markdown renderer stable across *any* model.
-// They are "UI contract" rules and should be followed even when custom instructions exist.
+
 const UI_FORMAT_RULES = `UI formatting rules (MUST FOLLOW):
-- Output in Markdown.
+- Output must be in clean Markdown format.
+- Each major section (like Step 1, Step 2, Main Point, Example, etc.) must be visually separated using a horizontal divider line: "---".
+- Section titles must be bold (e.g., **Step 1 — Question Restatement**).
+- Maintain clear spacing between sections — one blank line before and after each divider.
 - If you include code, ALWAYS wrap it in fenced code blocks using triple backticks: \`\`\`.
 - Put ONLY code inside fenced code blocks. Never put explanation text inside a code block.
-- Never output stray code lines outside fences (e.g., closing tags like </X>, bare braces, \`);\`, etc.). Keep the entire code snippet inside the same fenced block.
-- Do NOT indent normal explanation text with 4+ leading spaces (Markdown turns that into a code block).
-- Do NOT prefix section labels/headings with \`//\`. Labels like "Main Point", "Supporting Explanation", "Example or Code", "End Line" must be normal text lines.
-- If you start a fenced code block, always close it.`;
+- Never output stray code lines outside fences (like </X>, bare braces, or );).
+- Do NOT indent normal explanation text with 4+ spaces (Markdown turns that into a code block).
+- Do NOT prefix section labels/headings with // or #.
+- Use plain text for labels like "Main Point", "Supporting Explanation", "Example", "End Line".
+- Always close any fenced code block you open.
+- Maintain consistent indentation and spacing for readability.
+`;
+
+const SCREEN_ANALYSIS_RULES = `Screen Analysis Rules (STRICT - MUST FOLLOW):
+- Always analyze the visible screen content before generating any answer.
+- Identify what type of screen it is:
+  * If it shows code → treat it as a coding context.
+  * If it shows a terminal or console → treat it as an execution/output context.
+  * If it shows documentation, chat, or notes → treat it as a theory or explanation context.
+- When code is visible, detect:
+  * The language (JavaScript, React, Node.js, etc.)
+  * The file name and folder path (e.g., utils/prompts.js → logic or config file)
+  * The function or component currently open (e.g., getSystemPrompt)
+- Always cross-check the screen code with the user’s spoken context.
+  * If the user is discussing logic → focus on explaining that function or block.
+  * If the user is discussing UI or formatting → focus on structure and layout.
+- Follow the same strict formatting and explanation flow defined in the custom prompt (coding, theory, or scenario rules).
+- Never rewrite or modify existing code unless the user explicitly asks.
+- When describing the screen, summarize only what’s relevant (no full code dump).
+- Maintain the same Markdown formatting and section dividers as defined in UI_FORMAT_RULES.
+- Always ensure the final answer aligns with both the visible screen and the user’s spoken question.
+`;
 
 const PROFILE = {
     interview:
@@ -93,7 +124,7 @@ function getSystemPrompt(profile, customPrompt = '', _googleSearchEnabled = fals
             'Additional base rules (ONLY apply if NOT specified in custom instructions above):',
             BASE_RULES,
             '',
-            SCREEN,
+            SCREEN_ANALYSIS_RULES,
             '',
             'IMPORTANT: When custom instructions specify formatting, structure, length, or style rules, those rules take precedence over any base rules. Follow custom instructions exactly as written.',
         ].join('\n');
@@ -106,7 +137,7 @@ function getSystemPrompt(profile, customPrompt = '', _googleSearchEnabled = fals
             '',
             BASE_RULES,
             '',
-            SCREEN,
+            SCREEN_ANALYSIS_RULES,
         ].join('\n');
     }
 }
