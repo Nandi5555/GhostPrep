@@ -418,7 +418,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
         }
     });
 
-    ipcMain.handle('capture-screen-behind-app', async (_event, { imageQuality = 'medium' } = {}) => {
+    ipcMain.handle('capture-screen-behind-app', async (_event, { imageQuality = 'high' } = {}) => {
         try {
             if (process.platform !== 'darwin') {
                 return { success: false, error: 'Unsupported platform' };
@@ -430,7 +430,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
             const { spawnSync } = require('child_process');
             const fs = require('node:fs');
 
-            const quality = String(imageQuality || 'medium') === 'high' ? 0.9 : String(imageQuality || 'medium') === 'low' ? 0.5 : 0.7;
+            // Fixed behavior: always High quality (ignore any passed value).
+            const quality = 0.9;
 
             const bounds = mainWindow.getBounds();
             const display = screen.getDisplayMatching(bounds);

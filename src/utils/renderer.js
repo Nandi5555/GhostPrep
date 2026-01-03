@@ -22,7 +22,7 @@ let audioProcessor = null;
 let hiddenVideo = null;
 let offscreenCanvas = null;
 let offscreenContext = null;
-let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
+let currentImageQuality = 'high'; // Fixed: always use high quality screenshots
 let pendingScreenshotPreviewDataUrl = null; // attach to the next chat-user-turn (Assist/voice submit)
 
 // Transcription mode:
@@ -202,12 +202,12 @@ ipcRenderer.on('update-status', (event, status) => {
 
 // Listen for responses - handled in GhostPrepApp.js to avoid duplicates
 
-async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
+async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'high') {
     if (!window.__aiReady) {
         return;
     }
-    // Store the image quality for manual screenshots
-    currentImageQuality = imageQuality;
+    // Fixed behavior: screenshots are on-demand at submit time, always High quality.
+    currentImageQuality = 'high';
 
     // Reset token tracker when starting new capture session
     tokenTracker.reset();
@@ -526,7 +526,9 @@ function startAudioHealthMonitor() {
     }, 1000);
 }
 
-async function captureScreenshot(imageQuality = 'medium', isManual = false) {
+async function captureScreenshot(imageQuality = 'high', isManual = false) {
+    // Fixed behavior: always high quality (ignore saved/selected quality).
+    imageQuality = 'high';
     try {
         console.log('[AI][RENDERER] Screenshot capture start', { quality: imageQuality, isManual });
     } catch (_) {}
@@ -544,7 +546,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
                 return { success: false, error: 'Use Screen disabled' };
             }
 
-            const res = await ipcRenderer.invoke('capture-screen-behind-app', { imageQuality });
+            const res = await ipcRenderer.invoke('capture-screen-behind-app', { imageQuality: 'high' });
             if (!res || !res.success || !res.base64) {
                 return { success: false, error: res?.error || 'Behind-window capture failed' };
             }
@@ -615,20 +617,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
         console.warn('Screenshot appears to be blank/black');
     }
 
-    let qualityValue;
-    switch (imageQuality) {
-        case 'high':
-            qualityValue = 0.9;
-            break;
-        case 'medium':
-            qualityValue = 0.7;
-            break;
-        case 'low':
-            qualityValue = 0.5;
-            break;
-        default:
-            qualityValue = 0.7; // Default to medium
-    }
+    const qualityValue = 0.9;
 
     // IMPORTANT: return a Promise so callers can await until the screenshot is actually buffered in main.
     return await new Promise(resolve => {
@@ -685,7 +674,7 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 }
 
 async function captureManualScreenshot(imageQuality = null) {
-    const quality = imageQuality || currentImageQuality;
+    const quality = 'high';
     return await captureScreenshot(quality, true); // Pass true for isManual
 }
 
@@ -963,8 +952,7 @@ async function handleShortcut(shortcutKey) {
                 // Capture now so this submit includes the screenshot.
                 try {
                     if (typeof window.captureManualScreenshotWithPreview === 'function') {
-                        const quality = localStorage.getItem('selectedImageQuality') || 'medium';
-                        const cap = await window.captureManualScreenshotWithPreview(quality);
+                        const cap = await window.captureManualScreenshotWithPreview('high');
                         if (cap && cap.success && cap.previewDataUrl) {
                             try { window.__stashNextChatScreenshotPreview?.(cap.previewDataUrl); } catch (_) {}
                         }

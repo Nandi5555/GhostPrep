@@ -112,8 +112,6 @@ export class GhostPrepApp extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         questions: { type: Array },
-        selectedScreenshotInterval: { type: String },
-        selectedImageQuality: { type: String },
         advancedMode: { type: Boolean },
         _isClickThrough: { state: true },
         // New: prompt configuration panel open state
@@ -139,8 +137,6 @@ export class GhostPrepApp extends LitElement {
         this.sessionActive = false;
         this.selectedProfile = localStorage.getItem('selectedProfile') || 'interview';
         this.selectedLanguage = localStorage.getItem('selectedLanguage') || 'en-US';
-        this.selectedScreenshotInterval = localStorage.getItem('selectedScreenshotInterval') || '5';
-        this.selectedImageQuality = localStorage.getItem('selectedImageQuality') || 'medium';
         this.advancedMode = localStorage.getItem('advancedMode') === 'true';
         this.responses = [];
         this.currentResponseIndex = -1;
@@ -531,7 +527,8 @@ export class GhostPrepApp extends LitElement {
                 }
                 return;
             }
-            window.cheddar.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+            // Capture settings are fixed: screenshots are captured on-demand at submit time, always at High quality.
+            window.cheddar.startCapture();
         }
         this.responses = [];
         this.currentResponseIndex = -1;
@@ -568,15 +565,6 @@ export class GhostPrepApp extends LitElement {
         } catch (error) {
             console.error('Failed to update transcription mode:', error);
         }
-    }
-
-    handleScreenshotIntervalChange(interval) {
-        this.selectedScreenshotInterval = interval;
-    }
-
-    handleImageQualityChange(quality) {
-        this.selectedImageQuality = quality;
-        localStorage.setItem('selectedImageQuality', quality);
     }
 
     handleAdvancedModeChange(advancedMode) {
@@ -663,12 +651,6 @@ export class GhostPrepApp extends LitElement {
         if (changedProperties.has('selectedLanguage')) {
             localStorage.setItem('selectedLanguage', this.selectedLanguage);
         }
-        if (changedProperties.has('selectedScreenshotInterval')) {
-            localStorage.setItem('selectedScreenshotInterval', this.selectedScreenshotInterval);
-        }
-        if (changedProperties.has('selectedImageQuality')) {
-            localStorage.setItem('selectedImageQuality', this.selectedImageQuality);
-        }
         if (changedProperties.has('advancedMode')) {
             localStorage.setItem('advancedMode', this.advancedMode.toString());
         }
@@ -701,14 +683,10 @@ export class GhostPrepApp extends LitElement {
                     <customize-view
                         .selectedProfile=${this.selectedProfile}
                         .selectedLanguage=${this.selectedLanguage}
-                        .selectedScreenshotInterval=${this.selectedScreenshotInterval}
-                        .selectedImageQuality=${this.selectedImageQuality}
                         .advancedMode=${this.advancedMode}
                         .onProfileChange=${profile => this.handleProfileChange(profile)}
                         .onLanguageChange=${language => this.handleLanguageChange(language)}
                         .onTranscriptionModeChange=${mode => this.handleTranscriptionModeChange(mode)}
-                        .onScreenshotIntervalChange=${interval => this.handleScreenshotIntervalChange(interval)}
-                        .onImageQualityChange=${quality => this.handleImageQualityChange(quality)}
                         .onAdvancedModeChange=${advancedMode => this.handleAdvancedModeChange(advancedMode)}
                     ></customize-view>
                 `;

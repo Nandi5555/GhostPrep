@@ -710,8 +710,6 @@ export class CustomizeView extends LitElement {
         selectedLanguage: { type: String },
         selectedAudioMode: { type: String },
         selectedTranscriptionMode: { type: String },
-        selectedScreenshotInterval: { type: String },
-        selectedImageQuality: { type: String },
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
         undetectableEnabled: { type: Boolean },
@@ -726,8 +724,6 @@ export class CustomizeView extends LitElement {
         onLanguageChange: { type: Function },
         onAudioModeChange: { type: Function },
         onTranscriptionModeChange: { type: Function },
-        onScreenshotIntervalChange: { type: Function },
-        onImageQualityChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
         // Prompt library modal state
@@ -743,15 +739,11 @@ export class CustomizeView extends LitElement {
         this.selectedAudioMode = localStorage.getItem('selectedAudioMode') || 'speaker';
         // Default to Manual for reliability (but respect any saved selection)
         this.selectedTranscriptionMode = localStorage.getItem('selectedTranscriptionMode') || 'manual';
-        this.selectedScreenshotInterval = '5';
-        this.selectedImageQuality = 'medium';
         this.keybinds = this.getDefaultKeybinds();
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
         this.onAudioModeChange = () => {};
         this.onTranscriptionModeChange = () => {};
-        this.onScreenshotIntervalChange = () => {};
-        this.onImageQualityChange = () => {};
         this.onAdvancedModeChange = () => {};
 
         // Google Search default
@@ -913,17 +905,6 @@ export class CustomizeView extends LitElement {
             }
         } catch (_) {}
         this.requestUpdate();
-    }
-
-    handleScreenshotIntervalSelect(e) {
-        this.selectedScreenshotInterval = e.target.value;
-        localStorage.setItem('selectedScreenshotInterval', this.selectedScreenshotInterval);
-        this.onScreenshotIntervalChange(this.selectedScreenshotInterval);
-    }
-
-    handleImageQualitySelect(e) {
-        this.selectedImageQuality = e.target.value;
-        this.onImageQualityChange(e.target.value);
     }
 
     // Layout mode removed: compact is always-on.
@@ -1358,7 +1339,6 @@ export class CustomizeView extends LitElement {
             { id: 'appearance', label: 'Appearance' },
             { id: 'audio', label: 'Audio' },
             { id: 'language', label: 'Language' },
-            { id: 'capture', label: 'Capture' },
             { id: 'keyboard', label: 'Keyboard' },
             { id: 'search', label: 'Search' },
             { id: 'advanced', label: 'Advanced' },
@@ -1459,12 +1439,6 @@ export class CustomizeView extends LitElement {
                     <path d="M5 10c2 2 4 3 8 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                     <path d="M14 19l3-9 3 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M15.2 16h3.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                </svg>`;
-            case 'capture':
-                return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M7 7h10a3 3 0 0 1 3 3v7H4v-7a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-                    <path d="M9 7l1-2h4l1 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.8"/>
                 </svg>`;
             case 'keyboard':
                 return html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1754,66 +1728,6 @@ export class CustomizeView extends LitElement {
                                         @gp-change=${e => this.handleLanguageSelect({ target: { value: e.detail.value } })}
                                     ></gp-select>
                                     <div class="form-description">Language for speech recognition and AI responses</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-            case 'capture':
-                return html`
-                    <div class="settings-section">
-                        <div class="section-title"><span>Screen Capture Settings</span></div>
-                        <div class="form-grid">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label class="form-label">
-                                        Capture Interval
-                                        <span class="current-selection">
-                                            ${this.selectedScreenshotInterval === 'manual' ? 'Manual' : this.selectedScreenshotInterval + 's'}
-                                        </span>
-                                    </label>
-                                    <gp-select
-                                        .value=${this.selectedScreenshotInterval}
-                                        .options=${[
-                                            { value: 'manual', label: 'Manual (On demand)' },
-                                            { value: '1', label: 'Every 1 second' },
-                                            { value: '2', label: 'Every 2 seconds' },
-                                            { value: '5', label: 'Every 5 seconds' },
-                                            { value: '10', label: 'Every 10 seconds' },
-                                        ]}
-                                        @gp-change=${e => this.handleScreenshotIntervalSelect({ target: { value: e.detail.value } })}
-                                    ></gp-select>
-                                    <div class="form-description">
-                                        ${this.selectedScreenshotInterval === 'manual'
-                                            ? 'Screenshots will only be taken when you use the "Ask Next Step" shortcut'
-                                            : 'Automatic screenshots will be taken at the specified interval'}
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">
-                                        Image Quality
-                                        <span class="current-selection">
-                                            ${this.selectedImageQuality.charAt(0).toUpperCase() + this.selectedImageQuality.slice(1)}
-                                        </span>
-                                    </label>
-                                    <gp-select
-                                        .value=${this.selectedImageQuality}
-                                        .options=${[
-                                            { value: 'high', label: 'High Quality' },
-                                            { value: 'medium', label: 'Medium Quality' },
-                                            { value: 'low', label: 'Low Quality' },
-                                        ]}
-                                        @gp-change=${e => this.handleImageQualitySelect({ target: { value: e.detail.value } })}
-                                    ></gp-select>
-                                    <div class="form-description">
-                                        ${this.selectedImageQuality === 'high'
-                                            ? 'Best quality, uses more tokens'
-                                            : this.selectedImageQuality === 'medium'
-                                              ? 'Balanced quality and token usage'
-                                              : 'Lower quality, uses fewer tokens'}
-                                    </div>
                                 </div>
                             </div>
                         </div>

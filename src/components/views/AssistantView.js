@@ -1269,8 +1269,7 @@ scrollToTop() {
             let screenshotPreviewDataUrl = '';
             try {
                 if (this.useScreen && typeof window.captureManualScreenshotWithPreview === 'function') {
-                    const quality = localStorage.getItem('selectedImageQuality') || 'medium';
-                    const cap = await window.captureManualScreenshotWithPreview(quality);
+                    const cap = await window.captureManualScreenshotWithPreview('high');
                     if (cap && cap.success && cap.previewDataUrl) {
                         screenshotPreviewDataUrl = cap.previewDataUrl;
                     }
@@ -1299,8 +1298,7 @@ scrollToTop() {
 
                         try {
                             if (typeof window.captureManualScreenshotWithPreview === 'function') {
-                                const quality = localStorage.getItem('selectedImageQuality') || 'medium';
-                                const cap = await window.captureManualScreenshotWithPreview(quality);
+                                const cap = await window.captureManualScreenshotWithPreview('high');
                                 if (cap && cap.success && cap.previewDataUrl) {
                                     try { window.__stashNextChatScreenshotPreview?.(cap.previewDataUrl); } catch (_) {}
                                 }
@@ -1958,8 +1956,7 @@ updateResponseContent() {
             try {
                 const useScreen = localStorage.getItem('assistantUseScreen') === 'true';
                 if (useScreen && typeof window.captureManualScreenshotWithPreview === 'function') {
-                    const quality = localStorage.getItem('selectedImageQuality') || 'medium';
-                    const cap = await window.captureManualScreenshotWithPreview(quality);
+                    const cap = await window.captureManualScreenshotWithPreview('high');
                     if (cap && cap.success && cap.previewDataUrl) {
                         try { window.__stashNextChatScreenshotPreview?.(cap.previewDataUrl); } catch (_) {}
                     }
