@@ -273,6 +273,27 @@ export class AppHeader extends LitElement {
         .slider-input::-moz-range-thumb {
             cursor: default !important;
         }
+
+        .connect-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            -webkit-app-region: no-drag;
+        }
+
+        .spinner {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.22);
+            border-top-color: rgba(255, 255, 255, 0.92);
+            animation: spin 800ms linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     `;
 
     static properties = {
@@ -280,6 +301,7 @@ export class AppHeader extends LitElement {
         statusText: { type: String },
         startTime: { type: Number },
         isInitializing: { type: Boolean },
+        isConnecting: { type: Boolean },
         onStartSession: { type: Function },
         onCustomizeClick: { type: Function },
         onHelpClick: { type: Function },
@@ -287,6 +309,7 @@ export class AppHeader extends LitElement {
         onCloseClick: { type: Function },
         onBackClick: { type: Function },
         onHideToggleClick: { type: Function },
+        onCancelConnect: { type: Function },
         isClickThrough: { type: Boolean, reflect: true },
         advancedMode: { type: Boolean },
         onAdvancedClick: { type: Function },
@@ -301,6 +324,7 @@ export class AppHeader extends LitElement {
         this.statusText = '';
         this.startTime = null;
         this.isInitializing = false;
+        this.isConnecting = false;
         this.onStartSession = () => {};
         this.onCustomizeClick = () => {};
         this.onHelpClick = () => {};
@@ -308,6 +332,7 @@ export class AppHeader extends LitElement {
         this.onCloseClick = () => {};
         this.onBackClick = () => {};
         this.onHideToggleClick = () => {};
+        this.onCancelConnect = () => {};
         this.isClickThrough = false;
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
@@ -482,17 +507,37 @@ export class AppHeader extends LitElement {
         const viewTitle = this.getViewTitle();
         const showBrandLogo = viewTitle === 'CueFlow';
         const logoSrc = this._logoSrc || APP_HEADER_LOGO_SVG;
+        const showConnecting = !!this.isConnecting || !!this.isInitializing;
 
         return html`
             <div class="header ${this._jiggleActive ? 'jiggle' : ''}">
                 <div class="header-title">
                     ${showBrandLogo
-                        ? html`
-                              <span class="brand-logo">
-                                  <img class="logo-base" src=${logoSrc} width="170" height="26" alt="CueFlow" draggable="false" @error=${() => this._handleLogoError()} />
-                                  <img class="logo-layer logo-left" src=${logoSrc} width="170" height="26" alt="" aria-hidden="true" draggable="false" />
-                              </span>
-                          `
+                        ? (showConnecting
+                            ? html`
+                                  <span class="connect-indicator">
+                                      <span class="spinner" aria-label="Connecting"></span>
+                                      <button class="icon-button" @click=${() => this.onCancelConnect()} title="Stop connecting">
+                                          <?xml version="1.0" encoding="UTF-8"?><svg
+                                              width="24px"
+                                              height="24px"
+                                              stroke-width="1.7"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              xmlns="http://www.w3.org/2000/svg"
+                                              color="currentColor"
+                                          >
+                                              <path d="M8 8H16V16H8V8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path>
+                                          </svg>
+                                      </button>
+                                  </span>
+                              `
+                            : html`
+                                  <span class="brand-logo">
+                                      <img class="logo-base" src=${logoSrc} width="170" height="26" alt="CueFlow" draggable="false" @error=${() => this._handleLogoError()} />
+                                      <img class="logo-layer logo-left" src=${logoSrc} width="170" height="26" alt="" aria-hidden="true" draggable="false" />
+                                  </span>
+                              `)
                         : viewTitle}
                 </div>
                 ${this.currentView === 'main'
@@ -501,7 +546,7 @@ export class AppHeader extends LitElement {
                               <button
                                   class="primary-toggle"
                                   type="button"
-                                  ?disabled=${this.isInitializing}
+                                  ?disabled=${this.isInitializing || this.isConnecting}
                                   @click=${() => this.onStartSession()}
                                   title="Start Session"
                               >

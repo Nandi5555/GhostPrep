@@ -185,6 +185,9 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
             cheddar.e().setStatus('Live');
             try { window.__aiReady = true; } catch (_) {}
             return true;
+        } else if (result && result.cancelled) {
+            try { window.__aiReady = false; } catch (_) {}
+            return false;
         } else {
             cheddar.e().setStatus((result && result.error) ? String(result.error) : 'error');
             try { window.__aiReady = false; } catch (_) {}

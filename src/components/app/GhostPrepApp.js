@@ -113,6 +113,7 @@ export class GhostPrepApp extends LitElement {
         transcriptText: { type: String },
         activeAssistantTab: { type: String },
         isInitializing: { type: Boolean },
+        isConnecting: { type: Boolean },
         // Toast for non-silent failures
         toastText: { type: String },
         toastState: { type: String },
@@ -140,6 +141,7 @@ export class GhostPrepApp extends LitElement {
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
         this.isInitializing = false;
+        this.isConnecting = false;
 
         this.toastText = '';
         this.toastState = 'hide';
@@ -154,6 +156,9 @@ export class GhostPrepApp extends LitElement {
         this._smartMouseLastSentIgnored = null;
         this._onSmartMouseMove = null;
         this._onSmartMouseOut = null;
+
+        this._connectCancelToken = null;
+        this._connectRetryTimer = null;
     }
 
     connectedCallback() {
@@ -551,25 +556,78 @@ export class GhostPrepApp extends LitElement {
             return;
         }
 
-        if (window.cheddar) {
-            const result = await window.cheddar.initializeAi(this.selectedProfile, this.selectedLanguage);
-            if (!result) {
-                const mainView = this.shadowRoot.querySelector('main-view');
-                if (mainView && typeof mainView.showToast === 'function') {
-                    mainView.showToast('Failed to start AI session', 'error');
+        if (this.isConnecting) return;
+
+        this.isConnecting = true;
+        const token = {};
+        this._connectCancelToken = token;
+
+        let delayMs = 900;
+        const maxDelayMs = 7000;
+
+        while (this.isConnecting && this._connectCancelToken === token) {
+            let ok = false;
+            try {
+                if (window.cheddar) {
+                    ok = await window.cheddar.initializeAi(this.selectedProfile, this.selectedLanguage);
                 }
+            } catch (_) {
+                ok = false;
+            }
+
+            if (!this.isConnecting || this._connectCancelToken !== token) break;
+
+            if (ok) {
+                try {
+                    if (window.cheddar) window.cheddar.startCapture();
+                } catch (_) {}
+                this.responses = [];
+                this.currentResponseIndex = -1;
+                this.questions = [];
+                this.transcriptText = '';
+                this.startTime = Date.now();
+                this.sessionActive = true;
+                this.currentView = 'assistant';
+                this.isConnecting = false;
+                this._connectCancelToken = null;
+                try { resizeLayout(); } catch (_) {}
                 return;
             }
-            // Capture settings are fixed: screenshots are captured on-demand at submit time, always at High quality.
-            window.cheddar.startCapture();
+
+            await new Promise(resolve => {
+                try {
+                    this._connectRetryTimer = setTimeout(resolve, delayMs);
+                } catch (_) {
+                    resolve();
+                }
+            });
+            delayMs = Math.min(Math.round(delayMs * 1.4), maxDelayMs);
         }
-        this.responses = [];
-        this.currentResponseIndex = -1;
-        this.questions = [];
-        this.transcriptText = '';
-        this.startTime = Date.now();
-        this.currentView = 'assistant';
-        try { resizeLayout(); } catch (_) {}
+
+        this.isConnecting = false;
+        if (this._connectCancelToken === token) this._connectCancelToken = null;
+    }
+
+    async handleCancelConnecting() {
+        this.isConnecting = false;
+        this._connectCancelToken = null;
+        if (this._connectRetryTimer) {
+            try { clearTimeout(this._connectRetryTimer); } catch (_) {}
+            this._connectRetryTimer = null;
+        }
+        try {
+            if (window.cheddar && typeof window.cheddar.stopCapture === 'function') {
+                window.cheddar.stopCapture();
+            }
+        } catch (_) {}
+        if (window.require) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                ipcRenderer.invoke('cancel-ai-initialize').catch(() => {});
+                ipcRenderer.invoke('close-ai-session').catch(() => {});
+            } catch (_) {}
+        }
+        this.sessionActive = false;
     }
 
     async handleAPIKeyHelp() {
@@ -836,6 +894,7 @@ export class GhostPrepApp extends LitElement {
                         .startTime=${this.startTime}
                         .advancedMode=${this.advancedMode}
                         .isInitializing=${this.isInitializing}
+                        .isConnecting=${this.isConnecting}
                         .onStartSession=${() => this.handleStart()}
                         .onCustomizeClick=${() => this.handleCustomizeClick()}
                         .onHelpClick=${() => this.handleHelpClick()}
@@ -845,6 +904,7 @@ export class GhostPrepApp extends LitElement {
                         .onBackClick=${() => this.handleBackClick()}
                         .onHideToggleClick=${() => this.handleHideToggle()}
                         .onDocumentClick=${() => this.handlePromptConfigOpen()}
+                        .onCancelConnect=${() => this.handleCancelConnecting()}
                         ?isClickThrough=${this._isClickThrough}
                     ></app-header>
                     <div class="${mainContentClass}">

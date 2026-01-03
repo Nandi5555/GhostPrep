@@ -258,31 +258,34 @@ async function streamResponse({
 async function warmup({
     apiKey,
     model = 'gpt-4o-mini',
+    signal,
 } = {}) {
     if (!apiKey) return false;
-    try {
-        const modelName = String(model || '').trim();
-        const body = {
-            model: modelName,
-            stream: false,
-            max_output_tokens: 1,
-            input: [{ role: 'user', content: [{ type: 'input_text', text: 'ok' }] }],
-        };
-        body.temperature = 0;
+    const modelName = String(model || '').trim();
+    const body = {
+        model: modelName,
+        stream: false,
+        max_output_tokens: 16,
+        input: [{ role: 'user', content: [{ type: 'input_text', text: 'ok' }] }],
+        temperature: 0,
+    };
 
-        // Tiny request to warm TLS + connection pools so the first "real" answer is faster.
-        const resp = await fetch('https://api.openai.com/v1/responses', {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-        });
-        return !!resp.ok;
-    } catch (_) {
-        return false;
+    // Tiny request to validate auth + warm TLS/connection pools so the first "real" answer is faster.
+    const resp = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        signal,
+        body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+        const txt = await resp.text().catch(() => '');
+        throw new Error(`OpenAI warmup failed (${resp.status}): ${String(txt || '').trim().slice(0, 260)}`);
     }
+    return true;
 }
 
 module.exports = {
@@ -290,5 +293,3 @@ module.exports = {
     buildInput,
     warmup,
 };
-
-

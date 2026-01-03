@@ -21,6 +21,7 @@ let systemAudioProc = null;
 
 // Session state
 let isInitializingSession = false;
+let activeInitAbortController = null;
 let sessionActive = false;
 let transcriptionMode = 'manual'; // manual by default (auto optional)
 let boundary = new IntentBoundary();
@@ -284,9 +285,13 @@ async function initializeAiSession({
     if (!hasOpenAi) return { success: false, error: 'OpenAI API key required' };
 
     isInitializingSession = true;
+    if (activeInitAbortController) {
+        try { activeInitAbortController.abort(); } catch (_) {}
+    }
+    activeInitAbortController = new AbortController();
     sendToRenderer('session-initializing', true);
-    asrStatus = 'connecting';
-    llmStatus = 'ready';
+    asrStatus = 'disconnected';
+    llmStatus = 'connecting';
     listening = false;
     firstAudioChunkSeen = false;
     audioChunkCount = 0;
@@ -308,17 +313,6 @@ async function initializeAiSession({
             openaiModel: openaiModelName,
         });
 
-        // Fire-and-forget warmup to reduce first-token latency on the first real answer.
-        try {
-            setImmediate(() => {
-                if (openaiApiKey) {
-                    warmup({ apiKey: openaiApiKey, model: openaiModelName })
-                        .then(ok => log('[AI][LLM] Warmup', ok ? 'ok' : 'failed'))
-                        .catch(() => {});
-                }
-            });
-        } catch (_) {}
-
         // Build persistent system prompt ONCE per session (Cluely-style).
         // No per-question modifications.
         activeSystemPrompt = getSystemPrompt(profile, customPrompt, false);
@@ -326,9 +320,32 @@ async function initializeAiSession({
 
         // Fresh session state
         initializeNewSession();
-        sessionActive = true;
+        sessionActive = false;
 
-        // Start Deepgram ASR
+        const abortSignal = activeInitAbortController.signal;
+        const surfaceInitError = (message) => {
+            const msg = String(message || 'Unknown error');
+            lastUiError = msg;
+            try { sendToRenderer('update-status', msg); } catch (_) {}
+            pushAiStatus();
+        };
+        try {
+            await warmup({ apiKey: openaiApiKey, model: openaiModelName, signal: abortSignal });
+            llmStatus = 'ready';
+            pushAiStatus();
+        } catch (e) {
+            const msg = e?.name === 'AbortError' ? 'Cancelled' : (e?.message || String(e));
+            if (msg !== 'Cancelled') {
+                llmStatus = 'error';
+                surfaceInitError(msg);
+            }
+            throw new Error(msg);
+        }
+
+        // Start Deepgram ASR (only after OpenAI is confirmed)
+        asrStatus = 'connecting';
+        pushAiStatus();
+        sessionActive = true;
         stopAsr();
         deepgramClient = new DeepgramStreamingClient({
             apiKey: deepgramApiKey,
@@ -339,15 +356,39 @@ async function initializeAiSession({
             channels: 1,
         });
 
-        deepgramClient.connect({
-            onOpen: () => {
+        const deepgramConnectedPromise = new Promise((resolve, reject) => {
+            let settled = false;
+            const timeoutMs = 9000;
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                try { reject(new Error('Deepgram connection timeout')); } catch (_) {}
+            }, timeoutMs);
+            const cleanup = () => {
+                try { clearTimeout(timer); } catch (_) {}
+                try { abortSignal.removeEventListener('abort', onAbort); } catch (_) {}
+            };
+            const onAbort = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                try { reject(new Error('Cancelled')); } catch (_) {}
+            };
+            try { abortSignal.addEventListener('abort', onAbort); } catch (_) {}
+
+            deepgramClient.connect({
+                onOpen: () => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
                 asrStatus = 'connected';
                 listening = true;
                 pushAiStatus();
                 log('[AI][ASR] Connected');
-                sendToRenderer('update-status', 'Listening...');
-            },
-            onInterim: (text, meta) => {
+                    sendToRenderer('update-status', 'Listening...');
+                    resolve(true);
+                },
+                onInterim: (text, meta) => {
                 // Always replace the draft.
                 const now = Date.now();
                 // Log interim at most ~3 times/sec to avoid overwhelming the console.
@@ -356,8 +397,8 @@ async function initializeAiSession({
                     log('[AI][ASR] Interim transcript:', JSON.stringify(String(text || '').slice(0, 140)));
                 }
                 pushDraft(text);
-            },
-            onUtteranceEnd: () => {
+                },
+                onUtteranceEnd: () => {
                 boundary.onUtteranceEnd();
                 log('[AI][ASR] Utterance end (commit draft)');
                 commitDraftAsUtterance();
@@ -369,41 +410,61 @@ async function initializeAiSession({
                         try { autoSubmitIfEnabled(); } catch (_) {}
                     });
                 }
-            },
-            onError: err => {
-                const msg = err?.message || String(err || 'ASR error');
-                asrStatus = 'error';
-                listening = false;
-                pushAiStatus();
-                logErr('[AI][ASR] Error', msg);
-                surfaceUiError(`ASR error: ${msg}`, 'deepgram');
-                sendToRenderer('update-status', `ASR error: ${msg}`);
-            },
-            onClose: info => {
-                // Do not auto-reconnect; keep behavior stable/deterministic.
-                if (sessionActive) {
-                    asrStatus = 'disconnected';
+                },
+                onError: err => {
+                    const msg = err?.message || String(err || 'ASR error');
+                    asrStatus = 'error';
                     listening = false;
                     pushAiStatus();
-                    log('[AI][ASR] Disconnected', info || {});
-                    if (String(info?.code || '') === '1006') {
-                        surfaceUiError('ASR disconnected. Check Deepgram key + settings (WS 1006).', 'deepgram');
+                    logErr('[AI][ASR] Error', msg);
+                    sendToRenderer('update-status', `ASR error: ${msg}`);
+                    if (!settled) {
+                        settled = true;
+                        cleanup();
+                        try { reject(new Error(msg)); } catch (_) {}
                     }
-                    sendToRenderer('update-status', 'ASR disconnected');
-                }
-            },
+                },
+                onClose: info => {
+                    // Do not auto-reconnect; keep behavior stable/deterministic.
+                    if (sessionActive) {
+                        asrStatus = 'disconnected';
+                        listening = false;
+                        pushAiStatus();
+                        log('[AI][ASR] Disconnected', info || {});
+                        sendToRenderer('update-status', 'ASR disconnected');
+                    }
+                    if (!settled) {
+                        settled = true;
+                        cleanup();
+                        try { reject(new Error('Deepgram disconnected')); } catch (_) {}
+                    }
+                },
+            });
         });
 
-        pushAiStatus();
-        return { success: true };
+        await deepgramConnectedPromise;
+        pushAiStatus({ ready: true });
+        return { success: true, ready: true };
     } catch (e) {
         const msg = e?.message || String(e);
-        logErr('[AI][SESSION] initialize-ai failed', msg);
-        surfaceUiError(`Error: ${msg}`, 'initialize-ai');
+        if (msg !== 'Cancelled') {
+            logErr('[AI][SESSION] initialize-ai failed', msg);
+            lastUiError = String(msg || '');
+            try { sendToRenderer('update-status', lastUiError); } catch (_) {}
+            pushAiStatus();
+        }
+        try { stopAsr(); } catch (_) {}
         sessionActive = false;
+        if (msg === 'Cancelled') {
+            lastUiError = '';
+            try { sendToRenderer('update-status', ''); } catch (_) {}
+            pushAiStatus();
+            return { success: false, cancelled: true };
+        }
         return { success: false, error: msg };
     } finally {
         isInitializingSession = false;
+        activeInitAbortController = null;
         sendToRenderer('session-initializing', false);
     }
 }
@@ -796,6 +857,23 @@ function setupAiIpcHandlers() {
         });
     });
 
+    ipcMain.handle('cancel-ai-initialize', async () => {
+        try {
+            if (activeInitAbortController) {
+                try { activeInitAbortController.abort(); } catch (_) {}
+            }
+            try { stopAsr(); } catch (_) {}
+            sessionActive = false;
+            asrStatus = 'disconnected';
+            listening = false;
+            pushAiStatus();
+            try { sendToRenderer('session-initializing', false); } catch (_) {}
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
+        }
+    });
+
     ipcMain.handle('close-ai-session', async () => {
         return closeAiSession();
     });
@@ -910,5 +988,3 @@ module.exports = {
     closeAiSession,
     stopMacOSSystemAudioCapture,
 };
-
-
