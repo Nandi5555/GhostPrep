@@ -94,6 +94,12 @@ export class AppHeader extends LitElement {
             -webkit-app-region: no-drag;
         }
 
+        .assistant-slider {
+            width: 140px;
+            display: flex;
+            align-items: center;
+        }
+
         .center-actions {
             position: absolute;
             left: 50%;
@@ -507,43 +513,53 @@ export class AppHeader extends LitElement {
                 <div class="header-actions">
                     ${this.currentView === 'assistant'
                         ? html`
-                        <div class="form-group full-width">
-                            <div class="slider-container">
-                                <input
-                                    type="range"
-                                    class="slider-input"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                    .value=${this.backgroundTransparency}
-                                    @input=${this.handleBackgroundTransparencyChange}
-                                />
-                                <span class="slider-value">${Math.round(this.backgroundTransparency * 100)}%</span>
-                            </div>
-                        </div>
-                              <span>${elapsedTime}</span>
-                              <span>${this.statusText}</span>
-                              ${this.startTime
-                                  ? html`
-                                        <button class="icon-button" @click=${this.onDocumentClick} title="Configure Prompts">
-                                            <?xml version="1.0" encoding="UTF-8"?>
-                                            <svg
-                                                width="24px"
-                                                height="24px"
-                                                stroke-width="1.7"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                color="currentColor"
-                                            >
-                                                <path d="M6 2.6C6 2.26863 6.26863 2 6.6 2H13.8C13.9341 2 14.0637 2.05268 14.159 2.14645L19.8536 7.84106C19.9473 7.93635 20 8.06585 20 8.2V21.4C20 21.7314 19.7314 22 19.4 22H6.6C6.26863 22 6 21.7314 6 21.4V2.6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path>
-                                                <path d="M14 2V7.4C14 7.73137 14.2686 8 14.6 8H20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
-                                                <path d="M8 12H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
-                                                <path d="M8 16H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
-                                            </svg>
-                                        </button>
-                                    `
-                                  : ''}
+                              <button class="icon-button" @click=${this.onDocumentClick} title="Configure Prompts">
+                                  <?xml version="1.0" encoding="UTF-8"?>
+                                  <svg
+                                      width="24px"
+                                      height="24px"
+                                      stroke-width="1.7"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      color="currentColor"
+                                  >
+                                      <path d="M6 2.6C6 2.26863 6.26863 2 6.6 2H13.8C13.9341 2 14.0637 2.05268 14.159 2.14645L19.8536 7.84106C19.9473 7.93635 20 8.06585 20 8.2V21.4C20 21.7314 19.7314 22 19.4 22H6.6C6.26863 22 6 21.7314 6 21.4V2.6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path>
+                                      <path d="M14 2V7.4C14 7.73137 14.2686 8 14.6 8H20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+                                      <path d="M8 12H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+                                      <path d="M8 16H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+                                  </svg>
+                              </button>
+                              <div class="assistant-slider">
+                                  <input
+                                      type="range"
+                                      class="slider-input"
+                                      min="0"
+                                      max="1"
+                                      step="0.01"
+                                      .value=${this.backgroundTransparency}
+                                      @input=${this.handleBackgroundTransparencyChange}
+                                  />
+                              </div>
+                              <button @click=${this.onCloseClick} class="icon-button window-close">
+                                  <?xml version="1.0" encoding="UTF-8"?><svg
+                                      width="24px"
+                                      height="24px"
+                                      stroke-width="1.7"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      color="currentColor"
+                                  >
+                                      <path
+                                          d="M6.75827 17.2426L12.0009 12M17.2435 6.75736L12.0009 12M12.0009 12L6.75827 6.75736M12.0009 12L17.2435 17.2426"
+                                          stroke="currentColor"
+                                          stroke-width="1.7"
+                                          stroke-linecap="round"
+                                          stroke-linejoin="round"
+                                      ></path>
+                                  </svg>
+                              </button>
                           `
                         : ''}
                     ${this.currentView === 'main'
@@ -694,33 +710,8 @@ export class AppHeader extends LitElement {
                               </button>
                           `
                         : ''}
-                    ${this.currentView === 'assistant'
+                    ${this.currentView !== 'assistant'
                         ? html`
-                              <button @click=${this.onHideToggleClick} class="button">
-                                  Hide&nbsp;&nbsp;<span class="key" style="pointer-events: none;">${window.cheddar?.isMacOS ? 'Cmd' : 'Ctrl'}</span
-                                  >&nbsp;&nbsp;<span class="key">&bsol;</span>
-                              </button>
-                              <button @click=${this.onCloseClick} class="icon-button window-close">
-                                  <?xml version="1.0" encoding="UTF-8"?><svg
-                                      width="24px"
-                                      height="24px"
-                                      stroke-width="1.7"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      color="currentColor"
-                                  >
-                                      <path
-                                          d="M6.75827 17.2426L12.0009 12M17.2435 6.75736L12.0009 12M12.0009 12L6.75827 6.75736M12.0009 12L17.2435 17.2426"
-                                          stroke="currentColor"
-                                          stroke-width="1.7"
-                                          stroke-linecap="round"
-                                          stroke-linejoin="round"
-                                      ></path>
-                                  </svg>
-                              </button>
-                          `
-                        : html`
                               <button
                                   @click=${this.currentView === 'main' ? this.onHideToggleClick : this.isNavigationView() ? this.onBackClick : this.onCloseClick}
                                   class="icon-button window-close"
@@ -744,7 +735,8 @@ export class AppHeader extends LitElement {
                                       ></path>
                                   </svg>
                               </button>
-                          `}
+                          `
+                        : ''}
                 </div>
             </div>
         `;

@@ -147,6 +147,13 @@ export class GhostPrepApp extends LitElement {
         this._toastTimer = null;
 
         this.permissionStatus = null;
+
+        this._smartMouseLastX = 0;
+        this._smartMouseLastY = 0;
+        this._smartMouseRaf = null;
+        this._smartMouseLastSentIgnored = null;
+        this._onSmartMouseMove = null;
+        this._onSmartMouseOut = null;
     }
 
     connectedCallback() {
@@ -229,8 +236,36 @@ export class GhostPrepApp extends LitElement {
         this.setupCheddarCallbacks();
     }
 
+    firstUpdated() {
+        try {
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                ipcRenderer.send('view-changed', this.currentView);
+                ipcRenderer.invoke('set-smart-mouse-events-ignored', true).catch(() => {});
+            }
+        } catch (_) {}
+        try { resizeLayout(); } catch (_) {}
+
+        if (!this._onSmartMouseMove) {
+            this._onSmartMouseMove = e => this._handleSmartMouseMove(e);
+            window.addEventListener('mousemove', this._onSmartMouseMove, { passive: true });
+        }
+        if (!this._onSmartMouseOut) {
+            this._onSmartMouseOut = e => this._handleSmartMouseOut(e);
+            window.addEventListener('mouseout', this._onSmartMouseOut, { passive: true });
+        }
+    }
+
     disconnectedCallback() {
         super.disconnectedCallback();
+        if (this._onSmartMouseMove) {
+            try { window.removeEventListener('mousemove', this._onSmartMouseMove); } catch (_) {}
+            this._onSmartMouseMove = null;
+        }
+        if (this._onSmartMouseOut) {
+            try { window.removeEventListener('mouseout', this._onSmartMouseOut); } catch (_) {}
+            this._onSmartMouseOut = null;
+        }
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.removeAllListeners('update-response');
@@ -626,6 +661,7 @@ export class GhostPrepApp extends LitElement {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.send('view-changed', this.currentView);
             try { resizeLayout(); } catch (_) {}
+            try { this._applySmartMousePolicy(); } catch (_) {}
 
             // Add a small delay to smooth out the transition
             const viewContainer = this.shadowRoot?.querySelector('.view-container');
@@ -653,6 +689,61 @@ export class GhostPrepApp extends LitElement {
         if (changedProperties.has('advancedMode')) {
             localStorage.setItem('advancedMode', this.advancedMode.toString());
         }
+    }
+
+    _handleSmartMouseMove(e) {
+        this._smartMouseLastX = e.clientX;
+        this._smartMouseLastY = e.clientY;
+        if (this._smartMouseRaf) return;
+        this._smartMouseRaf = requestAnimationFrame(() => {
+            this._smartMouseRaf = null;
+            this._applySmartMousePolicy();
+        });
+    }
+
+    _handleSmartMouseOut(e) {
+        if (e && e.relatedTarget != null) return;
+        this._smartMouseLastX = -1;
+        this._smartMouseLastY = -1;
+        try { this._applySmartMousePolicy(); } catch (_) {}
+    }
+
+    _applySmartMousePolicy() {
+        const ignored = !this._isPointInVisibleUi(this._smartMouseLastX, this._smartMouseLastY);
+        if (ignored === this._smartMouseLastSentIgnored) return;
+        this._smartMouseLastSentIgnored = ignored;
+        if (!window.require) return;
+        const { ipcRenderer } = window.require('electron');
+        ipcRenderer.invoke('set-smart-mouse-events-ignored', ignored).catch(() => {});
+    }
+
+    _isPointInVisibleUi(x, y) {
+        if (!this.shadowRoot) return false;
+
+        try {
+            const appHeader = this.shadowRoot.querySelector('app-header');
+            const headerRoot = appHeader && appHeader.shadowRoot;
+            if (headerRoot && typeof headerRoot.elementFromPoint === 'function') {
+                const hit = headerRoot.elementFromPoint(x, y);
+                if (hit && (hit.closest('.header') || hit.closest('.floating-close') || hit.closest('.center-actions'))) {
+                    return true;
+                }
+            }
+        } catch (_) {}
+
+        if (this.currentView !== 'main') {
+            try {
+                if (typeof this.shadowRoot.elementFromPoint === 'function') {
+                    const hit = this.shadowRoot.elementFromPoint(x, y);
+                    if (hit && hit.closest && hit.closest('.main-content')) {
+                        const mainContent = this.shadowRoot.querySelector('.main-content');
+                        if (mainContent && !mainContent.classList.contains('collapsed')) return true;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        return false;
     }
 
     renderCurrentView() {

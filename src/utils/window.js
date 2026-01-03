@@ -2,6 +2,7 @@ const { BrowserWindow, globalShortcut, ipcMain, screen, systemPreferences, app }
 const path = require('node:path');
 
 let mouseEventsIgnored = false;
+let smartMouseEventsIgnored = true;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
@@ -26,6 +27,18 @@ function applyContentProtectionState(mainWindow) {
     } catch (e) {
         console.error('Failed to apply content protection state:', e);
     }
+}
+
+function applyMouseEventsPolicy(mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const shouldIgnore = !!mouseEventsIgnored || !!smartMouseEventsIgnored;
+    try {
+        if (shouldIgnore) {
+            mainWindow.setIgnoreMouseEvents(true, { forward: true });
+        } else {
+            mainWindow.setIgnoreMouseEvents(false);
+        }
+    } catch (_) {}
 }
 
 function createWindow(sendToRenderer) {
@@ -250,11 +263,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
         try {
             globalShortcut.register(keybinds.toggleClickThrough, () => {
                 mouseEventsIgnored = !mouseEventsIgnored;
-                if (mouseEventsIgnored) {
-                    mainWindow.setIgnoreMouseEvents(true, { forward: true });
-                } else {
-                    mainWindow.setIgnoreMouseEvents(false);
-                }
+                applyMouseEventsPolicy(mainWindow);
                 mainWindow.webContents.send('click-through-toggled', mouseEventsIgnored);
             });
             // Registered toggleClickThrough
@@ -525,8 +534,19 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
         } else {
             mainWindow.setResizable(false);
         }
-        if (view !== 'assistant') {
-            mainWindow.setIgnoreMouseEvents(false);
+        applyMouseEventsPolicy(mainWindow);
+    });
+
+    ipcMain.handle('set-smart-mouse-events-ignored', async (_event, ignored) => {
+        try {
+            if (mainWindow.isDestroyed()) {
+                return { success: false, error: 'Window has been destroyed' };
+            }
+            smartMouseEventsIgnored = !!ignored;
+            applyMouseEventsPolicy(mainWindow);
+            return { success: true, ignored: smartMouseEventsIgnored, forced: !!mouseEventsIgnored };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
         }
     });
 
