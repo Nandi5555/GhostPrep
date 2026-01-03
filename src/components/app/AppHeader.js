@@ -1,5 +1,8 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 
+const APP_HEADER_LOGO_SVG = new URL('../../assets/AppHeader.svg', import.meta.url).toString();
+const APP_HEADER_LOGO_PNG = new URL('../../assets/AppHeader.png', import.meta.url).toString();
+
 export class AppHeader extends LitElement {
     static styles = css`
         * {
@@ -32,26 +35,56 @@ export class AppHeader extends LitElement {
             100% { transform: translateY(0) rotate(0deg); }
         }
 
-        .header.compact {
-            padding: 6px 12px;
-            display: grid;
-            width: max-content;
-            margin: 0 auto;
-            grid-template-columns: auto auto auto;
-            align-items: center;
-            justify-items: center;
-            gap: 8px;
-            transition: transform 0.18s ease, padding 0.18s ease;
-        }
-        .header.compact .header-title { padding-left: 0; justify-self: end; }
-        .header.compact .header-actions { gap: 0; justify-self: start; }
-        .header.compact .center-actions { position: static; left: auto; transform: none; justify-self: center; }
-
         .header-title {
             flex: 1;
             font-size: var(--header-font-size);
             font-weight: 600;
             -webkit-app-region: drag;
+            display: flex;
+            align-items: center;
+        }
+
+        .brand-logo {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            height: 26px;
+            width: clamp(110px, 16vw, 170px);
+            flex: 0 0 auto;
+        }
+
+        .brand-logo img {
+            height: 100%;
+            width: 100%;
+            display: block;
+            object-fit: contain;
+            object-position: left center;
+        }
+
+        .brand-logo .logo-base {
+            opacity: 1;
+        }
+
+        .brand-logo .logo-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: none;
+            height: 100%;
+            width: 100%;
+        }
+
+        .brand-logo .logo-left {
+            clip-path: inset(0 46% 0 0);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .brand-logo .logo-layer {
+                display: block;
+            }
+            .brand-logo .logo-left {
+                filter: brightness(0) invert(1);
+            }
         }
 
         .header-actions {
@@ -93,10 +126,14 @@ export class AppHeader extends LitElement {
 
         .primary-toggle:hover { filter: brightness(1.06); }
         .primary-toggle:active { transform: translateY(1px); }
+        .primary-toggle:disabled { opacity: 0.55; filter: none; transform: none; }
 
         .primary-toggle .label { font-weight: 600; }
         .primary-toggle .icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; }
         .primary-toggle .icon svg { width: 16px; height: 16px; }
+        .primary-toggle .shortcut-icons { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
+        .primary-toggle .shortcut-icons svg { width: 14px; height: 14px; }
+        .primary-toggle .shortcut-icons svg path { stroke: currentColor; }
 
         .header-actions span {
             font-size: var(--header-font-size-small);
@@ -236,6 +273,8 @@ export class AppHeader extends LitElement {
         currentView: { type: String },
         statusText: { type: String },
         startTime: { type: Number },
+        isInitializing: { type: Boolean },
+        onStartSession: { type: Function },
         onCustomizeClick: { type: Function },
         onHelpClick: { type: Function },
         onHistoryClick: { type: Function },
@@ -248,8 +287,6 @@ export class AppHeader extends LitElement {
         // New: handler for opening prompt configuration panel
         onDocumentClick: { type: Function },
         backgroundTransparency: { type: Number },
-        onMainToggleClick: { type: Function },
-        isMainCollapsed: { type: Boolean },
     };
 
     constructor() {
@@ -257,6 +294,8 @@ export class AppHeader extends LitElement {
         this.currentView = 'main';
         this.statusText = '';
         this.startTime = null;
+        this.isInitializing = false;
+        this.onStartSession = () => {};
         this.onCustomizeClick = () => {};
         this.onHelpClick = () => {};
         this.onHistoryClick = () => {};
@@ -267,11 +306,10 @@ export class AppHeader extends LitElement {
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
         this.onDocumentClick = () => {};
-        this.onMainToggleClick = () => {};
-        this.isMainCollapsed = true;
         this._timerInterval = null;
         this.backgroundTransparency = 0.8;
         this._jiggleActive = false;
+        this._logoSrc = APP_HEADER_LOGO_SVG;
     }
 
     connectedCallback() {
@@ -327,16 +365,48 @@ export class AppHeader extends LitElement {
         }
     }
 
-    _handleMainToggleClick() {
-        try {
-            this.onMainToggleClick();
-        } catch (_) {}
-        this._jiggleActive = true;
-        this.requestUpdate();
-        setTimeout(() => {
-            this._jiggleActive = false;
-            this.requestUpdate();
-        }, 500);
+    getStartButtonText() {
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
+        const cmdIcon = html`<svg width="14px" height="14px" viewBox="0 0 24 24" stroke-width="2" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 6V18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path d="M15 6V18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path
+                d="M9 6C9 4.34315 7.65685 3 6 3C4.34315 3 3 4.34315 3 6C3 7.65685 4.34315 9 6 9H18C19.6569 9 21 7.65685 21 6C21 4.34315 19.6569 3 18 3C16.3431 3 15 4.34315 15 6"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            ></path>
+            <path
+                d="M9 18C9 19.6569 7.65685 21 6 21C4.34315 21 3 19.6569 3 18C3 16.3431 4.34315 15 6 15H18C19.6569 15 21 16.3431 21 18C21 19.6569 19.6569 21 18 21C16.3431 21 15 19.6569 15 18"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            ></path>
+        </svg>`;
+
+        const enterIcon = html`<svg width="14px" height="14px" stroke-width="2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M10.25 19.25L6.75 15.75L10.25 12.25"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            ></path>
+            <path
+                d="M6.75 15.75H12.75C14.9591 15.75 16.75 13.9591 16.75 11.75V4.75"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            ></path>
+        </svg>`;
+
+        return isMac
+            ? html`Start Session <span class="shortcut-icons">${cmdIcon}${enterIcon}</span>`
+            : html`Start Session <span class="shortcut-icons">Ctrl${enterIcon}</span>`;
     }
 
     getViewTitle() {
@@ -395,22 +465,41 @@ export class AppHeader extends LitElement {
         root.style.setProperty('--scrollbar-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
     }
 
+    _handleLogoError() {
+        if (this._logoSrc === APP_HEADER_LOGO_PNG) return;
+        this._logoSrc = APP_HEADER_LOGO_PNG;
+        this.requestUpdate();
+    }
+
     render() {
         const elapsedTime = this.getElapsedTime();
+        const viewTitle = this.getViewTitle();
+        const showBrandLogo = viewTitle === 'CueFlow';
+        const logoSrc = this._logoSrc || APP_HEADER_LOGO_SVG;
 
         return html`
-            <div class="header ${this.currentView === 'main' && this.isMainCollapsed ? 'compact' : ''} ${this._jiggleActive ? 'jiggle' : ''}">
-                <div class="header-title">${this.getViewTitle()}</div>
+            <div class="header ${this._jiggleActive ? 'jiggle' : ''}">
+                <div class="header-title">
+                    ${showBrandLogo
+                        ? html`
+                              <span class="brand-logo">
+                                  <img class="logo-base" src=${logoSrc} width="170" height="26" alt="CueFlow" draggable="false" @error=${() => this._handleLogoError()} />
+                                  <img class="logo-layer logo-left" src=${logoSrc} width="170" height="26" alt="" aria-hidden="true" draggable="false" />
+                              </span>
+                          `
+                        : viewTitle}
+                </div>
                 ${this.currentView === 'main'
                     ? html`
                           <div class="center-actions">
-                              <button class="primary-toggle" @click=${() => this._handleMainToggleClick()}>
-                                  <span class="label">${this.isMainCollapsed ? 'GiveKey' : 'HideKey'}</span>
-                                  <span class="icon" aria-hidden="true">
-                                      ${this.isMainCollapsed
-                                          ? html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 9l6 6 6-6" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-                                          : html`<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 15l-6-6-6 6" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`}
-                                  </span>
+                              <button
+                                  class="primary-toggle"
+                                  type="button"
+                                  ?disabled=${this.isInitializing}
+                                  @click=${() => this.onStartSession()}
+                                  title="Start Session"
+                              >
+                                  ${this.getStartButtonText()}
                               </button>
                           </div>
                       `
@@ -457,7 +546,7 @@ export class AppHeader extends LitElement {
                                   : ''}
                           `
                         : ''}
-                    ${this.currentView === 'main' && !this.isMainCollapsed
+                    ${this.currentView === 'main'
                         ? html`
                               <button class="icon-button" @click=${this.onHistoryClick}>
                                   <?xml version="1.0" encoding="UTF-8"?><svg
@@ -632,9 +721,7 @@ export class AppHeader extends LitElement {
                               </button>
                           `
                         : html`
-                              ${this.currentView === 'main' && this.isMainCollapsed
-                                  ? ''
-                                  : html`<button @click=${this.isNavigationView() ? this.onBackClick : this.onCloseClick} class="icon-button window-close">
+                              <button @click=${this.isNavigationView() ? this.onBackClick : this.onCloseClick} class="icon-button window-close">
                                   <?xml version="1.0" encoding="UTF-8"?><svg
                                       width="24px"
                                       height="24px"
@@ -652,30 +739,9 @@ export class AppHeader extends LitElement {
                                           stroke-linejoin="round"
                                       ></path>
                                   </svg>
-                              </button>`}
+                              </button>
                           `}
                 </div>
-                ${this.currentView === 'main' && this.isMainCollapsed
-                    ? html`<button @click=${this.onCloseClick} class="floating-close">
-                        <?xml version="1.0" encoding="UTF-8"?><svg
-                            width="24px"
-                            height="24px"
-                            stroke-width="1.7"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            color="currentColor"
-                        >
-                            <path
-                                d="M6.75827 17.2426L12.0009 12M17.2435 6.75736L12.0009 12M12.0009 12L6.75827 6.75736M12.0009 12L17.2435 17.2426"
-                                stroke="currentColor"
-                                stroke-width="1.7"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            ></path>
-                        </svg>
-                    </button>`
-                    : ''}
             </div>
         `;
     }

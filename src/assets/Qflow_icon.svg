@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Transparent background by default -->
+
+  <!-- CF Icon (white for dark mode) -->
+  <path d="M520 120
+           C350 120 220 250 220 420
+           C220 520 290 620 400 660
+           L460 620
+           C380 590 330 510 330 420
+           C330 310 410 230 520 230
+           C630 230 710 310 710 420
+           L710 470
+           L610 470
+           L610 540
+           L710 540
+           L710 620
+           C710 730 630 810 520 810
+           C440 810 370 760 340 700
+           L260 740
+           C320 850 410 900 520 900
+           C690 900 820 770 820 600
+           L820 420
+           C820 250 690 120 520 120 Z"
+        fill="#FFFFFF"/>
+
+  <!-- Small dot detail -->
+  <circle cx="770" cy="350" r="28" fill="#FFFFFF"/>
+
+</svg>

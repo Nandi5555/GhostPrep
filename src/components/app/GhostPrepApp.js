@@ -1,7 +1,6 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { AppHeader } from './AppHeader.js';
 import { resizeLayout } from '../../utils/windowResize.js';
-import { MainView } from '../views/MainView.js';
 import { CustomizeView } from '../views/CustomizeView.js';
 import { HelpView } from '../views/HelpView.js';
 import { HistoryView } from '../views/HistoryView.js';
@@ -93,11 +92,6 @@ export class GhostPrepApp extends LitElement {
             overflow: hidden;
             border: none;
         }
-
-        .main-content.expanded {
-            max-height: 100vh;
-            opacity: 1;
-        }
     `,
     ];
 
@@ -118,7 +112,7 @@ export class GhostPrepApp extends LitElement {
         promptPanelOpen: { type: Boolean },
         transcriptText: { type: String },
         activeAssistantTab: { type: String },
-        mainCollapsed: { type: Boolean },
+        isInitializing: { type: Boolean },
         // Toast for non-silent failures
         toastText: { type: String },
         toastState: { type: String },
@@ -145,7 +139,7 @@ export class GhostPrepApp extends LitElement {
         this.promptPanelOpen = false;
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
-        this.mainCollapsed = this.currentView === 'main';
+        this.isInitializing = false;
 
         this.toastText = '';
         this.toastState = 'hide';
@@ -176,12 +170,13 @@ export class GhostPrepApp extends LitElement {
                 const lower = String(status || '').toLowerCase();
                 if (lower.includes('invalid api key')) {
                     this.currentView = 'main';
-                    const mainView = this.shadowRoot.querySelector('main-view');
-                    if (mainView && typeof mainView.showToast === 'function') {
-                        mainView.showToast('Invalid API key', 'error');
-                    }
+                    this.showToast('Invalid API key', 'error');
                     this.requestUpdate();
                 }
+            });
+            ipcRenderer.on('session-initializing', (_, isInitializing) => {
+                this.isInitializing = !!isInitializing;
+                this.requestUpdate();
             });
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
@@ -245,6 +240,7 @@ export class GhostPrepApp extends LitElement {
             ipcRenderer.removeAllListeners('update-transcript');
             ipcRenderer.removeAllListeners('chat-user-turn');
             ipcRenderer.removeAllListeners('ui-error');
+            ipcRenderer.removeAllListeners('session-initializing');
         }
         try { this.handleReasoningComplete(); } catch (_) {}
     }
@@ -509,12 +505,7 @@ export class GhostPrepApp extends LitElement {
         const deepgramApiKey = localStorage.getItem('deepgramApiKey')?.trim();
         const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
         if (!deepgramApiKey || !openaiApiKey) {
-            const mainView = this.shadowRoot.querySelector('main-view');
-            if (mainView && typeof mainView.showToast === 'function') {
-                mainView.showToast('Set Deepgram + OpenAI keys in Customize → AI Providers', 'error');
-            } else if (mainView && mainView.triggerApiKeyError) {
-                mainView.triggerApiKeyError();
-            }
+            this.showToast('Set Deepgram + OpenAI keys in Customize → AI Providers', 'error');
             return;
         }
 
@@ -627,6 +618,7 @@ export class GhostPrepApp extends LitElement {
         if (changedProperties.has('currentView') && window.require) {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.send('view-changed', this.currentView);
+            try { resizeLayout(); } catch (_) {}
 
             // Add a small delay to smooth out the transition
             const viewContainer = this.shadowRoot?.querySelector('.view-container');
@@ -671,12 +663,7 @@ export class GhostPrepApp extends LitElement {
                 `;
 
             case 'main':
-                return html`
-                    <main-view
-                        .onStart=${() => this.handleStart()}
-                        .onAPIKeyHelp=${() => this.handleAPIKeyHelp()}
-                    ></main-view>
-                `;
+                return html``;
 
             case 'customize':
                 return html`
@@ -731,8 +718,7 @@ export class GhostPrepApp extends LitElement {
 
     render() {
         const baseClass = this.currentView === 'assistant' ? 'assistant-view' : (this.currentView === 'onboarding' || this.currentView === 'permissions') ? 'onboarding-view' : 'with-border';
-        const collapseClass = this.currentView === 'main' ? (this.mainCollapsed ? 'collapsed' : 'expanded') : '';
-        const mainContentClass = `main-content ${baseClass} ${collapseClass}`;
+        const mainContentClass = `main-content ${baseClass} ${this.currentView === 'main' ? 'collapsed' : ''}`;
 
         return html`
             <div
@@ -750,6 +736,8 @@ export class GhostPrepApp extends LitElement {
                         .statusText=${this.statusText}
                         .startTime=${this.startTime}
                         .advancedMode=${this.advancedMode}
+                        .isInitializing=${this.isInitializing}
+                        .onStartSession=${() => this.handleStart()}
                         .onCustomizeClick=${() => this.handleCustomizeClick()}
                         .onHelpClick=${() => this.handleHelpClick()}
                         .onHistoryClick=${() => this.handleHistoryClick()}
@@ -757,8 +745,6 @@ export class GhostPrepApp extends LitElement {
                         .onCloseClick=${() => this.handleClose()}
                         .onBackClick=${() => this.handleBackClick()}
                         .onHideToggleClick=${() => this.handleHideToggle()}
-                        .onMainToggleClick=${() => this.handleMainToggle()}
-                        .isMainCollapsed=${this.mainCollapsed}
                         .onDocumentClick=${() => this.handlePromptConfigOpen()}
                         ?isClickThrough=${this._isClickThrough}
                     ></app-header>
@@ -772,12 +758,6 @@ export class GhostPrepApp extends LitElement {
 
     applyCompactLayout() {
         try { document.documentElement.classList.add('compact-layout'); } catch (_) {}
-    }
-
-    handleMainToggle() {
-        if (this.currentView !== 'main') return;
-        this.mainCollapsed = !this.mainCollapsed;
-        this.requestUpdate();
     }
 
     // Layout mode switching removed: compact is always-on.

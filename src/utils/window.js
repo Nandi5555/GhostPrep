@@ -780,6 +780,51 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                 isPromptLibraryOpen = false;
             }
 
+            let measuredMainHeader = null;
+            if (viewName === 'main') {
+                try {
+                    measuredMainHeader = await event.sender.executeJavaScript(`(() => {
+                        try {
+                            const app = document.querySelector('ghostprep-app');
+                            const appRoot = app && app.shadowRoot;
+                            const headerEl = appRoot && appRoot.querySelector('app-header');
+                            const headerRoot = headerEl && headerEl.shadowRoot;
+                            const header = headerRoot && headerRoot.querySelector('.header');
+                            const center = headerRoot && headerRoot.querySelector('.center-actions');
+                            const floatingClose = headerRoot && headerRoot.querySelector('.floating-close');
+
+                            const rects = [header, center, floatingClose]
+                                .filter(Boolean)
+                                .map(el => {
+                                    try { return el.getBoundingClientRect(); } catch (_) { return null; }
+                                })
+                                .filter(Boolean);
+                            if (!rects.length) return null;
+
+                            let left = Infinity;
+                            let top = Infinity;
+                            let right = -Infinity;
+                            let bottom = -Infinity;
+                            for (const r of rects) {
+                                left = Math.min(left, r.left);
+                                top = Math.min(top, r.top);
+                                right = Math.max(right, r.right);
+                                bottom = Math.max(bottom, r.bottom);
+                            }
+
+                            const width = Math.ceil(Math.max(0, right - left));
+                            const height = Math.ceil(Math.max(0, bottom - top));
+                            if (!width || !height) return null;
+                            return { width, height };
+                        } catch (e) {
+                            return null;
+                        }
+                    })()`);
+                } catch (_) {
+                    measuredMainHeader = null;
+                }
+            }
+
 
             let targetWidth, targetHeight;
 
@@ -818,8 +863,13 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                     break;
                 case 'main':
                 default:
-                    targetWidth = baseWidth;
-                    targetHeight = baseHeight;
+                    if (measuredMainHeader && measuredMainHeader.width && measuredMainHeader.height) {
+                        targetWidth = baseWidth;
+                        targetHeight = Math.max(44, measuredMainHeader.height + 2);
+                    } else {
+                        targetWidth = baseWidth;
+                        targetHeight = baseHeight;
+                    }
                     break;
             }
 
