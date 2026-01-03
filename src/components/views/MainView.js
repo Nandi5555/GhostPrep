@@ -13,13 +13,25 @@ export class MainView extends LitElement {
             font-size: 24px;
             margin-bottom: 8px;
             font-weight: 600;
-            margin-top: auto;
+        }
+
+        .center-wrap {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .brand {
+            font-weight: 750;
         }
 
         .input-group {
             display: flex;
             gap: 12px;
             margin-bottom: 20px;
+            justify-content: center;
         }
 
         .input-group input {
@@ -139,8 +151,11 @@ export class MainView extends LitElement {
             height: 100%;
             display: flex;
             flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
             width: 100%;
-            max-width: 500px;
+            max-width: none;
         }
 
         .toast {
@@ -361,19 +376,14 @@ export class MainView extends LitElement {
                     <span>${this.toastText}</span>
                 </div>
             </div>
-            <div class="welcome">Welcome</div>
+            <div class="center-wrap">
+                <div class="welcome">Welcome to <span class="brand">CueFlow</span></div>
 
-            <div class="input-group">
-                <input
-                    type="password"
-                    placeholder="Set Deepgram + OpenAI keys in Customize → AI Providers"
-                    .value=${''}
-                    disabled
-                    class="${this.showApiKeyError ? 'api-key-error' : ''}"
-                />
-                <button @click=${this.handleStartClick} class="start-button ${this.isInitializing ? 'initializing' : ''}">
-                    ${this.getStartButtonText()}
-                </button>
+                <div class="input-group">
+                    <button @click=${this.handleStartClick} class="start-button ${this.isInitializing ? 'initializing' : ''}">
+                        ${this.getStartButtonText()}
+                    </button>
+                </div>
             </div>
         `;
     }
