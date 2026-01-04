@@ -58,12 +58,13 @@ const DEFAULT_ASSIST_ACTION_PROMPT =
     'Silently correct obvious transcription mistakes and answer the intended question. Do not mention transcription errors, do not ask clarifying questions.';
 
 const SCREEN_ONLY_ASSIST_PROMPT =
-    'Assist using ONLY the current screen context (screenshot).\n' +
-    '- If the screen shows a question/prompt: answer it directly.\n' +
-    '- If the screen shows code: infer what is being asked (output prediction vs logic explanation vs purpose) and answer accordingly.\n' +
-    '- If the screen shows UI/content: infer the user intent from visible context and help immediately.\n' +
-    '- Be concise, correct, and action-oriented.\n' +
-    '- Do NOT ask clarifying questions unless absolutely necessary.';
+    'Describe what is visible on the shared screen as accurately as possible.\n' +
+    '- Do not make assumptions beyond what is visible.\n' +
+    '- If the capture is partial, do not assume missing areas.\n' +
+    '- If text is too small/blurred, say it is not legible.\n' +
+    '- If the screen contains code, logs, UI, or documents, use the relevant details to answer.\n' +
+    '- If uncertain, say what is uncertain and why.\n' +
+    '- Do not ask clarifying questions unless absolutely necessary.';
 
 // Runtime visibility / debug state
 let asrStatus = 'disconnected'; // connected|disconnected|error|connecting

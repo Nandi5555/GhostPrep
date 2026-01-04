@@ -55,7 +55,7 @@ class DeepgramStreamingClient {
             model: this.model,
             language: this.language,
             punctuate: 'true',
-            smart_format: 'false',
+            smart_format: 'true',
             interim_results: 'true',
         });
 

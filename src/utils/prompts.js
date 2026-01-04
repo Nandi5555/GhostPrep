@@ -33,41 +33,13 @@ const STRICT_RULES = `Strict rules (MUST FOLLOW):
 - Do not deviate from the customAiInstruction/SystemPrompt/customPrompt for any other questions.
 `;
 
-
-const UI_FORMAT_RULES = `UI formatting rules (MUST FOLLOW):
-- Output must be in clean Markdown format.
-- Each major section (like Step 1, Step 2, Main Point, Example, etc.) must be visually separated using a horizontal divider line: "---".
-- Section titles must be bold (e.g., **Step 1 — Question Restatement**).
-- Maintain clear spacing between sections — one blank line before and after each divider.
-- If you include code, ALWAYS wrap it in fenced code blocks using triple backticks: \`\`\`.
-- Put ONLY code inside fenced code blocks. Never put explanation text inside a code block.
-- Never output stray code lines outside fences (like </X>, bare braces, or );).
-- Do NOT indent normal explanation text with 4+ spaces (Markdown turns that into a code block).
-- Do NOT prefix section labels/headings with // or #.
-- Use plain text for labels like "Main Point", "Supporting Explanation", "Example", "End Line".
-- Always close any fenced code block you open.
-- Maintain consistent indentation and spacing for readability.
-`;
-
-const SCREEN_ANALYSIS_RULES = `Screen Analysis Rules (STRICT - MUST FOLLOW):
-- Always analyze the visible screen content before generating any answer.
-- Identify what type of screen it is:
-  * If it shows code → treat it as a coding context.
-  * If it shows a terminal or console → treat it as an execution/output context.
-  * If it shows documentation, chat, or notes → treat it as a theory or explanation context.
-- When code is visible, detect:
-  * The language (JavaScript, React, Node.js, etc.)
-  * The file name and folder path (e.g., utils/prompts.js → logic or config file)
-  * The function or component currently open (e.g., getSystemPrompt)
-- Always cross-check the screen code with the user’s spoken context.
-  * If the user is discussing logic → focus on explaining that function or block.
-  * If the user is discussing UI or formatting → focus on structure and layout.
-- Follow the same strict formatting and explanation flow defined in the custom prompt (coding, theory, or scenario rules).
-- Never rewrite or modify existing code unless the user explicitly asks.
-- When describing the screen, summarize only what’s relevant (no full code dump).
-- Maintain the same Markdown formatting and section dividers as defined in UI_FORMAT_RULES.
-- Always ensure the final answer aligns with both the visible screen and the user’s spoken question.
-`;
+const SCREEN_ANALYSIS_RULES = `Screen context rules (apply only when a screenshot is available and relevant to the user's request):
+- Treat the screenshot as primary evidence; do not guess beyond what is visible.
+- Clearly distinguish what you can see vs what you are inferring.
+- If text is too small/blurred to read, say it is not legible.
+- If the capture is partial, do not assume missing areas.
+- Consider relevant visible details (text, UI elements, code, logs) when answering.
+- Only describe the screen in detail when the user asks about the screen; otherwise reference only what matters to answer the question.`;
 
 const PROFILE = {
     interview:
@@ -119,21 +91,16 @@ function getSystemPrompt(profile, customPrompt = '', _googleSearchEnabled = fals
             '',
             '=== END CUSTOM INSTRUCTIONS ===',
             '',
-            UI_FORMAT_RULES,
-            '',
             'Additional base rules (ONLY apply if NOT specified in custom instructions above):',
             BASE_RULES,
             '',
             SCREEN_ANALYSIS_RULES,
             '',
-            'IMPORTANT: When custom instructions specify formatting, structure, length, or style rules, those rules take precedence over any base rules. Follow custom instructions exactly as written.',
+            'IMPORTANT: Custom instructions take precedence over any base rules.',
         ].join('\n');
     } else {
-        // No custom instructions - use default structure
         return [
             roleLine,
-            '',
-            UI_FORMAT_RULES,
             '',
             BASE_RULES,
             '',
@@ -145,4 +112,3 @@ function getSystemPrompt(profile, customPrompt = '', _googleSearchEnabled = fals
 module.exports = {
     getSystemPrompt,
 };
-
