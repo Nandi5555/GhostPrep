@@ -1071,7 +1071,11 @@ scrollToTop() {
                     sanitize: false, // We trust the AI responses
                 });
 
-                window.marked.use({ renderer });
+                const tokenizer = {
+                    code: () => undefined,
+                };
+
+                window.marked.use({ renderer, tokenizer });
 
                 // Do not "fix" or restructure model output here.
                 // Formatting is the model's responsibility via system/custom prompts.
