@@ -55,7 +55,7 @@ class DeepgramStreamingClient {
             model: this.model,
             language: this.language,
             punctuate: 'true',
-            smart_format: 'true',
+            smart_format: 'false',
             interim_results: 'true',
         });
 
@@ -169,5 +169,4 @@ class DeepgramStreamingClient {
 module.exports = {
     DeepgramStreamingClient,
 };
-
 

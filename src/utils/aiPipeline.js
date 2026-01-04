@@ -1,4 +1,12 @@
-const { BrowserWindow, ipcMain } = require('electron');
+let BrowserWindow = null;
+let ipcMain = null;
+try {
+    const electron = require('electron');
+    if (electron && typeof electron === 'object') {
+        if (electron.BrowserWindow) BrowserWindow = electron.BrowserWindow;
+        if (electron.ipcMain) ipcMain = electron.ipcMain;
+    }
+} catch (_) {}
 const { spawn } = require('child_process');
 
 const { getSystemPrompt } = require('./prompts');
@@ -117,6 +125,7 @@ function surfaceUiError(message, context = '') {
 }
 
 function sendToRenderer(channel, data) {
+    if (!BrowserWindow) return;
     const windows = BrowserWindow.getAllWindows();
     if (windows.length > 0) {
         windows[0].webContents.send(channel, data);
@@ -171,14 +180,6 @@ function formatMergedTypedAndSpokenInput({ typedText = '', spokenText = '' } = {
     if (!t && !s) return '';
     if (t && !s) return t;
     if (!t && s) return s;
-
-    // Heuristic: merge only when it likely matches the user's intent (Cluely-style paste + speak).
-    // Avoid accidentally gluing in long, stale transcripts when the user is purely typing.
-    const typedLooksLikePaste = t.length > 200 || t.split('\n').length >= 3;
-    const spokenLooksLikeInstruction = s.length > 0 && s.length <= 1200;
-    const spokenAlreadyInTyped = t.toLowerCase().includes(s.toLowerCase().slice(0, Math.min(40, s.length)));
-    const shouldMerge = !spokenAlreadyInTyped && (typedLooksLikePaste || spokenLooksLikeInstruction);
-    if (!shouldMerge) return t;
 
     // Explicit structure so the model reliably associates the spoken instruction with the pasted content.
     return (
@@ -987,4 +988,5 @@ module.exports = {
     setupAiIpcHandlers,
     closeAiSession,
     stopMacOSSystemAudioCapture,
+    formatMergedTypedAndSpokenInput,
 };
