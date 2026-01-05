@@ -5,8 +5,16 @@
         <title>Screen and Audio Capture</title>
         <style>
             :root {
+                --theme-transition: 300ms;
+
+                --theme-surface-rgb: 0 0 0;
+                --theme-panel-rgb: 12 14 20;
+                --theme-popover-rgb: 20 22 28;
+
                 --background-transparent: transparent;
                 --text-color: #e8eaf0;
+                --text-muted: rgba(255, 255, 255, 0.6);
+                --label-color: rgba(255, 255, 255, 0.90);
                 --border-color: rgba(255, 255, 255, 0.16);
                 --header-background: rgba(0, 0, 0, 0.8);
                 --header-actions-color: rgba(255, 255, 255, 0.6);
@@ -16,9 +24,13 @@
                 --icon-button-color: rgb(229, 229, 231);
                 --hover-background: rgba(255, 255, 255, 0.12);
                 --input-background: rgba(0, 0, 0, 0.3);
+                --input-hover-background: rgba(0, 0, 0, 0.35);
+                --input-border: rgba(255, 255, 255, 0.15);
+                --input-hover-border: rgba(255, 255, 255, 0.22);
                 --placeholder-color: rgba(255, 255, 255, 0.4);
                 --focus-border-color: #007aff;
                 --focus-box-shadow: rgba(0, 122, 255, 0.2);
+                --focus-shadow: rgba(0, 122, 255, 0.1);
                 --input-focus-background: rgba(0, 0, 0, 0.5);
                 --scrollbar-track: rgba(0, 0, 0, 0.2);
                 --scrollbar-thumb: rgba(255, 255, 255, 0.25);
@@ -31,6 +43,7 @@
                 --screen-option-selected-background: rgba(0, 122, 255, 0.15);
                 --screen-option-text: rgba(255, 255, 255, 0.7);
                 --description-color: rgba(255, 255, 255, 0.6);
+                --table-border: rgba(255, 255, 255, 0.08);
                 --start-button-background: white;
                 --start-button-color: black;
                 --start-button-border: white;
@@ -52,12 +65,60 @@
                 --highlight-color: #fa6e4e;
                 --highlight-bg-color: rgba(250, 110, 78, 0.16);
 
+                --card-background: var(--glass-bg);
+                --card-border: var(--glass-border);
+                --checkbox-background: rgba(255, 255, 255, 0.02);
+                --checkbox-border: rgba(255, 255, 255, 0.06);
+
+                --overlay-bg: rgba(0, 0, 0, 0.52);
+                --overlay-inner-bg: rgba(0, 0, 0, 0.45);
+
+                --success-color: #34d399;
+                --success-background: rgba(52, 211, 153, 0.12);
+                --success-border: rgba(52, 211, 153, 0.25);
+
+                --warning-color: #fbbf24;
+                --warning-background: rgba(251, 191, 36, 0.10);
+                --warning-border: rgba(251, 191, 36, 0.22);
+
+                --danger-color: #ff6666;
+                --danger-text: #ffdede;
+                --danger-background: rgba(255, 68, 68, 0.15);
+                --danger-border: rgba(255, 102, 102, 0.95);
+
                 /* Glass tokens */
                 --glass-bg: rgba(255, 255, 255, 0.08);
                 --glass-hover-bg: rgba(255, 255, 255, 0.14);
                 --glass-border: rgba(255, 255, 255, 0.28);
                 --glass-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
                 --glass-highlight: rgba(255, 255, 255, 0.22);
+
+                --menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)), rgba(12, 14, 20, 0.92);
+                --menu-border: rgba(255, 255, 255, 0.14);
+                --menu-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+                --menu-item-hover-bg: rgba(255, 255, 255, 0.06);
+                --menu-item-selected-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.18), rgba(0, 122, 255, 0.08));
+                --menu-item-selected-border: rgba(0, 122, 255, 0.30);
+                --user-bubble-text: #ffffff;
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.58), rgba(0, 122, 255, 0.42));
+                --user-bubble-border: rgba(0, 122, 255, 0.55);
+
+                --popover-bg: rgba(20, 22, 28, 0.92);
+                --popover-border: rgba(255, 255, 255, 0.14);
+                --popover-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+
+                --bubble-neutral-bg: rgba(255, 255, 255, 0.06);
+                --bubble-neutral-border: rgba(255, 255, 255, 0.14);
+                --bubble-neutral-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+                --bubble-ai-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)), rgba(255, 255, 255, 0.06);
+
+                --primary-gradient-top: #4b82d6;
+                --primary-gradient-mid: #3a6fc1;
+                --primary-gradient-bot: #2f5aa6;
+                --primary-glass-top: rgba(255, 255, 255, 0.45);
+                --primary-glass-mid: rgba(255, 255, 255, 0.24);
+                --primary-glass-bot: rgba(255, 255, 255, 0.08);
+                --primary-border: rgba(255, 255, 255, 0.28);
 
                 /* Layout-specific variables */
                 /* Compact is the ONLY supported layout mode */
@@ -74,6 +135,395 @@
                 --content-border-radius: 22px;
                 --primary-button-radius: 12px;
                 --primary-button-text: #ffffff;
+            }
+
+            :root[data-theme='dark'] {
+                --theme-surface-rgb: 30 30 30;
+                --theme-panel-rgb: 26 26 26;
+                --theme-popover-rgb: 26 26 26;
+
+                --text-color: #e0e0e0;
+                --text-muted: #6b6b6b;
+                --label-color: rgba(224, 224, 224, 0.9);
+                --description-color: #6b6b6b;
+                --border-color: #333333;
+                --table-border: rgba(255, 255, 255, 0.08);
+
+                --header-background: rgba(30, 30, 30, 0.8);
+                --header-actions-color: rgba(224, 224, 224, 0.6);
+                --main-content-background: rgba(26, 26, 26, 0.78);
+
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.58), rgba(0, 122, 255, 0.42));
+                --user-bubble-border: rgba(0, 122, 255, 0.55);
+            }
+
+            :root[data-theme='light'] {
+                --theme-surface-rgb: 255 255 255;
+                --theme-panel-rgb: 255 255 255;
+                --theme-popover-rgb: 255 255 255;
+
+                --text-color: #1a1a1a;
+                --text-muted: #888888;
+                --label-color: rgba(26, 26, 26, 0.84);
+                --border-color: #e0e0e0;
+                --header-background: rgba(255, 255, 255, 0.72);
+                --header-actions-color: rgba(26, 26, 26, 0.62);
+                --main-content-background: rgba(255, 255, 255, 0.72);
+                --button-background: rgba(0, 0, 0, 0.05);
+                --button-border: rgba(0, 0, 0, 0.10);
+                --icon-button-color: rgba(26, 26, 26, 0.86);
+
+                --hover-background: rgba(0, 0, 0, 0.06);
+                --input-background: rgba(255, 255, 255, 0.66);
+                --input-hover-background: rgba(255, 255, 255, 0.78);
+                --input-focus-background: rgba(255, 255, 255, 0.82);
+                --input-border: rgba(0, 0, 0, 0.12);
+                --input-hover-border: rgba(0, 0, 0, 0.18);
+                --placeholder-color: rgba(26, 26, 26, 0.40);
+                --description-color: rgba(26, 26, 26, 0.62);
+                --table-border: rgba(0, 0, 0, 0.08);
+                --scrollbar-track: rgba(0, 0, 0, 0.08);
+                --scrollbar-thumb: rgba(0, 0, 0, 0.22);
+                --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
+
+                --option-label-color: rgba(16, 17, 20, 0.78);
+                --screen-option-background: rgba(255, 255, 255, 0.66);
+                --screen-option-hover-background: rgba(255, 255, 255, 0.78);
+                --screen-option-selected-background: rgba(0, 122, 255, 0.12);
+                --screen-option-text: rgba(16, 17, 20, 0.70);
+
+                --glass-bg: rgba(255, 255, 255, 0.72);
+                --glass-hover-bg: rgba(255, 255, 255, 0.88);
+                --glass-border: rgba(0, 0, 0, 0.14);
+                --glass-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+                --glass-highlight: rgba(255, 255, 255, 0.7);
+
+                --menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.88)), rgba(255, 255, 255, 0.92);
+                --menu-border: rgba(0, 0, 0, 0.12);
+                --menu-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+                --menu-item-hover-bg: rgba(0, 0, 0, 0.05);
+                --menu-item-selected-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.18), rgba(0, 122, 255, 0.08));
+                --menu-item-selected-border: rgba(0, 122, 255, 0.30);
+
+                --popover-bg: rgba(255, 255, 255, 0.96);
+                --popover-border: rgba(0, 0, 0, 0.12);
+                --popover-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+
+                --bubble-neutral-bg: rgba(0, 0, 0, 0.04);
+                --bubble-neutral-border: rgba(0, 0, 0, 0.10);
+                --bubble-neutral-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+                --bubble-ai-bg: linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.01)), rgba(0, 0, 0, 0.03);
+
+                --key-background: rgba(0, 0, 0, 0.06);
+
+                --overlay-bg: rgba(0, 0, 0, 0.35);
+                --overlay-inner-bg: rgba(0, 0, 0, 0.28);
+
+                --success-color: #10b981;
+                --success-background: rgba(16, 185, 129, 0.10);
+                --success-border: rgba(16, 185, 129, 0.22);
+
+                --warning-color: #f59e0b;
+                --warning-background: rgba(245, 158, 11, 0.14);
+                --warning-border: rgba(245, 158, 11, 0.26);
+
+                --danger-color: #dc2626;
+                --danger-text: #7f1d1d;
+                --danger-background: rgba(220, 38, 38, 0.12);
+                --danger-border: rgba(220, 38, 38, 0.35);
+
+                --checkbox-background: rgba(0, 0, 0, 0.03);
+                --checkbox-border: rgba(0, 0, 0, 0.10);
+
+                --app-scrollbar-track: rgba(0, 0, 0, 0.06);
+                --app-scrollbar-thumb: rgba(0, 0, 0, 0.22);
+                --app-scrollbar-thumb-hover: rgba(0, 0, 0, 0.30);
+                --app-scrollbar-thumb-active: rgba(0, 0, 0, 0.36);
+                --app-scrollbar-thumb-border: rgba(0, 0, 0, 0.12);
+
+                --primary-gradient-top: #4b82d6;
+                --primary-gradient-mid: #3a6fc1;
+                --primary-gradient-bot: #2f5aa6;
+                --primary-glass-top: rgba(255, 255, 255, 0.70);
+                --primary-glass-mid: rgba(255, 255, 255, 0.35);
+                --primary-glass-bot: rgba(255, 255, 255, 0.12);
+                --primary-border: rgba(0, 0, 0, 0.14);
+                --primary-button-text: #ffffff;
+
+                --user-bubble-text: #ffffff;
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.92), rgba(0, 95, 212, 0.92));
+                --user-bubble-border: rgba(0, 122, 255, 0.55);
+            }
+
+            :root[data-theme='liquidglass'] {
+                --theme-surface-rgb: 245 247 255;
+                --theme-panel-rgb: 255 255 255;
+                --theme-popover-rgb: 255 255 255;
+
+                --text-color: #0b0c0f;
+                --text-muted: rgba(11, 12, 15, 0.62);
+                --label-color: rgba(11, 12, 15, 0.84);
+                --border-color: rgba(11, 12, 15, 0.12);
+                --description-color: rgba(11, 12, 15, 0.62);
+                --table-border: rgba(11, 12, 15, 0.08);
+
+                --header-background: rgba(245, 247, 255, 0.62);
+                --header-actions-color: rgba(11, 12, 15, 0.62);
+                --main-content-background: rgba(255, 255, 255, 0.56);
+                --button-background: rgba(255, 255, 255, 0.58);
+                --button-border: rgba(11, 12, 15, 0.10);
+                --icon-button-color: rgba(11, 12, 15, 0.86);
+
+                --hover-background: rgba(11, 12, 15, 0.06);
+                --input-background: rgba(255, 255, 255, 0.70);
+                --input-hover-background: rgba(255, 255, 255, 0.82);
+                --input-focus-background: rgba(255, 255, 255, 0.90);
+                --input-border: rgba(11, 12, 15, 0.12);
+                --input-hover-border: rgba(11, 12, 15, 0.18);
+                --placeholder-color: rgba(11, 12, 15, 0.40);
+
+                --glass-bg: rgba(255, 255, 255, 0.54);
+                --glass-hover-bg: rgba(255, 255, 255, 0.70);
+                --glass-border: rgba(11, 12, 15, 0.10);
+                --glass-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
+                --glass-highlight: rgba(255, 255, 255, 0.82);
+
+                --menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.62)), rgba(255, 255, 255, 0.55);
+                --menu-border: rgba(11, 12, 15, 0.10);
+                --menu-shadow: 0 22px 70px rgba(0, 0, 0, 0.18);
+                --menu-item-hover-bg: rgba(11, 12, 15, 0.05);
+
+                --popover-bg: rgba(255, 255, 255, 0.76);
+                --popover-border: rgba(11, 12, 15, 0.10);
+                --popover-shadow: 0 18px 60px rgba(0, 0, 0, 0.16);
+
+                --bubble-neutral-bg: rgba(255, 255, 255, 0.52);
+                --bubble-neutral-border: rgba(11, 12, 15, 0.08);
+                --bubble-neutral-shadow: 0 12px 34px rgba(0, 0, 0, 0.14);
+                --bubble-ai-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.40)), rgba(255, 255, 255, 0.44);
+
+                --overlay-bg: rgba(0, 0, 0, 0.32);
+                --overlay-inner-bg: rgba(0, 0, 0, 0.22);
+
+                --primary-gradient-top: #3b82f6;
+                --primary-gradient-mid: #2563eb;
+                --primary-gradient-bot: #1d4ed8;
+                --primary-glass-top: rgba(255, 255, 255, 0.78);
+                --primary-glass-mid: rgba(255, 255, 255, 0.46);
+                --primary-glass-bot: rgba(255, 255, 255, 0.20);
+                --primary-border: rgba(11, 12, 15, 0.12);
+                --primary-button-text: #ffffff;
+
+                --user-bubble-text: #ffffff;
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.94), rgba(0, 95, 212, 0.94));
+                --user-bubble-border: rgba(0, 122, 255, 0.60);
+            }
+
+            :root[data-theme='midnight'] {
+                --theme-surface-rgb: 13 17 23;
+                --theme-panel-rgb: 22 27 34;
+                --theme-popover-rgb: 22 27 34;
+
+                --text-color: #c9d1d9;
+                --text-muted: #6e7681;
+                --label-color: rgba(201, 209, 217, 0.86);
+                --description-color: rgba(201, 209, 217, 0.62);
+                --border-color: #30363d;
+                --table-border: rgba(48, 54, 61, 0.65);
+
+                --header-background: rgba(13, 17, 23, 0.84);
+                --header-actions-color: rgba(201, 209, 217, 0.60);
+                --main-content-background: rgba(22, 27, 34, 0.82);
+
+                --input-background: rgba(13, 17, 23, 0.46);
+                --input-hover-background: rgba(13, 17, 23, 0.56);
+                --input-focus-background: rgba(13, 17, 23, 0.62);
+                --input-border: rgba(48, 54, 61, 0.85);
+                --input-hover-border: rgba(48, 54, 61, 1);
+                --placeholder-color: rgba(201, 209, 217, 0.38);
+
+                --glass-bg: rgba(255, 255, 255, 0.08);
+                --glass-hover-bg: rgba(255, 255, 255, 0.14);
+                --glass-border: rgba(255, 255, 255, 0.18);
+
+                --menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)), rgba(22, 27, 34, 0.92);
+                --menu-border: rgba(48, 54, 61, 0.85);
+
+                --popover-bg: rgba(22, 27, 34, 0.92);
+                --popover-border: rgba(48, 54, 61, 0.85);
+
+                --bubble-neutral-bg: rgba(255, 255, 255, 0.06);
+                --bubble-neutral-border: rgba(255, 255, 255, 0.14);
+                --bubble-ai-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)), rgba(255, 255, 255, 0.06);
+
+                --app-scrollbar-track: rgba(255, 255, 255, 0.06);
+                --app-scrollbar-thumb: rgba(255, 255, 255, 0.30);
+                --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.42);
+                --app-scrollbar-thumb-active: rgba(255, 255, 255, 0.50);
+                --app-scrollbar-thumb-border: rgba(255, 255, 255, 0.16);
+
+                --primary-gradient-top: #4b82d6;
+                --primary-gradient-mid: #3a6fc1;
+                --primary-gradient-bot: #2f5aa6;
+
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.62), rgba(0, 122, 255, 0.46));
+                --user-bubble-border: rgba(0, 122, 255, 0.58);
+            }
+
+            :root[data-theme='sepia'] {
+                --theme-surface-rgb: 244 236 216;
+                --theme-panel-rgb: 244 236 216;
+                --theme-popover-rgb: 244 236 216;
+
+                --text-color: #5c4b37;
+                --text-muted: #998875;
+                --label-color: rgba(92, 75, 55, 0.86);
+                --description-color: rgba(92, 75, 55, 0.62);
+                --border-color: #d4c8b0;
+                --table-border: rgba(92, 75, 55, 0.12);
+
+                --header-background: rgba(244, 236, 216, 0.72);
+                --header-actions-color: rgba(92, 75, 55, 0.62);
+                --main-content-background: rgba(244, 236, 216, 0.72);
+
+                --button-background: rgba(92, 75, 55, 0.05);
+                --button-border: rgba(92, 75, 55, 0.10);
+                --icon-button-color: rgba(92, 75, 55, 0.86);
+
+                --hover-background: rgba(92, 75, 55, 0.06);
+                --input-background: rgba(244, 236, 216, 0.66);
+                --input-hover-background: rgba(244, 236, 216, 0.78);
+                --input-focus-background: rgba(244, 236, 216, 0.82);
+                --input-border: rgba(92, 75, 55, 0.18);
+                --input-hover-border: rgba(92, 75, 55, 0.26);
+                --placeholder-color: rgba(92, 75, 55, 0.40);
+
+                --scrollbar-track: rgba(92, 75, 55, 0.08);
+                --scrollbar-thumb: rgba(92, 75, 55, 0.22);
+                --scrollbar-thumb-hover: rgba(92, 75, 55, 0.32);
+
+                --glass-bg: rgba(244, 236, 216, 0.72);
+                --glass-hover-bg: rgba(244, 236, 216, 0.88);
+                --glass-border: rgba(92, 75, 55, 0.14);
+                --glass-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+
+                --menu-bg: linear-gradient(180deg, rgba(244, 236, 216, 0.95), rgba(244, 236, 216, 0.88)), rgba(244, 236, 216, 0.92);
+                --menu-border: rgba(92, 75, 55, 0.12);
+                --menu-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+                --menu-item-hover-bg: rgba(92, 75, 55, 0.05);
+
+                --popover-bg: rgba(244, 236, 216, 0.96);
+                --popover-border: rgba(92, 75, 55, 0.12);
+                --popover-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+
+                --bubble-neutral-bg: rgba(92, 75, 55, 0.04);
+                --bubble-neutral-border: rgba(92, 75, 55, 0.10);
+                --bubble-neutral-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+                --bubble-ai-bg: linear-gradient(180deg, rgba(92, 75, 55, 0.02), rgba(92, 75, 55, 0.01)), rgba(92, 75, 55, 0.03);
+
+                --key-background: rgba(92, 75, 55, 0.06);
+
+                --overlay-bg: rgba(0, 0, 0, 0.35);
+                --overlay-inner-bg: rgba(0, 0, 0, 0.28);
+
+                --checkbox-background: rgba(92, 75, 55, 0.03);
+                --checkbox-border: rgba(92, 75, 55, 0.10);
+
+                --app-scrollbar-track: rgba(92, 75, 55, 0.06);
+                --app-scrollbar-thumb: rgba(92, 75, 55, 0.22);
+                --app-scrollbar-thumb-hover: rgba(92, 75, 55, 0.30);
+                --app-scrollbar-thumb-active: rgba(92, 75, 55, 0.36);
+                --app-scrollbar-thumb-border: rgba(92, 75, 55, 0.12);
+
+                --user-bubble-text: #ffffff;
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.92), rgba(0, 95, 212, 0.92));
+                --user-bubble-border: rgba(0, 122, 255, 0.55);
+            }
+
+            :root[data-theme='nord'] {
+                --theme-surface-rgb: 46 52 64;
+                --theme-panel-rgb: 59 66 82;
+                --theme-popover-rgb: 59 66 82;
+
+                --text-color: #eceff4;
+                --text-muted: #4c566a;
+                --label-color: rgba(236, 239, 244, 0.90);
+                --description-color: rgba(236, 239, 244, 0.60);
+                --border-color: #3b4252;
+                --table-border: rgba(236, 239, 244, 0.10);
+
+                --header-background: rgba(46, 52, 64, 0.84);
+                --header-actions-color: rgba(236, 239, 244, 0.60);
+                --main-content-background: rgba(59, 66, 82, 0.82);
+
+                --menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)), rgba(59, 66, 82, 0.92);
+                --menu-border: rgba(236, 239, 244, 0.14);
+                --popover-bg: rgba(59, 66, 82, 0.92);
+                --popover-border: rgba(236, 239, 244, 0.14);
+
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.62), rgba(0, 122, 255, 0.46));
+                --user-bubble-border: rgba(0, 122, 255, 0.58);
+            }
+
+            :root[data-theme='dracula'] {
+                --theme-surface-rgb: 40 42 54;
+                --theme-panel-rgb: 68 71 90;
+                --theme-popover-rgb: 68 71 90;
+
+                --text-color: #f8f8f2;
+                --text-muted: #6272a4;
+                --label-color: rgba(248, 248, 242, 0.90);
+                --description-color: rgba(248, 248, 242, 0.60);
+                --border-color: #44475a;
+                --table-border: rgba(248, 248, 242, 0.10);
+
+                --header-background: rgba(40, 42, 54, 0.84);
+                --header-actions-color: rgba(248, 248, 242, 0.60);
+                --main-content-background: rgba(68, 71, 90, 0.82);
+
+                --menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)), rgba(68, 71, 90, 0.92);
+                --menu-border: rgba(248, 248, 242, 0.14);
+                --popover-bg: rgba(68, 71, 90, 0.92);
+                --popover-border: rgba(248, 248, 242, 0.14);
+
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.62), rgba(0, 122, 255, 0.46));
+                --user-bubble-border: rgba(0, 122, 255, 0.58);
+            }
+
+            :root[data-theme='abyss'] {
+                --theme-surface-rgb: 10 10 10;
+                --theme-panel-rgb: 20 20 20;
+                --theme-popover-rgb: 20 20 20;
+
+                --text-color: #d4d4d4;
+                --text-muted: #505050;
+                --label-color: rgba(212, 212, 212, 0.90);
+                --description-color: rgba(212, 212, 212, 0.60);
+                --border-color: #1a1a1a;
+                --table-border: rgba(255, 255, 255, 0.06);
+
+                --header-background: rgba(10, 10, 10, 0.84);
+                --header-actions-color: rgba(212, 212, 212, 0.60);
+                --main-content-background: rgba(20, 20, 20, 0.82);
+
+                --menu-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)), rgba(20, 20, 20, 0.92);
+                --menu-border: rgba(255, 255, 255, 0.12);
+                --popover-bg: rgba(20, 20, 20, 0.92);
+                --popover-border: rgba(255, 255, 255, 0.12);
+
+                --user-bubble-bg: linear-gradient(180deg, rgba(0, 122, 255, 0.66), rgba(0, 122, 255, 0.50));
+                --user-bubble-border: rgba(0, 122, 255, 0.60);
+            }
+
+            :root.theme-transition,
+            :root.theme-transition * {
+                transition:
+                    background-color var(--theme-transition) ease,
+                    color var(--theme-transition) ease,
+                    border-color var(--theme-transition) ease,
+                    box-shadow var(--theme-transition) ease,
+                    fill var(--theme-transition) ease,
+                    stroke var(--theme-transition) ease;
             }
 
             html,
@@ -111,6 +561,18 @@
             // Ensure fresh installs never see "normal" mode.
             (function () {
                 try { document.documentElement.classList.add('compact-layout'); } catch (_) {}
+            })();
+        </script>
+        <script>
+            (function () {
+                try {
+                    var choice = localStorage.getItem('uiThemeChoice') || 'dark';
+                    var allowed = ['dark', 'light', 'liquidglass', 'midnight', 'sepia', 'nord', 'dracula', 'abyss'];
+                    if (allowed.indexOf(choice) === -1) choice = 'dark';
+                    var resolved = choice;
+                    document.documentElement.dataset.themeChoice = choice;
+                    document.documentElement.dataset.theme = resolved;
+                } catch (_) {}
             })();
         </script>
         <script type="module" src="components/app/GhostPrepApp.js"></script>

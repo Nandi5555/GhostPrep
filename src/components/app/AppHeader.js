@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import { subscribeTheme } from '../../utils/theme.js';
 
 const APP_HEADER_LOGO_SVG = new URL('../../assets/AppHeader.svg', import.meta.url).toString();
 const APP_HEADER_LOGO_PNG = new URL('../../assets/AppHeader.png', import.meta.url).toString();
@@ -22,7 +23,7 @@ export class AppHeader extends LitElement {
             border-radius: 999px;
             backdrop-filter: blur(8px);
             box-shadow: none;
-            transition: padding 0.2s ease;
+            transition: padding 0.2s ease, background-color var(--theme-transition) ease, border-color var(--theme-transition) ease, color var(--theme-transition) ease;
         }
 
         .header.jiggle { animation: header-jiggle 480ms ease; }
@@ -78,13 +79,14 @@ export class AppHeader extends LitElement {
             clip-path: inset(0 46% 0 0);
         }
 
-        @media (prefers-color-scheme: dark) {
-            .brand-logo .logo-layer {
-                display: block;
-            }
-            .brand-logo .logo-left {
-                filter: brightness(0) invert(1);
-            }
+        :host-context(html[data-theme='dark']) .brand-logo .logo-layer,
+        :host-context(html[data-theme='midnight']) .brand-logo .logo-layer {
+            display: block;
+        }
+
+        :host-context(html[data-theme='dark']) .brand-logo .logo-left,
+        :host-context(html[data-theme='midnight']) .brand-logo .logo-left {
+            filter: brightness(0) invert(1);
         }
 
         .header-actions {
@@ -115,16 +117,16 @@ export class AppHeader extends LitElement {
             border-radius: var(--primary-button-radius, 16px);
             font-size: 15px;
             font-weight: 600;
-            border: 1px solid rgba(255, 255, 255, 0.28);
+            border: 1px solid var(--primary-border, rgba(255, 255, 255, 0.28));
             border-radius: 999px;
             background:
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
-                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+                linear-gradient(to bottom, var(--primary-glass-top, rgba(255, 255, 255, 0.45)) 0%, var(--primary-glass-mid, rgba(255, 255, 255, 0.24)) 38%, var(--primary-glass-bot, rgba(255, 255, 255, 0.08)) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, var(--primary-gradient-top, #4b82d6) 0%, var(--primary-gradient-mid, #3a6fc1) 52%, var(--primary-gradient-bot, #2f5aa6) 100%);
             box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            transition: transform 0.12s ease, filter 0.2s ease;
+            transition: transform 0.12s ease, filter 0.2s ease, background-color var(--theme-transition) ease, border-color var(--theme-transition) ease;
             font-family: 'Inter', sans-serif;
             letter-spacing: 0.2px;
             backdrop-filter: blur(8px);
@@ -146,9 +148,9 @@ export class AppHeader extends LitElement {
             color: var(--header-actions-color);
         }
 
-        .button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); padding: var(--header-button-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, transform 0.12s ease; }
+        .button { background: var(--glass-bg); color: var(--text-color); border: 1px solid var(--glass-border); padding: var(--header-button-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color var(--theme-transition) ease, color var(--theme-transition) ease, border-color var(--theme-transition) ease, box-shadow var(--theme-transition) ease, transform 0.12s ease; }
 
-        .icon-button { background: var(--glass-bg); color: var(--icon-button-color); border: 1px solid var(--glass-border); padding: var(--header-icon-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; display: flex; opacity: 0.85; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.12s ease; }
+        .icon-button { background: var(--glass-bg); color: var(--icon-button-color); border: 1px solid var(--glass-border); padding: var(--header-icon-padding); border-radius: 10px; font-size: var(--header-font-size-small); font-weight: 500; display: flex; opacity: 0.85; backdrop-filter: blur(10px); box-shadow: var(--glass-shadow); transition: background-color var(--theme-transition) ease, color var(--theme-transition) ease, border-color var(--theme-transition) ease, box-shadow var(--theme-transition) ease, opacity 0.2s ease, transform 0.12s ease; }
 
         .icon-button svg {
             width: var(--icon-size);
@@ -341,15 +343,27 @@ export class AppHeader extends LitElement {
         this.backgroundTransparency = 0.8;
         this._jiggleActive = false;
         this._logoSrc = APP_HEADER_LOGO_SVG;
+        this._unsubscribeTheme = null;
     }
 
     connectedCallback() {
         super.connectedCallback();
         this._startTimer();
         this.loadBackgroundTransparency();
+        try {
+            if (!this._unsubscribeTheme) {
+                this._unsubscribeTheme = subscribeTheme(() => {
+                    try { this.updateBackgroundTransparency(); } catch (_) {}
+                });
+            }
+        } catch (_) {}
     }
 
     disconnectedCallback() {
+        try {
+            if (typeof this._unsubscribeTheme === 'function') this._unsubscribeTheme();
+        } catch (_) {}
+        this._unsubscribeTheme = null;
         super.disconnectedCallback();
         this._stopTimer();
     }
@@ -484,16 +498,43 @@ export class AppHeader extends LitElement {
 
     updateBackgroundTransparency() {
         const root = document.documentElement;
-        root.style.setProperty('--header-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
-        root.style.setProperty('--main-content-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
-        root.style.setProperty('--card-background', `rgba(255, 255, 255, ${this.backgroundTransparency * 0.05})`);
-        root.style.setProperty('--input-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.375})`);
-        root.style.setProperty('--input-focus-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
-        root.style.setProperty('--button-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
-        root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 1.125})`);
-        root.style.setProperty('--screen-option-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
-        root.style.setProperty('--screen-option-hover-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.75})`);
-        root.style.setProperty('--scrollbar-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
+        const t = Number.isFinite(this.backgroundTransparency) ? this.backgroundTransparency : 0.8;
+        const clamp01 = v => Math.min(1, Math.max(0, v));
+        const parseRgbTriplet = raw => {
+            const s = String(raw || '').trim();
+            if (!s) return null;
+            const parts = s.split(/\s+/).map(n => Number.parseFloat(n)).filter(n => Number.isFinite(n));
+            if (parts.length < 3) return null;
+            return [parts[0], parts[1], parts[2]];
+        };
+        const cs = getComputedStyle(root);
+        const surfaceRgb = parseRgbTriplet(cs.getPropertyValue('--theme-surface-rgb')) || [0, 0, 0];
+        const panelRgb = parseRgbTriplet(cs.getPropertyValue('--theme-panel-rgb')) || surfaceRgb;
+        const isLight = (surfaceRgb[0] + surfaceRgb[1] + surfaceRgb[2]) / 3 > 128;
+        const rgba = (rgb, a) => `rgba(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])}, ${clamp01(a)})`;
+
+        root.style.setProperty('--header-background', rgba(surfaceRgb, t));
+        root.style.setProperty('--main-content-background', rgba(panelRgb, t));
+
+        if (isLight) {
+            root.style.setProperty('--card-background', rgba(surfaceRgb, 0.58 + 0.34 * clamp01(t)));
+            root.style.setProperty('--input-background', rgba(surfaceRgb, 0.40 + 0.30 * clamp01(t)));
+            root.style.setProperty('--input-focus-background', rgba(surfaceRgb, 0.54 + 0.36 * clamp01(t)));
+            root.style.setProperty('--button-background', rgba(surfaceRgb, 0.18 + 0.20 * clamp01(t)));
+            root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${clamp01(0.75 + 0.25 * clamp01(t))})`);
+            root.style.setProperty('--screen-option-background', rgba(surfaceRgb, 0.46 + 0.28 * clamp01(t)));
+            root.style.setProperty('--screen-option-hover-background', rgba(surfaceRgb, 0.56 + 0.30 * clamp01(t)));
+            root.style.setProperty('--scrollbar-background', rgba(surfaceRgb, 0.10 + 0.12 * clamp01(t)));
+        } else {
+            root.style.setProperty('--card-background', `rgba(255, 255, 255, ${clamp01(t * 0.05)})`);
+            root.style.setProperty('--input-background', rgba(surfaceRgb, t * 0.375));
+            root.style.setProperty('--input-focus-background', rgba(surfaceRgb, t * 0.625));
+            root.style.setProperty('--button-background', rgba(surfaceRgb, t * 0.625));
+            root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${clamp01(t * 1.05)})`);
+            root.style.setProperty('--screen-option-background', rgba(surfaceRgb, t * 0.5));
+            root.style.setProperty('--screen-option-hover-background', rgba(surfaceRgb, t * 0.75));
+            root.style.setProperty('--scrollbar-background', rgba(surfaceRgb, t * 0.5));
+        }
     }
 
     _handleLogoError() {

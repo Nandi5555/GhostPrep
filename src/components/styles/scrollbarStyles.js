@@ -8,28 +8,29 @@ export const scrollbarStyles = css`
   }
 
   ::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--app-scrollbar-track, transparent);
     border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb {
-    background-color: #555; /* thumb color */
+    background-color: var(--app-scrollbar-thumb, rgba(255, 255, 255, 0.30)); /* thumb color */
     border-radius: 4px;
-    border: 2px; /* adds spacing effect */
+    border: 1px solid var(--app-scrollbar-thumb-border, rgba(255, 255, 255, 0.16)); /* adds spacing effect */
+    background-clip: padding-box;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background-color: #888; /* hover effect */
+    background-color: var(--app-scrollbar-thumb-hover, rgba(255, 255, 255, 0.42)); /* hover effect */
   }
 
   /* For Firefox */
   scrollbar-width: thin;
   /* Syntax: scrollbar-color: <thumb> <track> */
-  scrollbar-color: #555 rgba(83, 83, 83, 0.47);
+  scrollbar-color: var(--app-scrollbar-thumb, rgba(255, 255, 255, 0.30)) var(--app-scrollbar-track, transparent);
 
   /* For all scrollable elements */
   :host {
     scrollbar-width: thin;
-    scrollbar-color: #555 rgba(83, 83, 83, 0.47);
+    scrollbar-color: var(--app-scrollbar-thumb, rgba(255, 255, 255, 0.30)) var(--app-scrollbar-track, transparent);
   }
 `;

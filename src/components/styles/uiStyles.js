@@ -8,8 +8,8 @@ export const buttonStyles = css`
     .btn {
         -webkit-app-region: no-drag;
         appearance: none;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--button-border, rgba(255, 255, 255, 0.14));
+        background: var(--button-background, rgba(255, 255, 255, 0.06));
         color: var(--text-color);
         border-radius: 12px;
         padding: 8px 12px;
@@ -28,8 +28,8 @@ export const buttonStyles = css`
 
     .btn:hover {
         filter: brightness(1.06);
-        background: rgba(255, 255, 255, 0.09);
-        border-color: rgba(255, 255, 255, 0.22);
+        background: var(--glass-hover-bg, rgba(255, 255, 255, 0.09));
+        border-color: var(--input-hover-border, rgba(255, 255, 255, 0.22));
     }
 
     .btn:active {
@@ -44,9 +44,9 @@ export const buttonStyles = css`
     }
 
     .btn.primary {
-        background: linear-gradient(180deg, rgba(0, 122, 255, 0.34), rgba(0, 122, 255, 0.18));
-        border-color: rgba(0, 122, 255, 0.55);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+        background: var(--menu-item-selected-bg, rgba(0, 122, 255, 0.18));
+        border-color: var(--focus-border-color, rgba(0, 122, 255, 0.55));
+        box-shadow: inset 0 0 0 1px var(--glass-highlight, rgba(255, 255, 255, 0.10));
     }
 
     .btn.primary:hover {
@@ -54,13 +54,14 @@ export const buttonStyles = css`
     }
 
     .btn.danger {
-        background: linear-gradient(180deg, rgba(220, 38, 38, 0.30), rgba(220, 38, 38, 0.14));
-        border-color: rgba(220, 38, 38, 0.55);
+        background: var(--danger-background, rgba(220, 38, 38, 0.14));
+        border-color: var(--danger-border, rgba(220, 38, 38, 0.55));
+        color: var(--danger-text, var(--text-color));
     }
 
     .btn.ghost {
         background: transparent;
-        border-color: rgba(255, 255, 255, 0.12);
+        border-color: var(--button-border, rgba(255, 255, 255, 0.12));
     }
 
     .btn .icon {
@@ -77,5 +78,3 @@ export const buttonStyles = css`
         height: 16px;
     }
 `;
-
-

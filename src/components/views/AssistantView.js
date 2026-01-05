@@ -23,7 +23,7 @@ export class AssistantView extends LitElement {
             background: var(--main-content-background);
             padding: 16px;
             scroll-behavior: smooth;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+            box-shadow: var(--glass-shadow, 0 12px 40px rgba(0, 0, 0, 0.35));
             border: 1px solid var(--border-color);
         }
 
@@ -67,17 +67,17 @@ export class AssistantView extends LitElement {
         .transcript-bubble.user {
             /* Match the "selected" highlight from gp-select menu items */
             color: var(--primary-button-text, #ffffff);
-            background: linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10));
-            border-color: rgba(0, 122, 255, 0.38);
+            background: var(--menu-item-selected-bg, linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10)));
+            border-color: var(--menu-item-selected-border, rgba(0, 122, 255, 0.38));
             box-shadow:
-                inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-                0 10px 24px rgba(0, 0, 0, 0.32);
+                inset 0 0 0 1px var(--glass-highlight, rgba(255, 255, 255, 0.06)),
+                var(--bubble-neutral-shadow, 0 10px 24px rgba(0, 0, 0, 0.32));
         }
         .transcript-bubble.interviewer {
             /* Neutral (no blue) */
-            background: rgba(255, 255, 255, 0.06);
-            border-color: rgba(255, 255, 255, 0.14);
-            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+            background: var(--bubble-neutral-bg, rgba(255, 255, 255, 0.06));
+            border-color: var(--bubble-neutral-border, rgba(255, 255, 255, 0.14));
+            box-shadow: var(--bubble-neutral-shadow, 0 10px 24px rgba(0, 0, 0, 0.22));
             color: var(--text-color);
         }
 
@@ -94,7 +94,7 @@ export class AssistantView extends LitElement {
             padding: 10px 12px;
             border-radius: 14px;
             border: 1px solid var(--border-color);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+            box-shadow: var(--bubble-neutral-shadow, 0 8px 24px rgba(0, 0, 0, 0.25));
         }
         .bubble.user {
             /* Match Transcript tab "user speaking" bubble for consistency */
@@ -105,11 +105,11 @@ export class AssistantView extends LitElement {
             overflow-wrap: anywhere;
             word-break: break-word;
             color: var(--primary-button-text, #ffffff);
-            background: linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10));
-            border-color: rgba(0, 122, 255, 0.38);
+            background: var(--menu-item-selected-bg, linear-gradient(180deg, rgba(0, 122, 255, 0.22), rgba(0, 122, 255, 0.10)));
+            border-color: var(--menu-item-selected-border, rgba(0, 122, 255, 0.38));
             box-shadow:
-                inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-                0 10px 24px rgba(0, 0, 0, 0.32);
+                inset 0 0 0 1px var(--glass-highlight, rgba(255, 255, 255, 0.06)),
+                var(--bubble-neutral-shadow, 0 10px 24px rgba(0, 0, 0, 0.32));
             border-radius: 14px;
             overflow: hidden;
         }
@@ -118,10 +118,8 @@ export class AssistantView extends LitElement {
         }
         .bubble.ai {
             /* Neutral "glass/gray" like interviewer transcript (avoid solid black panel) */
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-                rgba(255, 255, 255, 0.06);
-            border-color: rgba(255, 255, 255, 0.14);
+            background: var(--bubble-ai-bg, rgba(255, 255, 255, 0.06));
+            border-color: var(--bubble-neutral-border, rgba(255, 255, 255, 0.14));
             backdrop-filter: blur(10px);
         }
 
@@ -170,7 +168,7 @@ export class AssistantView extends LitElement {
             align-items: center;
             gap: 6px;
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.55);
+            color: var(--text-muted, rgba(255, 255, 255, 0.55));
         }
         .screenshot-meta .icon {
             width: 14px;
@@ -180,7 +178,7 @@ export class AssistantView extends LitElement {
             align-items: center;
             justify-content: center;
         }
-        .screenshot-meta:hover { color: rgba(255, 255, 255, 0.75); }
+        .screenshot-meta:hover { color: var(--description-color, rgba(255, 255, 255, 0.75)); }
         .screenshot-popover {
             display: none;
             position: absolute;
@@ -191,9 +189,9 @@ export class AssistantView extends LitElement {
             max-height: min(240px, calc(100vh - 140px));
             padding: 8px;
             border-radius: 12px;
-            background: rgba(20, 22, 28, 0.92);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+            background: var(--popover-bg, rgba(20, 22, 28, 0.92));
+            border: 1px solid var(--popover-border, rgba(255, 255, 255, 0.14));
+            box-shadow: var(--popover-shadow, 0 16px 40px rgba(0, 0, 0, 0.45));
             backdrop-filter: blur(10px);
             z-index: 50;
             overflow: auto;
@@ -305,12 +303,12 @@ export class AssistantView extends LitElement {
             margin: 1em 0;
             padding: 0.5em 1em;
             border-left: 4px solid var(--focus-border-color);
-            background: rgba(0, 122, 255, 0.1);
+            background: var(--focus-shadow, rgba(0, 122, 255, 0.1));
             font-style: italic;
         }
 
         .response-container code {
-            background: rgba(255, 255, 255, 0.18); /* higher contrast for translucency */
+            background: var(--bubble-neutral-bg, rgba(255, 255, 255, 0.18));
             padding: 0.2em 0.4em;
             border-radius: 3px;
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -319,10 +317,8 @@ export class AssistantView extends LitElement {
 
         .response-container pre {
             /* Neutral (no black panel) — match the glassy gray look */
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03)),
-                rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: var(--bubble-ai-bg, rgba(255, 255, 255, 0.06));
+            border: 1px solid var(--bubble-neutral-border, rgba(255, 255, 255, 0.14));
             border-radius: 10px;
             padding: 1em;
             overflow-x: auto;
@@ -553,7 +549,7 @@ export class AssistantView extends LitElement {
         /* Limit generic button styling to non-send buttons */
         .text-input-container .nav-button {
             background: transparent;
-            color: var(--start-button-background);
+            color: var(--icon-button-color, var(--text-color));
             border: none;
             padding: 0;
             border-radius: 100px;
@@ -561,6 +557,7 @@ export class AssistantView extends LitElement {
 
         .text-input-container .nav-button:hover {
             background: var(--text-input-button-hover);
+            color: var(--primary-button-text, #ffffff);
         }
 
         .input-actions {
@@ -587,18 +584,18 @@ export class AssistantView extends LitElement {
         }
         .use-screen-btn.active {
             color: var(--primary-button-text, #ffffff);
-            border: 1px solid rgba(255, 255, 255, 0.28);
+            border: 1px solid var(--primary-border, rgba(255, 255, 255, 0.28));
             background:
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
-                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+                linear-gradient(to bottom, var(--primary-glass-top, rgba(255, 255, 255, 0.45)) 0%, var(--primary-glass-mid, rgba(255, 255, 255, 0.24)) 38%, var(--primary-glass-bot, rgba(255, 255, 255, 0.08)) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, var(--primary-gradient-top, #4b82d6) 0%, var(--primary-gradient-mid, #3a6fc1) 52%, var(--primary-gradient-bot, #2f5aa6) 100%);
+            box-shadow: inset 0 1px var(--glass-highlight, rgba(255, 255, 255, 0.5)), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
         }
 
         .input-actions .send-button { margin-left: auto; }
 
         .nav-button {
-            background: rgba(255, 255, 255, 0.06);
-            color: white;
+            background: var(--glass-bg, rgba(255, 255, 255, 0.06));
+            color: var(--text-color);
             border: 1px solid var(--button-border);
             padding: 4px;
             border-radius: 10px;
@@ -619,7 +616,7 @@ export class AssistantView extends LitElement {
         }
 
         .nav-button svg {
-            stroke: white !important;
+            stroke: currentColor !important;
         }
 
         .response-counter {
@@ -646,17 +643,17 @@ export class AssistantView extends LitElement {
         .tab-btn:active { transform: translateY(1px); }
         .tab-btn.active { box-shadow: 0 0 0 2px var(--focus-border-color, #007aff); }
         
-        .send-primary { background: var(--text-input-button-hover); color: #fff; border: 1px solid var(--button-border); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
+        .send-primary { background: var(--text-input-button-hover); color: var(--primary-button-text, #fff); border: 1px solid var(--button-border); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
         .send-button {
             color: var(--primary-button-text, #ffffff);
             width: 36px;
             height: 36px;
             border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.28);
+            border: 1px solid var(--primary-border, rgba(255, 255, 255, 0.28));
             background:
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
-                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
+                linear-gradient(to bottom, var(--primary-glass-top, rgba(255, 255, 255, 0.45)) 0%, var(--primary-glass-mid, rgba(255, 255, 255, 0.24)) 38%, var(--primary-glass-bot, rgba(255, 255, 255, 0.08)) 60%, rgba(255, 255, 255, 0) 100%),
+                linear-gradient(to bottom, var(--primary-gradient-top, #4b82d6) 0%, var(--primary-gradient-mid, #3a6fc1) 52%, var(--primary-gradient-bot, #2f5aa6) 100%);
+            box-shadow: inset 0 1px var(--glass-highlight, rgba(255, 255, 255, 0.5)), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -698,9 +695,7 @@ export class AssistantView extends LitElement {
 
         /* Distinct styling for output blocks */
         .response-container pre.output-block {
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
-                rgba(255, 255, 255, 0.04);
+            background: var(--bubble-neutral-bg, rgba(255, 255, 255, 0.04));
             border-left: 4px solid var(--focus-border-color);
         }
         .response-container pre.output-block code {
@@ -746,7 +741,7 @@ export class AssistantView extends LitElement {
         .prompt-panel-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.35);
+            background: var(--overlay-bg, rgba(0, 0, 0, 0.35));
             backdrop-filter: blur(2px);
             display: flex;
             justify-content: flex-end;
@@ -792,7 +787,7 @@ export class AssistantView extends LitElement {
             padding: 10px;
             border: 1px solid var(--border-color);
             border-radius: 8px;
-            background: var(--card-background);
+            background: var(--card-background, var(--glass-bg));
             margin-bottom: 10px;
         }
         .prompt-row input,

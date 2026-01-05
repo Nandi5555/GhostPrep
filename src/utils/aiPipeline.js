@@ -609,12 +609,15 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
             await streamResponse({
                 apiKey: openaiApiKey,
                 model: modelName,
-                temperature: 0,
+                text: { format: 'text' },
+                temp: 1.00,
+                tokens: 2048,
+                top_p: 1.00,
+                store: true,
                 systemPrompt: activeSystemPrompt,
                 history,
                 userText,
                 images: hasImages ? imagesToUse : [],
-                maxOutputTokens: 900,
                 onDelta: delta => {
                     const d = String(delta || '');
                     if (!d) return;

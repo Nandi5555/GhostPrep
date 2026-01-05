@@ -123,7 +123,7 @@ export class HistoryView extends LitElement {
         .overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.4);
+            background: var(--overlay-bg, rgba(0, 0, 0, 0.4));
             display: flex;
             align-items: center;
             justify-content: center;
@@ -174,7 +174,7 @@ export class HistoryView extends LitElement {
         }
 
         .button.danger {
-            border-color: var(--focus-border-color);
+            border-color: var(--danger-border, var(--focus-border-color));
         }
 
         .session-date {
@@ -219,11 +219,11 @@ export class HistoryView extends LitElement {
         }
 
         .message.user {
-            border-left-color: #5865f2; /* Discord blue */
+            border-left-color: var(--focus-border-color);
         }
 
         .message.ai {
-            border-left-color: #ed4245; /* Discord red */
+            border-left-color: var(--highlight-color);
         }
 
         .back-header {
@@ -273,11 +273,11 @@ export class HistoryView extends LitElement {
         }
 
         .legend-dot.user {
-            background-color: #5865f2; /* Discord blue */
+            background-color: var(--focus-border-color);
         }
 
         .legend-dot.ai {
-            background-color: #ed4245; /* Discord red */
+            background-color: var(--highlight-color);
         }
 
         .empty-state {

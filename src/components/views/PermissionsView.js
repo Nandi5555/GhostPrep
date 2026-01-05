@@ -31,7 +31,7 @@ export class PermissionsView extends LitElement {
             position: relative;
             width: 100%;
             height: 100%;
-            background: #0a0a0a;
+            background: rgb(var(--theme-surface-rgb, 0 0 0));
             overflow: hidden;
         }
 
@@ -52,12 +52,12 @@ export class PermissionsView extends LitElement {
             transform: translate(-50%, -50%);
             width: min(560px, calc(100% - 32px));
             border-radius: 16px;
-            background: rgba(18, 18, 18, 0.9);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+            background: var(--menu-bg);
+            border: 1px solid var(--menu-border);
+            box-shadow: var(--menu-shadow);
             padding: 22px;
             z-index: 1;
-            color: #eaeaea;
+            color: var(--text-color);
         }
 
         .title {
@@ -65,13 +65,13 @@ export class PermissionsView extends LitElement {
             font-weight: 650;
             line-height: 1.2;
             margin-bottom: 8px;
-            color: #ffffff;
+            color: var(--text-color);
         }
 
         .sub {
             font-size: 13px;
             line-height: 1.45;
-            color: rgba(255, 255, 255, 0.72);
+            color: var(--description-color);
             margin-bottom: 16px;
         }
 
@@ -89,8 +89,8 @@ export class PermissionsView extends LitElement {
             gap: 12px;
             padding: 12px 12px;
             border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
+            background: var(--glass-bg, rgba(255, 255, 255, 0.03));
         }
 
         .left {
@@ -103,12 +103,12 @@ export class PermissionsView extends LitElement {
         .label {
             font-size: 14px;
             font-weight: 600;
-            color: #ffffff;
+            color: var(--text-color);
         }
 
         .desc {
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.65);
+            color: var(--description-color);
             line-height: 1.35;
         }
 
@@ -124,29 +124,29 @@ export class PermissionsView extends LitElement {
             border-radius: 999px;
             font-size: 12px;
             font-weight: 650;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            color: rgba(255, 255, 255, 0.88);
-            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+            color: var(--text-color);
+            background: var(--glass-bg, rgba(255, 255, 255, 0.06));
         }
 
         .pill.ok {
-            border-color: rgba(140, 255, 200, 0.35);
-            background: rgba(140, 255, 200, 0.12);
-            color: rgba(200, 255, 230, 0.92);
+            border-color: var(--success-border, rgba(52, 211, 153, 0.25));
+            background: var(--success-background, rgba(52, 211, 153, 0.12));
+            color: var(--success-color, #34d399);
         }
 
         .pill.bad {
-            border-color: rgba(250, 110, 78, 0.35);
-            background: rgba(250, 110, 78, 0.12);
-            color: rgba(255, 210, 200, 0.95);
+            border-color: var(--warning-border, rgba(251, 191, 36, 0.22));
+            background: var(--warning-background, rgba(251, 191, 36, 0.10));
+            color: var(--warning-color, #fbbf24);
         }
 
         .btn {
             padding: 8px 12px;
             border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(255, 255, 255, 0.06);
-            color: rgba(255, 255, 255, 0.92);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+            background: var(--glass-bg, rgba(255, 255, 255, 0.06));
+            color: var(--text-color);
             font-size: 12px;
             font-weight: 650;
             cursor: pointer;
@@ -154,18 +154,18 @@ export class PermissionsView extends LitElement {
         }
 
         .btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
+            background: var(--glass-hover-bg, rgba(255, 255, 255, 0.10));
+            border-color: var(--input-hover-border, rgba(255, 255, 255, 0.20));
         }
 
         .btn.primary {
-            background: rgba(250, 110, 78, 0.16);
-            border-color: rgba(250, 110, 78, 0.3);
+            background: var(--highlight-bg-color, rgba(250, 110, 78, 0.16));
+            border-color: var(--highlight-color, #fa6e4e);
         }
 
         .btn.primary:hover {
-            background: rgba(250, 110, 78, 0.22);
-            border-color: rgba(250, 110, 78, 0.45);
+            background: var(--highlight-bg-color, rgba(250, 110, 78, 0.22));
+            border-color: var(--highlight-color, #fa6e4e);
         }
 
         .btn:disabled {
@@ -175,15 +175,15 @@ export class PermissionsView extends LitElement {
 
         .steps {
             margin-top: 10px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 1px solid var(--table-border, rgba(255, 255, 255, 0.08));
             padding-top: 12px;
-            color: rgba(255, 255, 255, 0.7);
+            color: var(--description-color);
             font-size: 12px;
             line-height: 1.5;
         }
 
         .steps .h {
-            color: rgba(255, 255, 255, 0.9);
+            color: var(--text-color);
             font-weight: 650;
             margin-bottom: 6px;
         }
@@ -198,7 +198,7 @@ export class PermissionsView extends LitElement {
 
         .hint {
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.65);
+            color: var(--description-color);
             line-height: 1.4;
         }
     `;

@@ -42,14 +42,14 @@ export class GPSelect extends LitElement {
             }
 
             .trigger:hover {
-                border-color: rgba(255, 255, 255, 0.22);
-                background: rgba(0, 0, 0, 0.35);
+                border-color: var(--input-hover-border, rgba(255, 255, 255, 0.22));
+                background: var(--input-hover-background, var(--input-background, rgba(0, 0, 0, 0.35)));
             }
 
             .trigger:focus-visible {
                 outline: none;
-                border-color: rgba(0, 122, 255, 0.65);
-                box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.16);
+                border-color: var(--focus-border-color, #007aff);
+                box-shadow: 0 0 0 3px var(--focus-box-shadow, rgba(0, 122, 255, 0.2));
             }
 
             .label {
@@ -76,11 +76,9 @@ export class GPSelect extends LitElement {
                 overflow: auto;
                 padding: 6px;
                 border-radius: 14px;
-                background:
-                    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)),
-                    rgba(12, 14, 20, 0.92);
-                border: 1px solid rgba(255, 255, 255, 0.14);
-                box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+                background: var(--menu-bg, rgba(12, 14, 20, 0.92));
+                border: 1px solid var(--menu-border, rgba(255, 255, 255, 0.14));
+                box-shadow: var(--menu-shadow, 0 18px 50px rgba(0, 0, 0, 0.55));
                 backdrop-filter: blur(10px);
             }
 
@@ -99,12 +97,12 @@ export class GPSelect extends LitElement {
             }
 
             .item:hover {
-                background: rgba(255, 255, 255, 0.06);
+                background: var(--menu-item-hover-bg, rgba(255, 255, 255, 0.06));
             }
 
             .item[aria-selected='true'] {
-                background: linear-gradient(180deg, rgba(0, 122, 255, 0.18), rgba(0, 122, 255, 0.08));
-                border-color: rgba(0, 122, 255, 0.30);
+                background: var(--menu-item-selected-bg, linear-gradient(180deg, rgba(0, 122, 255, 0.18), rgba(0, 122, 255, 0.08)));
+                border-color: var(--menu-item-selected-border, rgba(0, 122, 255, 0.30));
             }
 
             .check {
@@ -368,5 +366,3 @@ export class GPSelect extends LitElement {
 }
 
 customElements.define('gp-select', GPSelect);
-
-

@@ -9,6 +9,7 @@ import { OnboardingView } from '../views/OnboardingView.js';
 import { AdvancedView } from '../views/AdvancedView.js';
 import { PermissionsView } from '../views/PermissionsView.js';
 import { scrollbarStyles } from '../styles/scrollbarStyles.js';
+import { initTheme } from '../../utils/theme.js';
 
 export class GhostPrepApp extends LitElement {
     static styles = [
@@ -33,6 +34,7 @@ export class GhostPrepApp extends LitElement {
             height: 100vh;
             background-color: var(--background-transparent);
             color: var(--text-color);
+            transition: background-color var(--theme-transition) ease, color var(--theme-transition) ease;
         }
 
         .window-container {
@@ -53,7 +55,14 @@ export class GhostPrepApp extends LitElement {
             overflow-y: auto;
             margin-top: var(--main-content-margin-top);
             border-radius: var(--content-border-radius);
-            transition: max-height 0.2s ease, opacity 0.2s ease, padding 0.2s ease, margin 0.2s ease;
+            transition:
+                max-height 0.2s ease,
+                opacity 0.2s ease,
+                padding 0.2s ease,
+                margin 0.2s ease,
+                background-color var(--theme-transition) ease,
+                border-color var(--theme-transition) ease,
+                box-shadow var(--theme-transition) ease;
             background: var(--main-content-background);
             backdrop-filter: blur(8px);
             box-shadow: none;
@@ -159,12 +168,18 @@ export class GhostPrepApp extends LitElement {
 
         this._connectCancelToken = null;
         this._connectRetryTimer = null;
+
+        this._cleanupTheme = null;
     }
 
     connectedCallback() {
         super.connectedCallback();
         // Compact mode is the ONLY supported layout mode; ensure it stays applied.
         this.applyCompactLayout();
+
+        try {
+            if (!this._cleanupTheme) this._cleanupTheme = initTheme();
+        } catch (_) {}
 
         // Set up IPC listeners if needed
         if (window.require) {
@@ -263,6 +278,10 @@ export class GhostPrepApp extends LitElement {
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        try {
+            if (typeof this._cleanupTheme === 'function') this._cleanupTheme();
+        } catch (_) {}
+        this._cleanupTheme = null;
         if (this._onSmartMouseMove) {
             try { window.removeEventListener('mousemove', this._onSmartMouseMove); } catch (_) {}
             this._onSmartMouseMove = null;

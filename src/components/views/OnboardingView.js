@@ -32,7 +32,7 @@ export class OnboardingView extends LitElement {
             position: relative;
             width: 100%;
             height: 100%;
-            background: #0a0a0a;
+            background: rgb(var(--theme-surface-rgb, 0 0 0));
             overflow: hidden;
         }
 
@@ -43,6 +43,10 @@ export class OnboardingView extends LitElement {
             width: 100%;
             height: 100%;
             z-index: 0;
+        }
+
+        :host-context(html[data-theme='light']) .gradient-canvas {
+            opacity: 0.25;
         }
 
         .content-wrapper {
@@ -57,7 +61,7 @@ export class OnboardingView extends LitElement {
             justify-content: center;
             padding: 32px 48px;
             max-width: 500px;
-            color: #e5e5e5;
+            color: var(--text-color);
             overflow: hidden;
         }
 
@@ -73,7 +77,7 @@ export class OnboardingView extends LitElement {
             font-size: 28px;
             font-weight: 600;
             margin-bottom: 12px;
-            color: #ffffff;
+            color: var(--text-color);
             line-height: 1.3;
         }
 
@@ -81,7 +85,7 @@ export class OnboardingView extends LitElement {
             font-size: 16px;
             line-height: 1.5;
             margin-bottom: 24px;
-            color: #b8b8b8;
+            color: var(--description-color);
             font-weight: 400;
         }
 
@@ -89,10 +93,10 @@ export class OnboardingView extends LitElement {
             width: 100%;
             height: 100px;
             padding: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--input-border, rgba(255, 255, 255, 0.1));
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.05);
-            color: #e5e5e5;
+            background: var(--input-background, rgba(255, 255, 255, 0.05));
+            color: var(--text-color);
             font-size: 14px;
             font-family: inherit;
             resize: vertical;
@@ -101,14 +105,15 @@ export class OnboardingView extends LitElement {
         }
 
         .context-textarea::placeholder {
-            color: rgba(255, 255, 255, 0.4);
+            color: var(--placeholder-color, rgba(255, 255, 255, 0.4));
             font-size: 14px;
         }
 
         .context-textarea:focus {
             outline: none;
-            border-color: rgba(255, 255, 255, 0.2);
-            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--focus-border-color, #007aff);
+            box-shadow: 0 0 0 3px var(--focus-box-shadow, rgba(0, 122, 255, 0.2));
+            background: var(--input-focus-background, rgba(255, 255, 255, 0.08));
         }
 
         .feature-list {
@@ -120,7 +125,7 @@ export class OnboardingView extends LitElement {
             align-items: center;
             margin-bottom: 12px;
             font-size: 15px;
-            color: #b8b8b8;
+            color: var(--description-color);
         }
 
         .feature-icon {
@@ -139,17 +144,17 @@ export class OnboardingView extends LitElement {
             align-items: center;
             justify-content: space-between;
             padding: 16px 24px;
-            background: rgba(0, 0, 0, 0.3);
+            background: var(--header-background, rgba(0, 0, 0, 0.3));
             backdrop-filter: blur(10px);
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-top: 1px solid var(--table-border, rgba(255, 255, 255, 0.05));
             height: 60px;
             box-sizing: border-box;
         }
 
         .nav-button {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #e5e5e5;
+            background: var(--glass-bg, rgba(255, 255, 255, 0.08));
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+            color: var(--text-color);
             padding: 8px 16px;
             border-radius: 6px;
             font-size: 13px;
@@ -164,8 +169,8 @@ export class OnboardingView extends LitElement {
         }
 
         .nav-button:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.2);
+            background: var(--glass-hover-bg, rgba(255, 255, 255, 0.12));
+            border-color: var(--input-hover-border, rgba(255, 255, 255, 0.2));
         }
 
         .nav-button:active {
@@ -178,8 +183,8 @@ export class OnboardingView extends LitElement {
         }
 
         .nav-button:disabled:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.1);
+            background: var(--glass-bg, rgba(255, 255, 255, 0.08));
+            border-color: var(--glass-border, rgba(255, 255, 255, 0.1));
             transform: none;
         }
 
@@ -193,17 +198,17 @@ export class OnboardingView extends LitElement {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: rgba(255, 255, 255, 0.2);
+            background: var(--border-color, rgba(255, 255, 255, 0.2));
             transition: all 0.2s ease;
             cursor: pointer;
         }
 
         .dot:hover {
-            background: rgba(255, 255, 255, 0.4);
+            background: var(--text-muted, rgba(255, 255, 255, 0.4));
         }
 
         .dot.active {
-            background: rgba(255, 255, 255, 0.8);
+            background: var(--focus-border-color, rgba(255, 255, 255, 0.8));
             transform: scale(1.2);
         }
     `;

@@ -112,7 +112,13 @@ async function streamResponse({
     userText,
     images,
     temperature = 0,
+    temp,
     maxOutputTokens = 700,
+    tokens,
+    topP,
+    top_p,
+    store,
+    text,
     onDelta,
 } = {}) {
     if (!apiKey) throw new Error('OpenAI API key missing');
@@ -121,18 +127,46 @@ async function streamResponse({
 
     const modelName = String(model || '').trim();
 
+    const resolvedTemperature =
+        typeof temperature === 'number'
+            ? temperature
+            : (typeof temp === 'number' ? temp : undefined);
+    const resolvedMaxOutputTokens =
+        typeof maxOutputTokens === 'number'
+            ? maxOutputTokens
+            : (typeof tokens === 'number' ? tokens : undefined);
+    const resolvedTopP =
+        typeof topP === 'number'
+            ? topP
+            : (typeof top_p === 'number' ? top_p : undefined);
+
+    let resolvedText = text;
+    if (typeof resolvedText === 'string' && resolvedText.trim()) {
+        resolvedText = { format: resolvedText.trim() };
+    }
+    if (!resolvedText) {
+        resolvedText = { format: 'text' };
+    }
+    if (resolvedText && typeof resolvedText === 'object' && typeof resolvedText.format === 'string') {
+        resolvedText = { format: { type: resolvedText.format } };
+    }
+
     const body = {
         model: modelName,
         stream: true,
-        max_output_tokens: maxOutputTokens,
+        max_output_tokens: resolvedMaxOutputTokens,
         input,
+        text: resolvedText,
     };
-    if (typeof temperature === 'number') {
-        body.temperature = temperature;
+    if (typeof resolvedTemperature === 'number') {
+        body.temperature = resolvedTemperature;
     }
-    // Persist request+response on OpenAI servers for Compare/Evaluate/logging.
-    // (Keep this enabled for the default model.)
-    if (modelName === 'gpt-4o-mini') {
+    if (typeof resolvedTopP === 'number') {
+        body.top_p = resolvedTopP;
+    }
+    if (typeof store === 'boolean') {
+        body.store = store;
+    } else if (modelName === 'gpt-4o-mini') {
         body.store = true;
     }
 

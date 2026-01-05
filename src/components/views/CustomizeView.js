@@ -9,6 +9,13 @@ import {
 import { resizeLayout } from '../../utils/windowResize.js';
 import { scrollbarStyles } from '../styles/scrollbarStyles.js';
 import '../ui/GPSelect.js';
+import {
+    getResolvedTheme,
+    getThemeChoice,
+    getThemePresets,
+    setThemeChoice,
+    subscribeTheme,
+} from '../../utils/theme.js';
 
 export class CustomizeView extends LitElement {
     static styles = [
@@ -152,8 +159,8 @@ export class CustomizeView extends LitElement {
             width: 100%;
             padding: 10px 10px;
             border-radius: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
+            background: var(--glass-bg, rgba(255, 255, 255, 0.06));
             color: var(--text-color);
             cursor: pointer;
             transition:
@@ -168,8 +175,8 @@ export class CustomizeView extends LitElement {
         .nav-item { padding: 9px 10px; border-radius: 12px; }
 
         .nav-item:hover {
-            background: rgba(255, 255, 255, 0.06);
-            border-color: rgba(255, 255, 255, 0.12);
+            background: var(--glass-hover-bg, rgba(255, 255, 255, 0.10));
+            border-color: var(--input-hover-border, rgba(255, 255, 255, 0.16));
         }
 
         .nav-item:active {
@@ -177,9 +184,9 @@ export class CustomizeView extends LitElement {
         }
 
         .nav-item[aria-current='page'] {
-            background: linear-gradient(180deg, rgba(0, 122, 255, 0.20), rgba(0, 122, 255, 0.08));
-            border-color: rgba(0, 122, 255, 0.40);
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+            background: var(--menu-item-selected-bg, linear-gradient(180deg, rgba(0, 122, 255, 0.20), rgba(0, 122, 255, 0.08)));
+            border-color: var(--menu-item-selected-border, rgba(0, 122, 255, 0.40));
+            box-shadow: inset 0 0 0 1px var(--glass-highlight, rgba(255, 255, 255, 0.08));
         }
 
         .nav-item[aria-current='page']::before {
@@ -192,7 +199,7 @@ export class CustomizeView extends LitElement {
             height: 16px;
             border-radius: 99px;
             background: var(--focus-border-color, #007aff);
-            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+            box-shadow: 0 0 0 3px var(--focus-shadow, rgba(0, 122, 255, 0.12));
         }
 
         .nav-icon {
@@ -201,7 +208,7 @@ export class CustomizeView extends LitElement {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            color: rgba(255, 255, 255, 0.8);
+            color: var(--text-muted, rgba(255, 255, 255, 0.8));
             flex: 0 0 auto;
         }
 
@@ -235,7 +242,12 @@ export class CustomizeView extends LitElement {
             top: 0;
             z-index: 2;
             background:
-                linear-gradient(180deg, rgba(12, 14, 20, 0.72) 0%, rgba(12, 14, 20, 0.30) 60%, rgba(12, 14, 20, 0) 100%);
+                linear-gradient(
+                    180deg,
+                    rgb(var(--theme-panel-rgb) / 0.72) 0%,
+                    rgb(var(--theme-panel-rgb) / 0.30) 60%,
+                    rgb(var(--theme-panel-rgb) / 0) 100%
+                );
             backdrop-filter: blur(8px);
         }
 
@@ -252,8 +264,8 @@ export class CustomizeView extends LitElement {
             gap: 6px;
             font-size: 11px;
             color: var(--label-color, rgba(255, 255, 255, 0.85));
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: var(--glass-bg, rgba(255, 255, 255, 0.06));
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
             padding: 4px 8px;
             border-radius: 999px;
         }
@@ -262,8 +274,8 @@ export class CustomizeView extends LitElement {
            (Do NOT switch the nav into a 2-column grid; it breaks the compact UX.) */
 
         .settings-section {
-            background: rgba(255, 255, 255, 0.035);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: var(--glass-bg, rgba(255, 255, 255, 0.06));
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
             border-radius: 16px;
             padding: 16px;
         }
@@ -318,6 +330,111 @@ export class CustomizeView extends LitElement {
 
         .form-group.full-width {
             grid-column: 1 / -1;
+        }
+
+        .theme-grid {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        @media (max-width: 600px) {
+            .theme-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .theme-card {
+            appearance: none;
+            border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.10));
+            background: var(--glass-bg, rgba(255, 255, 255, 0.03));
+            border-radius: 14px;
+            padding: 10px;
+            text-align: left;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            cursor: pointer;
+            transition:
+                background-color var(--theme-transition) ease,
+                border-color var(--theme-transition) ease,
+                transform 0.12s ease,
+                filter 0.14s ease;
+        }
+
+        .theme-card:hover {
+            background: var(--glass-hover-bg, rgba(255, 255, 255, 0.055));
+            border-color: var(--input-hover-border, rgba(255, 255, 255, 0.16));
+        }
+
+        .theme-card:active {
+            transform: translateY(1px);
+        }
+
+        .theme-card.selected {
+            border-color: var(--focus-border-color, #007aff);
+            box-shadow: 0 0 0 2px var(--focus-box-shadow, rgba(0, 122, 255, 0.2));
+        }
+
+        .theme-swatch {
+            width: 62px;
+            height: 46px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            position: relative;
+            overflow: hidden;
+            flex: 0 0 auto;
+        }
+
+        .theme-swatch::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
+            opacity: 0.55;
+            pointer-events: none;
+        }
+
+        .theme-swatch-panel {
+            position: absolute;
+            left: 7px;
+            right: 7px;
+            bottom: 7px;
+            top: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 6px;
+            box-sizing: border-box;
+        }
+
+        .theme-swatch-line {
+            height: 6px;
+            border-radius: 6px;
+        }
+
+        .theme-meta {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .theme-name {
+            font-size: 12px;
+            font-weight: 750;
+            color: var(--text-color);
+            letter-spacing: 0.2px;
+            line-height: 1.1;
+        }
+
+        .theme-desc {
+            font-size: 10px;
+            color: var(--description-color, rgba(255, 255, 255, 0.6));
+            line-height: 1.2;
         }
 
         .form-label {
@@ -731,6 +848,8 @@ export class CustomizeView extends LitElement {
         promptLibraryOpen: { type: Boolean },
         highlightColor: { type: String },
         pendingHighlightColor: { type: String },
+        themeChoice: { type: String },
+        resolvedTheme: { type: String },
     };
 
     constructor() {
@@ -785,6 +904,10 @@ export class CustomizeView extends LitElement {
         this.highlightColor = localStorage.getItem('highlightColor') || defaultHighlight;
         this.pendingHighlightColor = '';
         this.applyHighlightColor(this.highlightColor);
+
+        this.themeChoice = getThemeChoice();
+        this.resolvedTheme = getResolvedTheme();
+        this._unsubscribeTheme = null;
     }
 
     connectedCallback() {
@@ -795,6 +918,57 @@ export class CustomizeView extends LitElement {
         try {
             migrateFromLegacyKey();
         } catch (_) {}
+
+        try {
+            if (!this._unsubscribeTheme) {
+                this._unsubscribeTheme = subscribeTheme(({ themeChoice, resolvedTheme }) => {
+                    this.themeChoice = themeChoice;
+                    this.resolvedTheme = resolvedTheme;
+                    try { this.updateBackgroundTransparency(); } catch (_) {}
+                    this.requestUpdate();
+                });
+            }
+        } catch (_) {}
+    }
+
+    disconnectedCallback() {
+        try {
+            if (typeof this._unsubscribeTheme === 'function') this._unsubscribeTheme();
+        } catch (_) {}
+        this._unsubscribeTheme = null;
+        super.disconnectedCallback();
+    }
+
+    handleThemeChoiceChange(nextChoice) {
+        try {
+            setThemeChoice(nextChoice, { persist: true, animate: true });
+        } catch (_) {}
+    }
+
+    renderThemeSection() {
+        const presets = getThemePresets();
+        const currentChoice = this.themeChoice || 'dark';
+        const currentPreset = presets.find(p => p.id === currentChoice) || presets[0];
+        const selectionLabel = currentPreset?.name || currentChoice;
+
+        return html`
+            <div class="settings-section">
+                <div class="section-title"><span>Theme</span></div>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label class="form-label">
+                            Application Theme
+                            <span class="current-selection">${selectionLabel}</span>
+                        </label>
+                        <gp-select
+                            .value=${currentChoice}
+                            .options=${presets.map(p => ({ value: p.id, label: p.name }))}
+                            @gp-change=${e => this.handleThemeChoiceChange(e.detail.value)}
+                        ></gp-select>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     getProfiles() {
@@ -1268,16 +1442,43 @@ export class CustomizeView extends LitElement {
 
     updateBackgroundTransparency() {
         const root = document.documentElement;
-        root.style.setProperty('--header-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
-        root.style.setProperty('--main-content-background', `rgba(0, 0, 0, ${this.backgroundTransparency})`);
-        root.style.setProperty('--card-background', `rgba(255, 255, 255, ${this.backgroundTransparency * 0.05})`);
-        root.style.setProperty('--input-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.375})`);
-        root.style.setProperty('--input-focus-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
-        root.style.setProperty('--button-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.625})`);
-        root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 1.125})`);
-        root.style.setProperty('--screen-option-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
-        root.style.setProperty('--screen-option-hover-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.75})`);
-        root.style.setProperty('--scrollbar-background', `rgba(0, 0, 0, ${this.backgroundTransparency * 0.5})`);
+        const t = Number.isFinite(this.backgroundTransparency) ? this.backgroundTransparency : 0.8;
+        const clamp01 = v => Math.min(1, Math.max(0, v));
+        const parseRgbTriplet = raw => {
+            const s = String(raw || '').trim();
+            if (!s) return null;
+            const parts = s.split(/\s+/).map(n => Number.parseFloat(n)).filter(n => Number.isFinite(n));
+            if (parts.length < 3) return null;
+            return [parts[0], parts[1], parts[2]];
+        };
+        const cs = getComputedStyle(root);
+        const surfaceRgb = parseRgbTriplet(cs.getPropertyValue('--theme-surface-rgb')) || [0, 0, 0];
+        const panelRgb = parseRgbTriplet(cs.getPropertyValue('--theme-panel-rgb')) || surfaceRgb;
+        const isLight = (surfaceRgb[0] + surfaceRgb[1] + surfaceRgb[2]) / 3 > 128;
+        const rgba = (rgb, a) => `rgba(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])}, ${clamp01(a)})`;
+
+        root.style.setProperty('--header-background', rgba(surfaceRgb, t));
+        root.style.setProperty('--main-content-background', rgba(panelRgb, t));
+
+        if (isLight) {
+            root.style.setProperty('--card-background', rgba(surfaceRgb, 0.58 + 0.34 * clamp01(t)));
+            root.style.setProperty('--input-background', rgba(surfaceRgb, 0.40 + 0.30 * clamp01(t)));
+            root.style.setProperty('--input-focus-background', rgba(surfaceRgb, 0.54 + 0.36 * clamp01(t)));
+            root.style.setProperty('--button-background', rgba(surfaceRgb, 0.18 + 0.20 * clamp01(t)));
+            root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${clamp01(0.75 + 0.25 * clamp01(t))})`);
+            root.style.setProperty('--screen-option-background', rgba(surfaceRgb, 0.46 + 0.28 * clamp01(t)));
+            root.style.setProperty('--screen-option-hover-background', rgba(surfaceRgb, 0.56 + 0.30 * clamp01(t)));
+            root.style.setProperty('--scrollbar-background', rgba(surfaceRgb, 0.10 + 0.12 * clamp01(t)));
+        } else {
+            root.style.setProperty('--card-background', `rgba(255, 255, 255, ${clamp01(t * 0.05)})`);
+            root.style.setProperty('--input-background', rgba(surfaceRgb, t * 0.375));
+            root.style.setProperty('--input-focus-background', rgba(surfaceRgb, t * 0.625));
+            root.style.setProperty('--button-background', rgba(surfaceRgb, t * 0.625));
+            root.style.setProperty('--preview-video-background', `rgba(0, 0, 0, ${clamp01(t * 1.05)})`);
+            root.style.setProperty('--screen-option-background', rgba(surfaceRgb, t * 0.5));
+            root.style.setProperty('--screen-option-hover-background', rgba(surfaceRgb, t * 0.75));
+            root.style.setProperty('--scrollbar-background', rgba(surfaceRgb, t * 0.5));
+        }
     }
 
     loadFontSize() {
@@ -1601,6 +1802,8 @@ export class CustomizeView extends LitElement {
 
             case 'appearance':
                 return html`
+                    ${this.renderThemeSection()}
+
                     <div class="settings-section">
                         <div class="section-title"><span>Interface Layout</span></div>
                         <div class="form-grid">

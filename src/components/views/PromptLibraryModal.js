@@ -28,7 +28,7 @@ export class PromptLibraryModal extends LitElement {
     .overlay {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.52);
+      background: var(--overlay-bg, rgba(0, 0, 0, 0.52));
       backdrop-filter: blur(10px);
       display: flex;
       align-items: center;
@@ -38,12 +38,10 @@ export class PromptLibraryModal extends LitElement {
       width: 860px;
       max-width: calc(100vw - 40px);
       max-height: calc(100vh - 40px);
-      background:
-        linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04)),
-        rgba(12, 14, 20, 0.88);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: var(--menu-bg);
+      border: 1px solid var(--menu-border);
       border-radius: 18px;
-      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+      box-shadow: var(--menu-shadow);
       backdrop-filter: blur(10px);
       display: grid;
       grid-template-columns: 280px 1fr;
@@ -51,12 +49,12 @@ export class PromptLibraryModal extends LitElement {
       position: relative;
     }
     .left {
-      border-right: 1px solid rgba(255, 255, 255, 0.10);
+      border-right: 1px solid var(--table-border, rgba(255, 255, 255, 0.10));
       padding: 14px;
       display: grid;
       grid-template-rows: auto 1fr auto;
       gap: 10px;
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--bubble-neutral-bg, rgba(255, 255, 255, 0.03));
     }
     .right {
       padding: 14px;
@@ -78,8 +76,8 @@ export class PromptLibraryModal extends LitElement {
       overflow: auto;
       border-radius: 14px;
       padding: 4px;
-      background: rgba(0,0,0,0.18);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: var(--input-background, rgba(0, 0, 0, 0.18));
+      border: 1px solid var(--input-border, rgba(255, 255, 255, 0.08));
     }
     .list-item {
       display: flex;
@@ -92,11 +90,11 @@ export class PromptLibraryModal extends LitElement {
       border: 1px solid transparent;
     }
     .list-item:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--menu-item-hover-bg, rgba(255, 255, 255, 0.06));
     }
     .list-item.selected {
-      background: linear-gradient(180deg, rgba(0, 122, 255, 0.18), rgba(0, 122, 255, 0.08));
-      border-color: rgba(0, 122, 255, 0.28);
+      background: var(--menu-item-selected-bg, linear-gradient(180deg, rgba(0, 122, 255, 0.18), rgba(0, 122, 255, 0.08)));
+      border-color: var(--menu-item-selected-border, rgba(0, 122, 255, 0.28));
     }
     .tick {
       width: 16px;
@@ -104,11 +102,11 @@ export class PromptLibraryModal extends LitElement {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid rgba(255, 255, 255, 0.25);
+      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.25));
       border-radius: 4px;
       font-size: 12px;
       color: var(--text-color);
-      background: rgba(255, 255, 255, 0.04);
+      background: var(--button-background, rgba(255, 255, 255, 0.04));
     }
     .tick.active {
       border-color: var(--success-border, rgba(52, 211, 153, 0.5));
@@ -130,8 +128,8 @@ export class PromptLibraryModal extends LitElement {
     }
     .form-control:focus {
       outline: none;
-      border-color: rgba(0, 122, 255, 0.65);
-      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.16);
+      border-color: var(--focus-border-color, #007aff);
+      box-shadow: 0 0 0 3px var(--focus-box-shadow, rgba(0, 122, 255, 0.2));
     }
     .actions {
       display: flex;
@@ -153,7 +151,7 @@ export class PromptLibraryModal extends LitElement {
     .confirm-overlay {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.45);
+      background: var(--overlay-inner-bg, rgba(0, 0, 0, 0.45));
       display: flex;
       align-items: center;
       justify-content: center;
@@ -162,10 +160,10 @@ export class PromptLibraryModal extends LitElement {
     .confirm-card {
       width: 420px;
       max-width: calc(100% - 40px);
-      background: var(--card-background, rgba(25, 25, 25, 0.98));
-      border: 1px solid var(--card-border, rgba(255, 255, 255, 0.15));
+      background: var(--popover-bg, rgba(25, 25, 25, 0.98));
+      border: 1px solid var(--popover-border, rgba(255, 255, 255, 0.15));
       border-radius: 10px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+      box-shadow: var(--popover-shadow, 0 8px 30px rgba(0, 0, 0, 0.45));
       padding: 14px;
       display: grid;
       gap: 10px;

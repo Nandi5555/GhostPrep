@@ -63,7 +63,7 @@ export class MainView extends LitElement {
         /* Red blink animation for empty API key */
         input.api-key-error {
             animation: blink-red 1s ease-in-out;
-            border-color: #ff4444;
+            border-color: var(--danger-color, #ff4444);
         }
 
         @keyframes blink-red {
@@ -74,12 +74,12 @@ export class MainView extends LitElement {
             }
             25%,
             75% {
-                border-color: #ff4444;
-                background: rgba(255, 68, 68, 0.1);
+                border-color: var(--danger-color, #ff4444);
+                background: var(--danger-background, rgba(255, 68, 68, 0.1));
             }
             50% {
-                border-color: #ff6666;
-                background: rgba(255, 68, 68, 0.15);
+                border-color: var(--danger-border, #ff6666);
+                background: var(--danger-background, rgba(255, 68, 68, 0.15));
             }
         }
 
@@ -89,10 +89,21 @@ export class MainView extends LitElement {
             border-radius: 999px;
             font-size: 15px;
             font-weight: 600;
-            border: 1px solid rgba(255, 255, 255, 0.28);
+            border: 1px solid var(--primary-border, rgba(255, 255, 255, 0.28));
             background:
-                linear-gradient(to bottom, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0) 100%),
-                linear-gradient(to bottom, #4b82d6 0%, #3a6fc1 52%, #2f5aa6 100%);
+                linear-gradient(
+                    to bottom,
+                    var(--primary-glass-top, rgba(255, 255, 255, 0.45)) 0%,
+                    var(--primary-glass-mid, rgba(255, 255, 255, 0.24)) 38%,
+                    var(--primary-glass-bot, rgba(255, 255, 255, 0.08)) 60%,
+                    rgba(255, 255, 255, 0) 100%
+                ),
+                linear-gradient(
+                    to bottom,
+                    var(--primary-gradient-top, #4b82d6) 0%,
+                    var(--primary-gradient-mid, #3a6fc1) 52%,
+                    var(--primary-gradient-bot, #2f5aa6) 100%
+                );
             box-shadow: inset 0 1px rgba(255, 255, 255, 0.5), inset 0 -2px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.28);
             display: inline-flex;
             align-items: center;
@@ -184,9 +195,9 @@ export class MainView extends LitElement {
         }
 
         .toast.error {
-            background: rgba(255, 68, 68, 0.15);
-            border-color: #ff6666;
-            color: #ffdede;
+            background: var(--danger-background);
+            border-color: var(--danger-border);
+            color: var(--danger-text);
         }
         .toast-content {
             display: flex;
@@ -199,7 +210,7 @@ export class MainView extends LitElement {
             justify-content: center;
             width: 20px;
             height: 20px;
-            color: #ff6666;
+            color: var(--danger-color);
         }
         
     `;
