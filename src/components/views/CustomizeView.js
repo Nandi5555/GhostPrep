@@ -888,7 +888,7 @@ export class CustomizeView extends LitElement {
         this.deepgramApiKey = localStorage.getItem('deepgramApiKey') || '';
         this.openaiApiKey = localStorage.getItem('openaiApiKey') || '';
         const storedModel = localStorage.getItem('openaiModel');
-        const allowedModels = ['gpt-4o-mini'];
+        const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
         this.openaiModel = allowedModels.includes(storedModel) ? storedModel : 'gpt-4o-mini';
 
         this.loadKeybinds();
@@ -1789,6 +1789,7 @@ export class CustomizeView extends LitElement {
                                     .value=${this.openaiModel || 'gpt-4o-mini'}
                                     .options=${[
                                         { value: 'gpt-4o-mini', label: 'GPT-4o mini (fast + strong)' },
+                                        { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini (fast)' },
                                     ]}
                                     @gp-change=${e => this.handleOpenAiModelSelect({ target: { value: e.detail.value } })}
                                 ></gp-select>
@@ -2076,7 +2077,7 @@ export class CustomizeView extends LitElement {
 
     handleOpenAiModelSelect(e) {
         const raw = String(e?.target?.value || '').trim();
-        const allowedModels = ['gpt-4o-mini'];
+        const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
         const v = allowedModels.includes(raw) ? raw : 'gpt-4o-mini';
         this.openaiModel = v;
         try { localStorage.setItem('openaiModel', v); } catch (_) {}

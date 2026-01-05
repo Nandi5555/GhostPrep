@@ -152,7 +152,7 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
     const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
     const openaiModel = (localStorage.getItem('openaiModel') || 'gpt-4o-mini').trim();
 
-    const allowedOpenAiModels = ['gpt-4o-mini'];
+    const allowedOpenAiModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
     const normalizedOpenaiModel = allowedOpenAiModels.includes(openaiModel) ? openaiModel : 'gpt-4o-mini';
 
     if (deepgramApiKey && openaiApiKey) {

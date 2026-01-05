@@ -307,7 +307,7 @@ async function initializeAiSession({
         deepgramApiKey = hasDeepgram ? String(deepgramKey).trim() : '';
         openaiApiKey = hasOpenAi ? String(openaiKey).trim() : '';
         const normalizedModel = String(openaiModel || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
-        const allowedModels = ['gpt-4o-mini'];
+        const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
         openaiModelName = allowedModels.includes(normalizedModel) ? normalizedModel : 'gpt-4o-mini';
 
         log('[AI][LLM] Providers ready', {
