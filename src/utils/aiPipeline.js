@@ -40,6 +40,9 @@ let openaiApiKey = '';
 let openaiModelName = 'gpt-4o-mini';
 let asrLanguage = 'en-US';
 let activeSystemPrompt = '';
+let webSearchEnabled = true;
+let webSearchContextSize = 'medium';
+let webSearchUserLocation = null;
 
 // Transcript buffers:
 // - display*: shown in transcript tab (persists across the session)
@@ -279,6 +282,9 @@ async function initializeAiSession({
     customPrompt = '',
     profile = 'interview',
     language = 'en-US',
+    webSearchEnabled: webSearchEnabledInput,
+    webSearchContextSize: webSearchContextSizeInput,
+    webSearchUserLocation: webSearchUserLocationInput,
 } = {}) {
     if (isInitializingSession) return { success: false, error: 'Session initialization in progress' };
     const hasDeepgram = !!(deepgramKey && String(deepgramKey).trim());
@@ -309,10 +315,22 @@ async function initializeAiSession({
         const normalizedModel = String(openaiModel || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
         const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
         openaiModelName = allowedModels.includes(normalizedModel) ? normalizedModel : 'gpt-4o-mini';
+        webSearchEnabled = webSearchEnabledInput !== undefined ? !!webSearchEnabledInput : webSearchEnabled;
+        const cs = String(webSearchContextSizeInput || webSearchContextSize || 'medium').trim().toLowerCase();
+        webSearchContextSize = ['low', 'medium', 'high'].includes(cs) ? cs : 'medium';
+        const ul = webSearchUserLocationInput && typeof webSearchUserLocationInput === 'object' ? webSearchUserLocationInput : {};
+        const country = String(ul.country || '').trim();
+        const region = String(ul.region || '').trim();
+        const city = String(ul.city || '').trim();
+        const timezone = String(ul.timezone || '').trim();
+        webSearchUserLocation = (country || region || city || timezone)
+            ? { country, region, city, timezone }
+            : null;
 
         log('[AI][LLM] Providers ready', {
             openai: !!openaiApiKey,
             openaiModel: openaiModelName,
+            webSearch: webSearchEnabled ? { contextSize: webSearchContextSize, hasLocation: !!webSearchUserLocation } : false,
         });
 
         // Build persistent system prompt ONCE per session (Cluely-style).
@@ -614,6 +632,11 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
                 tokens: 2048,
                 top_p: 1.00,
                 store: true,
+                webSearch: {
+                    enabled: !!webSearchEnabled,
+                    searchContextSize: webSearchContextSize,
+                    userLocation: webSearchUserLocation,
+                },
                 systemPrompt: activeSystemPrompt,
                 history,
                 userText,
@@ -859,7 +882,35 @@ function setupAiIpcHandlers() {
             customPrompt: p.customPrompt || '',
             profile: p.profile || 'interview',
             language: p.language || 'en-US',
+            webSearchEnabled: p.webSearchEnabled,
+            webSearchContextSize: p.webSearchContextSize,
+            webSearchUserLocation: p.webSearchUserLocation,
         });
+    });
+
+    ipcMain.handle('update-web-search-settings', async (_event, payload) => {
+        try {
+            const p = payload && typeof payload === 'object' ? payload : {};
+            webSearchEnabled = p.enabled !== undefined ? !!p.enabled : webSearchEnabled;
+            const cs = String(p.searchContextSize || webSearchContextSize || 'medium').trim().toLowerCase();
+            webSearchContextSize = ['low', 'medium', 'high'].includes(cs) ? cs : 'medium';
+            const ul = p.userLocation && typeof p.userLocation === 'object' ? p.userLocation : {};
+            const country = String(ul.country || '').trim();
+            const region = String(ul.region || '').trim();
+            const city = String(ul.city || '').trim();
+            const timezone = String(ul.timezone || '').trim();
+            webSearchUserLocation = (country || region || city || timezone)
+                ? { country, region, city, timezone }
+                : null;
+            log('[AI][WEB_SEARCH] Updated settings', {
+                enabled: !!webSearchEnabled,
+                contextSize: webSearchContextSize,
+                hasLocation: !!webSearchUserLocation,
+            });
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
+        }
     });
 
     ipcMain.handle('cancel-ai-initialize', async () => {

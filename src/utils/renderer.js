@@ -151,6 +151,21 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
     const deepgramApiKey = localStorage.getItem('deepgramApiKey')?.trim();
     const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
     const openaiModel = (localStorage.getItem('openaiModel') || 'gpt-4o-mini').trim();
+    const webSearchEnabledRaw =
+        localStorage.getItem('webSearchEnabled') ??
+        localStorage.getItem('googleSearchEnabled') ??
+        'true';
+    const webSearchEnabled = String(webSearchEnabledRaw) === 'true';
+    const webSearchContextSizeRaw = (localStorage.getItem('webSearchContextSize') || 'medium').trim().toLowerCase();
+    const webSearchContextSize = ['low', 'medium', 'high'].includes(webSearchContextSizeRaw)
+        ? webSearchContextSizeRaw
+        : 'medium';
+    const webSearchUserLocation = {
+        country: (localStorage.getItem('webSearchCountry') || '').trim(),
+        region: (localStorage.getItem('webSearchRegion') || '').trim(),
+        city: (localStorage.getItem('webSearchCity') || '').trim(),
+        timezone: (localStorage.getItem('webSearchTimezone') || '').trim(),
+    };
 
     const allowedOpenAiModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
     const normalizedOpenaiModel = allowedOpenAiModels.includes(openaiModel) ? openaiModel : 'gpt-4o-mini';
@@ -180,6 +195,9 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
             customPrompt: activeCustomPrompt,
             profile,
             language,
+            webSearchEnabled,
+            webSearchContextSize,
+            webSearchUserLocation,
         });
         if (result && result.success) {
             cheddar.e().setStatus('Live');

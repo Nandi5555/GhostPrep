@@ -828,7 +828,12 @@ export class CustomizeView extends LitElement {
         selectedAudioMode: { type: String },
         selectedTranscriptionMode: { type: String },
         keybinds: { type: Object },
-        googleSearchEnabled: { type: Boolean },
+        webSearchEnabled: { type: Boolean },
+        webSearchContextSize: { type: String },
+        webSearchCountry: { type: String },
+        webSearchRegion: { type: String },
+        webSearchCity: { type: String },
+        webSearchTimezone: { type: String },
         undetectableEnabled: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
@@ -867,8 +872,12 @@ export class CustomizeView extends LitElement {
         this.onAdvancedModeChange = () => {};
         this.onQuitApp = () => {};
 
-        // Google Search default
-        this.googleSearchEnabled = true;
+        this.webSearchEnabled = true;
+        this.webSearchContextSize = 'medium';
+        this.webSearchCountry = '';
+        this.webSearchRegion = '';
+        this.webSearchCity = '';
+        this.webSearchTimezone = '';
 
         // Undetectable default OFF; loadUndetectableSettings may override from saved value
         this.undetectableEnabled = false;
@@ -892,7 +901,7 @@ export class CustomizeView extends LitElement {
         this.openaiModel = allowedModels.includes(storedModel) ? storedModel : 'gpt-4o-mini';
 
         this.loadKeybinds();
-        this.loadGoogleSearchSettings();
+        this.loadWebSearchSettings();
         this.loadUndetectableSettings();
         this.loadAdvancedModeSettings();
         this.loadBackgroundTransparency();
@@ -1338,9 +1347,46 @@ export class CustomizeView extends LitElement {
     }
 
     loadGoogleSearchSettings() {
-        const googleSearchEnabled = localStorage.getItem('googleSearchEnabled');
-        if (googleSearchEnabled !== null) {
-            this.googleSearchEnabled = googleSearchEnabled === 'true';
+        const enabled = localStorage.getItem('webSearchEnabled');
+        if (enabled !== null) {
+            this.webSearchEnabled = enabled === 'true';
+        } else {
+            const legacy = localStorage.getItem('googleSearchEnabled');
+            if (legacy !== null) {
+                this.webSearchEnabled = legacy === 'true';
+                try { localStorage.setItem('webSearchEnabled', this.webSearchEnabled.toString()); } catch (_) {}
+            }
+        }
+
+        const contextSize = (localStorage.getItem('webSearchContextSize') || '').trim().toLowerCase();
+        this.webSearchContextSize = ['low', 'medium', 'high'].includes(contextSize) ? contextSize : 'medium';
+
+        this.webSearchCountry = localStorage.getItem('webSearchCountry') || '';
+        this.webSearchRegion = localStorage.getItem('webSearchRegion') || '';
+        this.webSearchCity = localStorage.getItem('webSearchCity') || '';
+        this.webSearchTimezone = localStorage.getItem('webSearchTimezone') || '';
+    }
+
+    loadWebSearchSettings() {
+        return this.loadGoogleSearchSettings();
+    }
+
+    async _notifyWebSearchSettings() {
+        if (!window.require) return;
+        try {
+            const { ipcRenderer } = window.require('electron');
+            await ipcRenderer.invoke('update-web-search-settings', {
+                enabled: !!this.webSearchEnabled,
+                searchContextSize: this.webSearchContextSize || 'medium',
+                userLocation: {
+                    country: (this.webSearchCountry || '').trim(),
+                    region: (this.webSearchRegion || '').trim(),
+                    city: (this.webSearchCity || '').trim(),
+                    timezone: (this.webSearchTimezone || '').trim(),
+                },
+            });
+        } catch (error) {
+            console.error('Failed to notify main process:', error);
         }
     }
 
@@ -1376,19 +1422,33 @@ export class CustomizeView extends LitElement {
     }
 
     async handleGoogleSearchChange(e) {
-        this.googleSearchEnabled = e.target.checked;
-        localStorage.setItem('googleSearchEnabled', this.googleSearchEnabled.toString());
+        this.webSearchEnabled = e.target.checked;
+        try { localStorage.setItem('webSearchEnabled', this.webSearchEnabled.toString()); } catch (_) {}
+        await this._notifyWebSearchSettings();
+        this.requestUpdate();
+    }
 
-        // Notify main process if available
-        if (window.require) {
-            try {
-                const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('update-google-search-setting', this.googleSearchEnabled);
-            } catch (error) {
-                console.error('Failed to notify main process:', error);
-            }
-        }
+    async handleWebSearchContextSizeChange(e) {
+        const v = String(e?.detail?.value || e?.target?.value || '').trim().toLowerCase();
+        this.webSearchContextSize = ['low', 'medium', 'high'].includes(v) ? v : 'medium';
+        try { localStorage.setItem('webSearchContextSize', this.webSearchContextSize); } catch (_) {}
+        await this._notifyWebSearchSettings();
+        this.requestUpdate();
+    }
 
+    async handleWebSearchLocationInput(e, key) {
+        const v = String(e?.target?.value || '');
+        if (key === 'country') this.webSearchCountry = v;
+        if (key === 'region') this.webSearchRegion = v;
+        if (key === 'city') this.webSearchCity = v;
+        if (key === 'timezone') this.webSearchTimezone = v;
+        try {
+            if (key === 'country') localStorage.setItem('webSearchCountry', v);
+            if (key === 'region') localStorage.setItem('webSearchRegion', v);
+            if (key === 'city') localStorage.setItem('webSearchCity', v);
+            if (key === 'timezone') localStorage.setItem('webSearchTimezone', v);
+        } catch (_) {}
+        await this._notifyWebSearchSettings();
         this.requestUpdate();
     }
 
@@ -1543,7 +1603,7 @@ export class CustomizeView extends LitElement {
             { id: 'audio', label: 'Audio' },
             { id: 'language', label: 'Language' },
             { id: 'keyboard', label: 'Keyboard' },
-            { id: 'search', label: 'Search' },
+            { id: 'search', label: 'Web Search' },
             { id: 'advanced', label: 'Advanced' },
         ];
         const activeNavLabel = navItems.find(n => n.id === this.activeCategory)?.label || 'Customize';
@@ -2005,21 +2065,83 @@ export class CustomizeView extends LitElement {
             case 'search':
                 return html`
                     <div class="settings-section">
-                        <div class="section-title"><span>Google Search</span></div>
+                        <div class="section-title"><span>Web Search</span></div>
                         <div class="form-grid">
                             <div class="checkbox-group">
                                 <input
                                     type="checkbox"
                                     class="checkbox-input"
-                                    id="google-search-enabled"
-                                    .checked=${this.googleSearchEnabled}
+                                    id="web-search-enabled"
+                                    .checked=${this.webSearchEnabled}
                                     @change=${this.handleGoogleSearchChange}
                                 />
-                                <label for="google-search-enabled" class="checkbox-label"> Enable Google Search </label>
+                                <label for="web-search-enabled" class="checkbox-label"> Enable Web Search </label>
                             </div>
-                            <div class="form-description" style="margin-left: 24px; margin-top: -8px;">
-                                Allow the AI to search Google for up-to-date information and facts during conversations
-                                <br /><strong>Note:</strong> Changes take effect when starting a new AI session
+
+                            <div class="form-group full-width">
+                                <label class="form-label">Search context size</label>
+                                <gp-select
+                                    .value=${this.webSearchContextSize || 'medium'}
+                                    .options=${[
+                                        { value: 'high', label: 'High' },
+                                        { value: 'medium', label: 'Medium' },
+                                        { value: 'low', label: 'Low' },
+                                    ]}
+                                    @gp-change=${this.handleWebSearchContextSizeChange}
+                                ></gp-select>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label class="form-label">User location (optional)</label>
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label class="form-label">Country</label>
+                                        <input
+                                            class="form-control"
+                                            type="text"
+                                            autocomplete="off"
+                                            placeholder="US"
+                                            .value=${this.webSearchCountry || ''}
+                                            @input=${e => this.handleWebSearchLocationInput(e, 'country')}
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Region</label>
+                                        <input
+                                            class="form-control"
+                                            type="text"
+                                            autocomplete="off"
+                                            placeholder="California"
+                                            .value=${this.webSearchRegion || ''}
+                                            @input=${e => this.handleWebSearchLocationInput(e, 'region')}
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">City</label>
+                                        <input
+                                            class="form-control"
+                                            type="text"
+                                            autocomplete="off"
+                                            placeholder="San Francisco"
+                                            .value=${this.webSearchCity || ''}
+                                            @input=${e => this.handleWebSearchLocationInput(e, 'city')}
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Timezone</label>
+                                        <input
+                                            class="form-control"
+                                            type="text"
+                                            autocomplete="off"
+                                            placeholder="America/Los_Angeles"
+                                            .value=${this.webSearchTimezone || ''}
+                                            @input=${e => this.handleWebSearchLocationInput(e, 'timezone')}
+                                        />
+                                    </div>
+                                </div>
+                                <div class="form-description">
+                                    Uses OpenAI’s built-in web search tool for real-time results. Location helps local relevance.
+                                </div>
                             </div>
                         </div>
                     </div>

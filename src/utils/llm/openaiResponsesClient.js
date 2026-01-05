@@ -104,6 +104,20 @@ function extractOutputTextFromResponseLike(obj) {
     }
 }
 
+function collectWebSearchCalls(obj, out = []) {
+    if (!obj) return out;
+    if (Array.isArray(obj)) {
+        for (const v of obj) collectWebSearchCalls(v, out);
+        return out;
+    }
+    if (typeof obj !== 'object') return out;
+    if (obj.type === 'web_search_call') out.push(obj);
+    for (const k of Object.keys(obj)) {
+        collectWebSearchCalls(obj[k], out);
+    }
+    return out;
+}
+
 async function streamResponse({
     apiKey,
     model = 'gpt-4o-mini',
@@ -119,6 +133,7 @@ async function streamResponse({
     top_p,
     store,
     text,
+    webSearch,
     onDelta,
 } = {}) {
     if (!apiKey) throw new Error('OpenAI API key missing');
@@ -170,6 +185,33 @@ async function streamResponse({
         body.store = true;
     }
 
+    if (webSearch && typeof webSearch === 'object' && webSearch.enabled) {
+        const allowed = ['gpt-4o-mini', 'gpt-4.1-mini'];
+        if (allowed.includes(modelName)) {
+            const searchContextSize = String(webSearch.searchContextSize || 'medium').trim().toLowerCase();
+            const scs = ['low', 'medium', 'high'].includes(searchContextSize) ? searchContextSize : 'medium';
+            const ul = webSearch.userLocation && typeof webSearch.userLocation === 'object' ? webSearch.userLocation : {};
+            const country = String(ul.country || '').trim();
+            const region = String(ul.region || '').trim();
+            const city = String(ul.city || '').trim();
+            const timezone = String(ul.timezone || '').trim();
+            const userLocation = {};
+            if (country) userLocation.country = country;
+            if (region) userLocation.region = region;
+            if (city) userLocation.city = city;
+            if (timezone) userLocation.timezone = timezone;
+
+            const tool = {
+                type: 'web_search',
+                search_context_size: scs,
+            };
+            if (Object.keys(userLocation).length) {
+                tool.user_location = { type: 'approximate', ...userLocation };
+            }
+            body.tools = [tool];
+        }
+    }
+
     const resp = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: {
@@ -181,6 +223,9 @@ async function streamResponse({
 
     if (!resp.ok) {
         const txt = await resp.text().catch(() => '');
+        if (resp.status === 429) {
+            throw new Error(`OpenAI rate limited (429): ${txt?.slice(0, 400)}`);
+        }
         throw new Error(`OpenAI responses failed (${resp.status}): ${txt?.slice(0, 400)}`);
     }
     if (!resp.body) {
@@ -194,6 +239,7 @@ async function streamResponse({
     let buffer = '';
     let fullText = '';
     let finalFromEvents = '';
+    const seenWebSearch = new Set();
 
     const emit = delta => {
         const d = String(delta || '');
@@ -228,6 +274,30 @@ async function streamResponse({
                 } catch (_) {
                     continue;
                 }
+
+                try {
+                    const calls = collectWebSearchCalls(json, []);
+                    for (const c of calls) {
+                        const query = typeof c?.query === 'string' ? c.query.trim() : '';
+                        const id = String(c?.id || c?.call_id || c?.tool_call_id || query || '');
+                        if (!id) continue;
+                        if (seenWebSearch.has(id)) continue;
+                        seenWebSearch.add(id);
+                        const results = Array.isArray(c?.results) ? c.results : [];
+                        const urls = results
+                            .map(r => (typeof r?.url === 'string' ? r.url : ''))
+                            .filter(Boolean)
+                            .slice(0, 8);
+                        try {
+                            console.log('[AI][WEB_SEARCH] Tool call', {
+                                model: modelName,
+                                query,
+                                results: results.length,
+                                urls,
+                            });
+                        } catch (_) {}
+                    }
+                } catch (_) {}
 
                 // Primary streaming delta event:
                 // { "type": "response.output_text.delta", "delta": "..." }
@@ -265,6 +335,29 @@ async function streamResponse({
             if (!payload || payload === '[DONE]') continue;
             try {
                 const json = JSON.parse(payload);
+                try {
+                    const calls = collectWebSearchCalls(json, []);
+                    for (const c of calls) {
+                        const query = typeof c?.query === 'string' ? c.query.trim() : '';
+                        const id = String(c?.id || c?.call_id || c?.tool_call_id || query || '');
+                        if (!id) continue;
+                        if (seenWebSearch.has(id)) continue;
+                        seenWebSearch.add(id);
+                        const results = Array.isArray(c?.results) ? c.results : [];
+                        const urls = results
+                            .map(r => (typeof r?.url === 'string' ? r.url : ''))
+                            .filter(Boolean)
+                            .slice(0, 8);
+                        try {
+                            console.log('[AI][WEB_SEARCH] Tool call', {
+                                model: modelName,
+                                query,
+                                results: results.length,
+                                urls,
+                            });
+                        } catch (_) {}
+                    }
+                } catch (_) {}
                 if (json?.type === 'response.output_text.delta' && typeof json?.delta === 'string') {
                     emit(json.delta);
                 }
