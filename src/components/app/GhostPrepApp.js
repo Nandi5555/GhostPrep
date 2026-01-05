@@ -151,6 +151,7 @@ export class GhostPrepApp extends LitElement {
         this.activeAssistantTab = 'chat';
         this.isInitializing = false;
         this.isConnecting = false;
+        this.responseCitations = [];
 
         this.toastText = '';
         this.toastState = 'hide';
@@ -187,6 +188,18 @@ export class GhostPrepApp extends LitElement {
             // Final responses
             ipcRenderer.on('update-response', (_, response) => {
                 this.handleResponseFinal(response);
+            });
+            ipcRenderer.on('update-response-citations', (_, payload) => {
+                try {
+                    const citations = Array.isArray(payload?.citations) ? payload.citations : [];
+                    const idx = this._streamResponseIndex >= 0 ? this._streamResponseIndex : this.currentResponseIndex;
+                    if (idx < 0) return;
+                    const next = Array.isArray(this.responseCitations) ? [...this.responseCitations] : [];
+                    while (next.length <= idx) next.push([]);
+                    next[idx] = citations;
+                    this.responseCitations = next;
+                    this.requestUpdate();
+                } catch (_) {}
             });
             // Streaming partial updates
             ipcRenderer.on('update-response-stream', (_, partial) => {
@@ -244,8 +257,11 @@ export class GhostPrepApp extends LitElement {
                     const nextQuestions = [...(this.questions || []), qItem];
                     let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
                     if (nextResponses.length < nextQuestions.length) nextResponses.push('');
+                    let nextCitations = Array.isArray(this.responseCitations) ? [...this.responseCitations] : [];
+                    if (nextCitations.length < nextQuestions.length) nextCitations.push([]);
                     this.questions = nextQuestions;
                     this.responses = nextResponses;
+                    this.responseCitations = nextCitations;
                     this.currentResponseIndex = nextQuestions.length - 1;
                     this.requestUpdate();
                 } catch (_) {}
@@ -294,6 +310,7 @@ export class GhostPrepApp extends LitElement {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.removeAllListeners('update-response');
             ipcRenderer.removeAllListeners('update-response-stream');
+            ipcRenderer.removeAllListeners('update-response-citations');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
             ipcRenderer.removeAllListeners('update-transcript');
@@ -405,10 +422,12 @@ export class GhostPrepApp extends LitElement {
                 this._streamCumulativeTarget = '';
                 const qLen = (this.questions || []).length;
                 let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+                let nextCitations = Array.isArray(this.responseCitations) ? [...this.responseCitations] : [];
 
                 // Ensure we have a response slot for the latest question.
                 if (qLen > 0) {
                     while (nextResponses.length < qLen) nextResponses.push('');
+                    while (nextCitations.length < qLen) nextCitations.push([]);
                     const idx = Math.min(
                         Math.max(this.currentResponseIndex >= 0 ? this.currentResponseIndex : qLen - 1, 0),
                         qLen - 1
@@ -419,11 +438,13 @@ export class GhostPrepApp extends LitElement {
                     // Edge case: no question exists; create a slot.
                     this.questions = [...(this.questions || []), ''];
                     nextResponses.push('');
+                    nextCitations.push([]);
                     this._streamResponseIndex = nextResponses.length - 1;
                     this.currentResponseIndex = this._streamResponseIndex;
                 }
 
                 this.responses = nextResponses;
+                this.responseCitations = nextCitations;
                 // Signal new stream session to AssistantView
                 this._streamSession++;
                 this._lastStreamDelta = partial;
@@ -444,20 +465,24 @@ export class GhostPrepApp extends LitElement {
             // Always finalize into the active streaming slot when available.
             const qLen = (this.questions || []).length;
             let nextResponses = Array.isArray(this.responses) ? [...this.responses] : [];
+            let nextCitations = Array.isArray(this.responseCitations) ? [...this.responseCitations] : [];
             const idx = this._streamResponseIndex >= 0
                 ? this._streamResponseIndex
                 : (qLen > 0 ? qLen - 1 : nextResponses.length - 1);
 
             if (qLen > 0) {
                 while (nextResponses.length < qLen) nextResponses.push('');
+                while (nextCitations.length < qLen) nextCitations.push([]);
             } else if (idx < 0) {
                 this.questions = [...(this.questions || []), ''];
                 nextResponses.push('');
+                nextCitations.push([]);
             }
 
             const safeIdx = idx >= 0 ? idx : (nextResponses.length - 1);
             nextResponses[safeIdx] = finalText;
             this.responses = nextResponses;
+            this.responseCitations = nextCitations;
             this.currentResponseIndex = safeIdx;
 
             // Streaming session ends on final (we already appended deltas to responses directly).
@@ -867,6 +892,7 @@ export class GhostPrepApp extends LitElement {
                 return html`
                     <assistant-view
                         .responses=${this.responses}
+                        .responseCitations=${this.responseCitations}
                         .currentResponseIndex=${this.currentResponseIndex}
                         .questions=${this.questions}
                         .selectedProfile=${this.selectedProfile}

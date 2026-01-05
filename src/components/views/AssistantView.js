@@ -389,6 +389,60 @@ export class AssistantView extends LitElement {
             text-decoration: underline;
         }
 
+        .response-container a.gp-url-link {
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .response-container a.gp-url-link .gp-url-host,
+        .response-container a.gp-url-link .gp-url-visible-path {
+            filter: none;
+        }
+
+        .response-container a.gp-url-link .gp-url-blur {
+            filter: blur(2.4px);
+            opacity: 0.9;
+        }
+
+        .response-container .gp-sources {
+            margin-top: 8px;
+            font-size: 12px;
+            opacity: 0.95;
+            color: var(--text-color);
+        }
+
+        .response-container .gp-sources-title {
+            opacity: 0.75;
+            margin-right: 8px;
+        }
+
+        .response-container .gp-source-item {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-right: 10px;
+            flex-wrap: wrap;
+            max-width: 100%;
+        }
+
+        .response-container .gp-source-label {
+            opacity: 0.8;
+        }
+
+        .response-container .gp-source-title-text {
+            opacity: 0.85;
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .response-container .gp-source-link {
+            display: inline-flex;
+            gap: 0;
+            align-items: baseline;
+            max-width: 100%;
+        }
+
         .response-container strong,
         .response-container b {
             font-weight: 700;
@@ -887,6 +941,7 @@ export class AssistantView extends LitElement {
 
     static properties = {
         responses: { type: Array },
+        responseCitations: { type: Array },
         currentResponseIndex: { type: Number },
         questions: { type: Array },
         selectedProfile: { type: String },
@@ -909,6 +964,7 @@ export class AssistantView extends LitElement {
     constructor() {
         super();
         this.responses = [];
+        this.responseCitations = [];
         this.currentResponseIndex = -1;
         this.questions = [];
         this.selectedProfile = 'interview';
@@ -1031,6 +1087,122 @@ scrollToTop() {
         } catch (_) {}
     }
 
+    _escapeHtml(str) {
+        return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    _isHttpUrl(s) {
+        const v = String(s || '').trim();
+        return /^https?:\/\//i.test(v);
+    }
+
+    _obfuscateUrlHtml(href) {
+        const raw = String(href || '').trim();
+        if (!this._isHttpUrl(raw)) return this._escapeHtml(raw);
+        try {
+            const u = new URL(raw);
+            const host = u.host || raw;
+            const seg = String(u.pathname || '')
+                .split('/')
+                .filter(Boolean)[0] || '';
+            const visiblePath = seg ? `/${seg}` : '';
+            const remainder = `${String(u.pathname || '').slice(visiblePath.length)}${u.search || ''}${u.hash || ''}`;
+            const rest =
+                remainder.length > 22
+                    ? `${remainder.slice(0, 10)}…${remainder.slice(-6)}`
+                    : (remainder || '/…');
+
+            return `<span class="gp-url-host">${this._escapeHtml(host)}</span><span class="gp-url-visible-path">${this._escapeHtml(visiblePath)}</span><span class="gp-url-blur">${this._escapeHtml(rest)}</span>`;
+        } catch (_) {
+            return `<span class="gp-url-host">${this._escapeHtml(raw.replace(/^https?:\/\//i, ''))}</span><span class="gp-url-blur">/…</span>`;
+        }
+    }
+
+    _linkifyTextNode(node) {
+        const text = node?.nodeValue;
+        if (!text) return;
+        const parent = node.parentElement;
+        if (!parent) return;
+        if (parent.closest('a,code,pre,script,style,textarea')) return;
+        const re = /https?:\/\/[^\s<>"']+/gi;
+        if (!re.test(text)) return;
+        re.lastIndex = 0;
+
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        let m;
+        while ((m = re.exec(text))) {
+            const start = m.index;
+            const end = start + m[0].length;
+            if (start > last) frag.appendChild(document.createTextNode(text.slice(last, start)));
+
+            let url = m[0];
+            let trailing = '';
+            while (url.length && /[).,;:!?\]\}]+$/.test(url)) {
+                trailing = url.slice(-1) + trailing;
+                url = url.slice(0, -1);
+            }
+
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('data-external', 'true');
+            a.classList.add('gp-url-link');
+            a.textContent = url;
+            a.setAttribute('title', 'Ctrl/Cmd+click to open');
+            frag.appendChild(a);
+
+            if (trailing) frag.appendChild(document.createTextNode(trailing));
+            last = end;
+        }
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        try {
+            node.parentNode.replaceChild(frag, node);
+        } catch (_) {}
+    }
+
+    _postProcessAssistantHtml(html) {
+        try {
+            const template = document.createElement('template');
+            template.innerHTML = String(html || '');
+
+            const root = template.content;
+
+            try {
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                const nodes = [];
+                let n;
+                while ((n = walker.nextNode())) nodes.push(n);
+                for (const tn of nodes) this._linkifyTextNode(tn);
+            } catch (_) {}
+
+            try {
+                root.querySelectorAll('a[href]').forEach((a) => {
+                    const href = String(a.getAttribute('href') || '').trim();
+                    if (!this._isHttpUrl(href)) return;
+                    a.setAttribute('data-external', 'true');
+                    a.setAttribute('rel', 'noreferrer');
+                    a.setAttribute('target', '_blank');
+                    a.setAttribute('title', 'Ctrl/Cmd+click to open');
+                    a.classList.add('gp-url-link');
+
+                    const txt = String(a.textContent || '').trim();
+                    if (this._isHttpUrl(txt) || txt === href) {
+                        a.innerHTML = this._obfuscateUrlHtml(href);
+                    }
+                });
+            } catch (_) {}
+
+            return template.innerHTML;
+        } catch (_) {
+            return String(html || '');
+        }
+    }
+
     renderMarkdown(content, light = false) {
         // Check if marked is available
         if (typeof window !== 'undefined' && window.marked) {
@@ -1082,7 +1254,7 @@ scrollToTop() {
                 // Do not "fix" or restructure model output here.
                 // Formatting is the model's responsibility via system/custom prompts.
                 const rendered = window.marked.parse(String(content || '').replace(/\r\n/g, '\n'));
-                return rendered;
+                return this._postProcessAssistantHtml(rendered);
             } catch (error) {
                 console.warn('Error parsing markdown:', error);
                 return content; // Fallback to plain text
@@ -1457,6 +1629,7 @@ scrollToActiveBlockTop() {
         super.updated(changedProperties);
         if (
             changedProperties.has('responses') ||
+            changedProperties.has('responseCitations') ||
             changedProperties.has('currentResponseIndex') ||
             changedProperties.has('isStreaming') ||
             changedProperties.has('questions')
@@ -1504,10 +1677,10 @@ if (changedProperties.has('currentResponseIndex')) {
 }
 
 
-updateResponseContent() {
-    const container = this.shadowRoot.querySelector('#responseContainer');
-    if (!container) {
-        console.warn('Response container not found');
+    updateResponseContent() {
+        const container = this.shadowRoot.querySelector('#responseContainer');
+        if (!container) {
+            console.warn('Response container not found');
         return;
     }
 
@@ -1539,6 +1712,34 @@ updateResponseContent() {
     const ansText = ((this.responses || [])[i] || '');
     const formattedText = formatAnswer(ansText, q, null);
     const ansRendered = this.renderMarkdown(formattedText, false);
+    const rawCitations = Array.isArray(this.responseCitations) ? this.responseCitations[i] : [];
+    const citations = Array.isArray(rawCitations) ? rawCitations : [];
+    let sourcesHtml = '';
+    if (citations.length) {
+        const uniq = [];
+        const seen = new Set();
+        for (const c of citations) {
+            const url = typeof c?.url === 'string' ? c.url.trim() : '';
+            if (!url) continue;
+            if (seen.has(url)) continue;
+            seen.add(url);
+            uniq.push({
+                url,
+                title: typeof c?.title === 'string' ? c.title.trim() : '',
+            });
+            if (uniq.length >= 6) break;
+        }
+        if (uniq.length) {
+            sourcesHtml = `<div class="gp-sources"><span class="gp-sources-title">Sources:</span>${uniq
+                .map((c, idx) => {
+                    const label = `[${idx + 1}]`;
+                    const title = c.title ? `<span class="gp-source-title-text">${this._escapeHtml(c.title)}</span>` : '';
+                    const link = `<a class="gp-source-link gp-url-link" href="${this._escapeHtml(c.url)}" data-external="true" rel="noreferrer" target="_blank" title="Ctrl/Cmd+click to open">${this._obfuscateUrlHtml(c.url)}</a>`;
+                    return `<span class="gp-source-item"><span class="gp-source-label">${label}</span>${title}${link}</span>`;
+                })
+                .join('')}</div>`;
+        }
+    }
 
     const isLatest = i === maxLen - 1;
 
@@ -1582,7 +1783,7 @@ updateResponseContent() {
     if (ansText && ansText.trim()) {
         htmlStr += `
             <div class="chat-row left" style="margin-bottom:0">
-                <div class="answer-block" id="answer-${i}">${ansRendered}</div>
+                <div class="answer-block" id="answer-${i}">${ansRendered}${sourcesHtml}</div>
             </div>
             <div class="chat-row left actions">
                 <div class="answer-actions">
@@ -1622,6 +1823,22 @@ updateResponseContent() {
     if (!this._copyHandlerBound) {
         this._copyHandlerBound = true;
         container.addEventListener('click', (e) => {
+            const a = e.target?.closest?.('a[data-external="true"]');
+            if (a) {
+                try {
+                    e.preventDefault();
+                    e.stopPropagation();
+                } catch (_) {}
+                const href = String(a.getAttribute('href') || '').trim();
+                const canOpen = !!(e?.ctrlKey || e?.metaKey);
+                if (canOpen && href && window.require) {
+                    try {
+                        const { ipcRenderer } = window.require('electron');
+                        ipcRenderer.invoke('open-external', href);
+                    } catch (_) {}
+                }
+                return;
+            }
             const btn = e.target.closest('.copy-btn');
             if (!btn) return;
             const idx = parseInt(btn.getAttribute('data-index'), 10);

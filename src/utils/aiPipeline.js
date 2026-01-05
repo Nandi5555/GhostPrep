@@ -41,8 +41,6 @@ let openaiModelName = 'gpt-4o-mini';
 let asrLanguage = 'en-US';
 let activeSystemPrompt = '';
 let webSearchEnabled = true;
-let webSearchContextSize = 'medium';
-let webSearchUserLocation = null;
 
 // Transcript buffers:
 // - display*: shown in transcript tab (persists across the session)
@@ -51,6 +49,7 @@ let displayFinal = '';
 let displayDraft = '';
 let bufferFinal = '';
 let bufferDraft = '';
+let utteranceBestDraft = '';
 
 // Conversation history (persists across questions)
 let currentSessionId = null;
@@ -210,6 +209,7 @@ function initializeNewSession() {
     displayDraft = '';
     bufferFinal = '';
     bufferDraft = '';
+    utteranceBestDraft = '';
     boundary.reset();
 }
 
@@ -246,16 +246,23 @@ function getTranscriptForUi() {
 }
 
 function pushDraft(text) {
-    displayDraft = String(text || '');
-    bufferDraft = String(text || '');
+    const next = String(text || '');
+    displayDraft = next;
+    bufferDraft = next;
+    if (next.trim()) {
+        const bestLen = String(utteranceBestDraft || '').trim().length;
+        const nextLen = next.trim().length;
+        if (nextLen >= bestLen) utteranceBestDraft = next;
+    }
     sendToRenderer('update-transcript', { finalText: displayFinal, draftText: displayDraft });
 }
 
 function commitDraftAsUtterance() {
-    const t = String(displayDraft || '').trim();
+    const t = String(utteranceBestDraft || displayDraft || '').trim();
     if (!t) {
         displayDraft = '';
         bufferDraft = '';
+        utteranceBestDraft = '';
         sendToRenderer('update-transcript', { finalText: displayFinal, draftText: displayDraft });
         return;
     }
@@ -265,6 +272,7 @@ function commitDraftAsUtterance() {
     bufferFinal += `${t}\n`;
     displayDraft = '';
     bufferDraft = '';
+    utteranceBestDraft = '';
     sendToRenderer('update-transcript', { finalText: displayFinal, draftText: displayDraft });
 }
 
@@ -283,8 +291,6 @@ async function initializeAiSession({
     profile = 'interview',
     language = 'en-US',
     webSearchEnabled: webSearchEnabledInput,
-    webSearchContextSize: webSearchContextSizeInput,
-    webSearchUserLocation: webSearchUserLocationInput,
 } = {}) {
     if (isInitializingSession) return { success: false, error: 'Session initialization in progress' };
     const hasDeepgram = !!(deepgramKey && String(deepgramKey).trim());
@@ -316,21 +322,11 @@ async function initializeAiSession({
         const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
         openaiModelName = allowedModels.includes(normalizedModel) ? normalizedModel : 'gpt-4o-mini';
         webSearchEnabled = webSearchEnabledInput !== undefined ? !!webSearchEnabledInput : webSearchEnabled;
-        const cs = String(webSearchContextSizeInput || webSearchContextSize || 'medium').trim().toLowerCase();
-        webSearchContextSize = ['low', 'medium', 'high'].includes(cs) ? cs : 'medium';
-        const ul = webSearchUserLocationInput && typeof webSearchUserLocationInput === 'object' ? webSearchUserLocationInput : {};
-        const country = String(ul.country || '').trim();
-        const region = String(ul.region || '').trim();
-        const city = String(ul.city || '').trim();
-        const timezone = String(ul.timezone || '').trim();
-        webSearchUserLocation = (country || region || city || timezone)
-            ? { country, region, city, timezone }
-            : null;
 
         log('[AI][LLM] Providers ready', {
             openai: !!openaiApiKey,
             openaiModel: openaiModelName,
-            webSearch: webSearchEnabled ? { contextSize: webSearchContextSize, hasLocation: !!webSearchUserLocation } : false,
+            webSearch: !!webSearchEnabled,
         });
 
         // Build persistent system prompt ONCE per session (Cluely-style).
@@ -503,7 +499,7 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
     // Snapshot immediately: NO settle wait, NO debounce, NO minimum length.
     const overrideText = String(textOverride || '').trim();
     const typedContextText = String(typedContext || '').trim();
-    const snapshotSpokenText = String(`${bufferFinal || ''}${bufferDraft || ''}`).trim();
+    const snapshotSpokenText = String(`${bufferFinal || ''}${utteranceBestDraft || bufferDraft || ''}`).trim();
     let snapshotText = overrideText ? overrideText : snapshotSpokenText;
     const imagesToUse = useScreenEnabled ? pendingImages : [];
     const hasImages = Array.isArray(imagesToUse) && imagesToUse.length > 0;
@@ -544,6 +540,7 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
     // If we don't clear for typed submits, the next voice submit may include stale transcript and break context.
     bufferFinal = '';
     bufferDraft = '';
+    utteranceBestDraft = '';
 
     // Clear image buffer once we decide to include it
     if (hasImages) clearPendingImages();
@@ -623,6 +620,7 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
 
         let openaiFirstTokenMs = null;
         let buf = '';
+        let finalCitations = [];
         const doCall = async (modelName) =>
             await streamResponse({
                 apiKey: openaiApiKey,
@@ -634,8 +632,6 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
                 store: true,
                 webSearch: {
                     enabled: !!webSearchEnabled,
-                    searchContextSize: webSearchContextSize,
-                    userLocation: webSearchUserLocation,
                 },
                 systemPrompt: activeSystemPrompt,
                 history,
@@ -650,6 +646,9 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
                         log('[AI][LLM] OpenAI first token', { ms: openaiFirstTokenMs });
                     }
                     try { sendToRenderer('update-response-stream', d); } catch (_) {}
+                },
+                onCitations: citations => {
+                    finalCitations = Array.isArray(citations) ? citations : [];
                 },
             });
 
@@ -673,6 +672,7 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         });
 
         sendToRenderer('update-response', finalText || '');
+        try { sendToRenderer('update-response-citations', { citations: finalCitations }); } catch (_) {}
         try { sendToRenderer('llm-end', { provider: 'openai', success: true, at: Date.now() }); } catch (_) {}
         listening = true;
         pushAiStatus();
@@ -883,8 +883,6 @@ function setupAiIpcHandlers() {
             profile: p.profile || 'interview',
             language: p.language || 'en-US',
             webSearchEnabled: p.webSearchEnabled,
-            webSearchContextSize: p.webSearchContextSize,
-            webSearchUserLocation: p.webSearchUserLocation,
         });
     });
 
@@ -892,20 +890,8 @@ function setupAiIpcHandlers() {
         try {
             const p = payload && typeof payload === 'object' ? payload : {};
             webSearchEnabled = p.enabled !== undefined ? !!p.enabled : webSearchEnabled;
-            const cs = String(p.searchContextSize || webSearchContextSize || 'medium').trim().toLowerCase();
-            webSearchContextSize = ['low', 'medium', 'high'].includes(cs) ? cs : 'medium';
-            const ul = p.userLocation && typeof p.userLocation === 'object' ? p.userLocation : {};
-            const country = String(ul.country || '').trim();
-            const region = String(ul.region || '').trim();
-            const city = String(ul.city || '').trim();
-            const timezone = String(ul.timezone || '').trim();
-            webSearchUserLocation = (country || region || city || timezone)
-                ? { country, region, city, timezone }
-                : null;
             log('[AI][WEB_SEARCH] Updated settings', {
                 enabled: !!webSearchEnabled,
-                contextSize: webSearchContextSize,
-                hasLocation: !!webSearchUserLocation,
             });
             return { success: true };
         } catch (e) {

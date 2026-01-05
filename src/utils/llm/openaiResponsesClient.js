@@ -8,6 +8,24 @@
  * - emits deltas ASAP for low first-token latency
  */
 
+let _OpenAIClientCtorPromise = null;
+const _clientByApiKey = new Map();
+
+async function getOpenAIClient(apiKey) {
+    const k = String(apiKey || '').trim();
+    if (!k) throw new Error('OpenAI API key missing');
+    const existing = _clientByApiKey.get(k);
+    if (existing) return existing;
+
+    if (!_OpenAIClientCtorPromise) {
+        _OpenAIClientCtorPromise = import('openai').then(m => m?.default || m);
+    }
+    const OpenAI = await _OpenAIClientCtorPromise;
+    const client = new OpenAI({ apiKey: k });
+    _clientByApiKey.set(k, client);
+    return client;
+}
+
 function buildInput({ systemPrompt, history = [], userText, images = [] } = {}) {
     const input = [];
 
@@ -104,6 +122,59 @@ function extractOutputTextFromResponseLike(obj) {
     }
 }
 
+function extractUrlCitationsFromResponseLike(obj) {
+    try {
+        if (!obj || typeof obj !== 'object') return [];
+
+        const candidates = [];
+        if (obj.response && typeof obj.response === 'object') candidates.push(obj.response);
+        if (obj.item && typeof obj.item === 'object') candidates.push(obj.item);
+        candidates.push(obj);
+
+        const byUrl = new Map();
+        const add = (ann) => {
+            const url = typeof ann?.url === 'string' ? ann.url.trim() : '';
+            if (!url) return;
+            const title = typeof ann?.title === 'string' ? ann.title.trim() : '';
+            if (!byUrl.has(url)) byUrl.set(url, { url, title });
+        };
+
+        for (const c of candidates) {
+            const outputArr = Array.isArray(c?.output) ? c.output : null;
+            if (outputArr) {
+                for (const item of outputArr) {
+                    const content = Array.isArray(item?.content) ? item.content : [];
+                    for (const part of content) {
+                        const anns = Array.isArray(part?.annotations) ? part.annotations : [];
+                        for (const ann of anns) {
+                            if (ann?.type === 'url_citation') add(ann);
+                        }
+                    }
+                }
+            }
+
+            const contentArr = Array.isArray(c?.content) ? c.content : null;
+            if (contentArr) {
+                for (const part of contentArr) {
+                    const anns = Array.isArray(part?.annotations) ? part.annotations : [];
+                    for (const ann of anns) {
+                        if (ann?.type === 'url_citation') add(ann);
+                    }
+                }
+            }
+
+            const annsTop = Array.isArray(c?.annotations) ? c.annotations : [];
+            for (const ann of annsTop) {
+                if (ann?.type === 'url_citation') add(ann);
+            }
+        }
+
+        return [...byUrl.values()];
+    } catch (_) {
+        return [];
+    }
+}
+
 function collectWebSearchCalls(obj, out = []) {
     if (!obj) return out;
     if (Array.isArray(obj)) {
@@ -135,6 +206,7 @@ async function streamResponse({
     text,
     webSearch,
     onDelta,
+    onCitations,
 } = {}) {
     if (!apiKey) throw new Error('OpenAI API key missing');
     const input = buildInput({ systemPrompt, history, userText, images });
@@ -188,58 +260,16 @@ async function streamResponse({
     if (webSearch && typeof webSearch === 'object' && webSearch.enabled) {
         const allowed = ['gpt-4o-mini', 'gpt-4.1-mini'];
         if (allowed.includes(modelName)) {
-            const searchContextSize = String(webSearch.searchContextSize || 'medium').trim().toLowerCase();
-            const scs = ['low', 'medium', 'high'].includes(searchContextSize) ? searchContextSize : 'medium';
-            const ul = webSearch.userLocation && typeof webSearch.userLocation === 'object' ? webSearch.userLocation : {};
-            const country = String(ul.country || '').trim();
-            const region = String(ul.region || '').trim();
-            const city = String(ul.city || '').trim();
-            const timezone = String(ul.timezone || '').trim();
-            const userLocation = {};
-            if (country) userLocation.country = country;
-            if (region) userLocation.region = region;
-            if (city) userLocation.city = city;
-            if (timezone) userLocation.timezone = timezone;
-
-            const tool = {
-                type: 'web_search',
-                search_context_size: scs,
-            };
-            if (Object.keys(userLocation).length) {
-                tool.user_location = { type: 'approximate', ...userLocation };
-            }
-            body.tools = [tool];
+            body.tools = [{ type: 'web_search' }];
         }
     }
 
-    const resp = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    });
+    const client = await getOpenAIClient(apiKey);
 
-    if (!resp.ok) {
-        const txt = await resp.text().catch(() => '');
-        if (resp.status === 429) {
-            throw new Error(`OpenAI rate limited (429): ${txt?.slice(0, 400)}`);
-        }
-        throw new Error(`OpenAI responses failed (${resp.status}): ${txt?.slice(0, 400)}`);
-    }
-    if (!resp.body) {
-        const txt = await resp.text().catch(() => '');
-        if (typeof onDelta === 'function' && txt) onDelta(txt);
-        return String(txt || '').trim();
-    }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
     let fullText = '';
     let finalFromEvents = '';
     const seenWebSearch = new Set();
+    const citationsByUrl = new Map();
 
     const emit = delta => {
         const d = String(delta || '');
@@ -250,127 +280,65 @@ async function streamResponse({
         }
     };
 
-    // SSE parsing: events separated by blank line, lines can be "event:" and "data:".
-    while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        if (buffer.includes('\r\n')) buffer = buffer.replace(/\r\n/g, '\n');
-
-        let sepIndex;
-        while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
-            const eventBlock = buffer.slice(0, sepIndex);
-            buffer = buffer.slice(sepIndex + 2);
-            const lines = eventBlock.split('\n');
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed.startsWith('data:')) continue;
-                const payload = trimmed.slice(5).trim();
-                if (!payload || payload === '[DONE]') continue;
-
-                let json;
-                try {
-                    json = JSON.parse(payload);
-                } catch (_) {
-                    continue;
-                }
-
-                try {
-                    const calls = collectWebSearchCalls(json, []);
-                    for (const c of calls) {
-                        const query = typeof c?.query === 'string' ? c.query.trim() : '';
-                        const id = String(c?.id || c?.call_id || c?.tool_call_id || query || '');
-                        if (!id) continue;
-                        if (seenWebSearch.has(id)) continue;
-                        seenWebSearch.add(id);
-                        const results = Array.isArray(c?.results) ? c.results : [];
-                        const urls = results
-                            .map(r => (typeof r?.url === 'string' ? r.url : ''))
-                            .filter(Boolean)
-                            .slice(0, 8);
-                        try {
-                            console.log('[AI][WEB_SEARCH] Tool call', {
-                                model: modelName,
-                                query,
-                                results: results.length,
-                                urls,
-                            });
-                        } catch (_) {}
-                    }
-                } catch (_) {}
-
-                // Primary streaming delta event:
-                // { "type": "response.output_text.delta", "delta": "..." }
-                if (json?.type === 'response.output_text.delta' && typeof json?.delta === 'string') {
-                    emit(json.delta);
-                }
-
-                // Some models may not emit deltas; capture final text from completion/item events.
-                if (
-                    json?.type === 'response.completed' ||
-                    json?.type === 'response.output_item.done' ||
-                    json?.type === 'response.output_text.done' ||
-                    json?.type === 'response.output_item.added'
-                ) {
-                    const extracted = extractOutputTextFromResponseLike(json);
-                    if (extracted) finalFromEvents = extracted;
-                }
-
-                // Errors can come as streamed events too.
-                if (json?.type === 'response.error') {
-                    const msg = json?.error?.message || 'OpenAI stream error';
-                    throw new Error(String(msg));
-                }
-            }
-        }
+    let stream;
+    try {
+        stream = await client.responses.create(body);
+    } catch (e) {
+        const status = e?.status || e?.response?.status;
+        const msg = e?.message || String(e);
+        if (status === 429) throw new Error(`OpenAI rate limited (429): ${msg}`);
+        throw new Error(msg);
     }
 
-    // Flush remainder (best-effort)
-    if (buffer && buffer.includes('data:')) {
-        const lines = buffer.split('\n');
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const payload = trimmed.slice(5).trim();
-            if (!payload || payload === '[DONE]') continue;
-            try {
-                const json = JSON.parse(payload);
+    for await (const event of stream) {
+        try {
+            const calls = collectWebSearchCalls(event, []);
+            for (const c of calls) {
+                const query = typeof c?.query === 'string' ? c.query.trim() : '';
+                const id = String(c?.id || c?.call_id || c?.tool_call_id || query || '');
+                if (!id) continue;
+                if (seenWebSearch.has(id)) continue;
+                seenWebSearch.add(id);
+                const results = Array.isArray(c?.results) ? c.results : [];
+                const urls = results
+                    .map(r => (typeof r?.url === 'string' ? r.url : ''))
+                    .filter(Boolean)
+                    .slice(0, 8);
                 try {
-                    const calls = collectWebSearchCalls(json, []);
-                    for (const c of calls) {
-                        const query = typeof c?.query === 'string' ? c.query.trim() : '';
-                        const id = String(c?.id || c?.call_id || c?.tool_call_id || query || '');
-                        if (!id) continue;
-                        if (seenWebSearch.has(id)) continue;
-                        seenWebSearch.add(id);
-                        const results = Array.isArray(c?.results) ? c.results : [];
-                        const urls = results
-                            .map(r => (typeof r?.url === 'string' ? r.url : ''))
-                            .filter(Boolean)
-                            .slice(0, 8);
-                        try {
-                            console.log('[AI][WEB_SEARCH] Tool call', {
-                                model: modelName,
-                                query,
-                                results: results.length,
-                                urls,
-                            });
-                        } catch (_) {}
-                    }
+                    console.log('[AI][WEB_SEARCH] Tool call', {
+                        model: modelName,
+                        query,
+                        results: results.length,
+                        urls,
+                    });
                 } catch (_) {}
-                if (json?.type === 'response.output_text.delta' && typeof json?.delta === 'string') {
-                    emit(json.delta);
-                }
-                if (
-                    json?.type === 'response.completed' ||
-                    json?.type === 'response.output_item.done' ||
-                    json?.type === 'response.output_text.done' ||
-                    json?.type === 'response.output_item.added'
-                ) {
-                    const extracted = extractOutputTextFromResponseLike(json);
-                    if (extracted) finalFromEvents = extracted;
-                }
-            } catch (_) {}
+            }
+        } catch (_) {}
+
+        if (event?.type === 'response.output_text.delta' && typeof event?.delta === 'string') {
+            emit(event.delta);
+        }
+
+        if (
+            event?.type === 'response.completed' ||
+            event?.type === 'response.output_item.done' ||
+            event?.type === 'response.output_text.done' ||
+            event?.type === 'response.output_item.added'
+        ) {
+            const extracted = extractOutputTextFromResponseLike(event);
+            if (extracted) finalFromEvents = extracted;
+
+            const citations = extractUrlCitationsFromResponseLike(event);
+            for (const c of citations) {
+                const url = typeof c?.url === 'string' ? c.url.trim() : '';
+                if (!url) continue;
+                if (!citationsByUrl.has(url)) citationsByUrl.set(url, c);
+            }
+        }
+
+        if (event?.type === 'response.error') {
+            const msg = event?.error?.message || 'OpenAI stream error';
+            throw new Error(String(msg));
         }
     }
 
@@ -378,6 +346,10 @@ async function streamResponse({
     // If we got a final text but streamed no deltas, emit it once so the UI updates immediately.
     if (!String(fullText || '').trim() && out && typeof onDelta === 'function') {
         try { onDelta(out); } catch (_) {}
+    }
+
+    if (typeof onCitations === 'function') {
+        try { onCitations([...citationsByUrl.values()]); } catch (_) {}
     }
     return out;
 }
@@ -396,23 +368,19 @@ async function warmup({
         input: [{ role: 'user', content: [{ type: 'input_text', text: 'ok' }] }],
         temperature: 0,
     };
-
-    // Tiny request to validate auth + warm TLS/connection pools so the first "real" answer is faster.
-    const resp = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-        },
-        signal,
-        body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-        const txt = await resp.text().catch(() => '');
-        throw new Error(`OpenAI warmup failed (${resp.status}): ${String(txt || '').trim().slice(0, 260)}`);
+    const client = await getOpenAIClient(apiKey);
+    try {
+        if (signal) {
+            await client.responses.create(body, { signal });
+        } else {
+            await client.responses.create(body);
+        }
+        return true;
+    } catch (e) {
+        const status = e?.status || e?.response?.status;
+        const msg = e?.message || String(e);
+        throw new Error(`OpenAI warmup failed (${status || 'error'}): ${String(msg || '').trim().slice(0, 260)}`);
     }
-    return true;
 }
 
 module.exports = {
