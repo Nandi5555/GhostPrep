@@ -204,6 +204,7 @@ async function streamResponse({
     top_p,
     store,
     text,
+    reasoning,
     webSearch,
     onDelta,
     onCitations,
@@ -256,12 +257,12 @@ async function streamResponse({
     } else if (modelName === 'gpt-4o-mini') {
         body.store = true;
     }
+    if (reasoning && typeof reasoning === 'object') {
+        body.reasoning = reasoning;
+    }
 
     if (webSearch && typeof webSearch === 'object' && webSearch.enabled) {
-        const allowed = ['gpt-4o-mini', 'gpt-4.1-mini'];
-        if (allowed.includes(modelName)) {
-            body.tools = [{ type: 'web_search' }];
-        }
+        body.tools = [{ type: 'web_search' }];
     }
 
     const client = await getOpenAIClient(apiKey);

@@ -38,6 +38,7 @@ let deepgramClient = null;
 let deepgramApiKey = '';
 let openaiApiKey = '';
 let openaiModelName = 'gpt-4o-mini';
+let openaiModelConfig = null;
 let asrLanguage = 'en-US';
 let activeSystemPrompt = '';
 let webSearchEnabled = true;
@@ -319,9 +320,19 @@ async function initializeAiSession({
         deepgramApiKey = hasDeepgram ? String(deepgramKey).trim() : '';
         openaiApiKey = hasOpenAi ? String(openaiKey).trim() : '';
         const normalizedModel = String(openaiModel || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
-        const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
-        openaiModelName = allowedModels.includes(normalizedModel) ? normalizedModel : 'gpt-4o-mini';
+        let cfg = null;
+        try {
+            const { getModelConfig, normalizeModelId } = await import('./llm/modelConfigs.mjs');
+            const id = normalizeModelId(normalizedModel, { provider: 'openai' });
+            cfg = getModelConfig(id, { provider: 'openai' });
+            openaiModelName = cfg.id;
+        } catch (_) {
+            openaiModelName = normalizedModel;
+        }
+        openaiModelConfig = cfg;
+        const supportsWebSearch = cfg ? (cfg?.capabilities?.webSearch !== false) : true;
         webSearchEnabled = webSearchEnabledInput !== undefined ? !!webSearchEnabledInput : webSearchEnabled;
+        if (!supportsWebSearch) webSearchEnabled = false;
 
         log('[AI][LLM] Providers ready', {
             openai: !!openaiApiKey,
@@ -621,17 +632,28 @@ async function submitNow({ actionName = '', actionPrompt = '', uiAlreadyShown = 
         let openaiFirstTokenMs = null;
         let buf = '';
         let finalCitations = [];
+        const defaults =
+            openaiModelConfig && typeof openaiModelConfig === 'object'
+                ? (openaiModelConfig.requestDefaults && typeof openaiModelConfig.requestDefaults === 'object'
+                      ? openaiModelConfig.requestDefaults
+                      : {})
+                : {};
+        const supportsWebSearch =
+            openaiModelConfig && typeof openaiModelConfig === 'object'
+                ? (openaiModelConfig?.capabilities?.webSearch !== false)
+                : true;
         const doCall = async (modelName) =>
             await streamResponse({
                 apiKey: openaiApiKey,
                 model: modelName,
-                text: { format: 'text' },
-                temp: 1.00,
-                tokens: 2048,
-                top_p: 1.00,
-                store: true,
+                text: { format: defaults.textFormat || 'text' },
+                temp: typeof defaults.temperature === 'number' ? defaults.temperature : 1.0,
+                tokens: typeof defaults.maxOutputTokens === 'number' ? defaults.maxOutputTokens : 2048,
+                top_p: typeof defaults.topP === 'number' ? defaults.topP : 1.0,
+                store: typeof defaults.store === 'boolean' ? defaults.store : true,
+                reasoning: defaults.reasoning && typeof defaults.reasoning === 'object' ? defaults.reasoning : undefined,
                 webSearch: {
-                    enabled: !!webSearchEnabled,
+                    enabled: !!webSearchEnabled && supportsWebSearch,
                 },
                 systemPrompt: activeSystemPrompt,
                 history,

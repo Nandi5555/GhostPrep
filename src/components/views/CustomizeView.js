@@ -16,6 +16,7 @@ import {
     setThemeChoice,
     subscribeTheme,
 } from '../../utils/theme.js';
+import { getModelConfig, listModelConfigs, normalizeModelId } from '../../utils/llm/modelConfigs.mjs';
 
 export class CustomizeView extends LitElement {
     static styles = [
@@ -887,8 +888,7 @@ export class CustomizeView extends LitElement {
         this.deepgramApiKey = localStorage.getItem('deepgramApiKey') || '';
         this.openaiApiKey = localStorage.getItem('openaiApiKey') || '';
         const storedModel = localStorage.getItem('openaiModel');
-        const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
-        this.openaiModel = allowedModels.includes(storedModel) ? storedModel : 'gpt-4o-mini';
+        this.openaiModel = normalizeModelId(storedModel, { provider: 'openai' });
 
         this.loadKeybinds();
         this.loadWebSearchSettings();
@@ -1798,14 +1798,14 @@ export class CustomizeView extends LitElement {
                                 <label class="form-label">OpenAI Model (Answer Generation)</label>
                                 <gp-select
                                     .value=${this.openaiModel || 'gpt-4o-mini'}
-                                    .options=${[
-                                        { value: 'gpt-4o-mini', label: 'GPT-4o mini (fast + strong)' },
-                                        { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini (fast)' },
-                                    ]}
+                                    .options=${listModelConfigs({ provider: 'openai' }).map(m => ({
+                                        value: m.id,
+                                        label: m.uiLabel || m.label || m.id,
+                                    }))}
                                     @gp-change=${e => this.handleOpenAiModelSelect({ target: { value: e.detail.value } })}
                                 ></gp-select>
                                 <div class="form-description">
-                                    Default is GPT-4o mini (fast + strong).
+                                    Default is ${getModelConfig('', { provider: 'openai' }).uiLabel || 'GPT-4o mini'}.
                                 </div>
                             </div>
                         </div>
@@ -2014,6 +2014,8 @@ export class CustomizeView extends LitElement {
                 `;
 
             case 'search':
+                const selected = getModelConfig(this.openaiModel, { provider: 'openai' });
+                const webSearchSupported = selected?.capabilities?.webSearch !== false;
                 return html`
                     <div class="settings-section">
                         <div class="section-title"><span>Web Search</span></div>
@@ -2024,13 +2026,16 @@ export class CustomizeView extends LitElement {
                                     class="checkbox-input"
                                     id="web-search-enabled"
                                     .checked=${this.webSearchEnabled}
+                                    ?disabled=${!webSearchSupported}
                                     @change=${this.handleGoogleSearchChange}
                                 />
                                 <label for="web-search-enabled" class="checkbox-label"> Enable Web Search </label>
                             </div>
                             <div class="form-group full-width">
                                 <div class="form-description">
-                                    Uses OpenAI’s built-in web search tool for real-time results.
+                                    ${webSearchSupported
+                                        ? 'Uses OpenAI’s built-in web search tool for real-time results.'
+                                        : 'Web search is not supported by the selected model.'}
                                 </div>
                             </div>
                         </div>
@@ -2089,10 +2094,18 @@ export class CustomizeView extends LitElement {
 
     handleOpenAiModelSelect(e) {
         const raw = String(e?.target?.value || '').trim();
-        const allowedModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
-        const v = allowedModels.includes(raw) ? raw : 'gpt-4o-mini';
+        const v = normalizeModelId(raw, { provider: 'openai' });
         this.openaiModel = v;
         try { localStorage.setItem('openaiModel', v); } catch (_) {}
+        try {
+            const cfg = getModelConfig(v, { provider: 'openai' });
+            const webSearchSupported = cfg?.capabilities?.webSearch !== false;
+            if (!webSearchSupported && this.webSearchEnabled) {
+                this.webSearchEnabled = false;
+                try { localStorage.setItem('webSearchEnabled', 'false'); } catch (_) {}
+                try { this._notifyWebSearchSettings(); } catch (_) {}
+            }
+        } catch (_) {}
         this.requestUpdate();
     }
 }

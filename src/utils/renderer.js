@@ -150,15 +150,24 @@ function convertFloat32ToInt16(float32Array) {
 async function initializeAi(profile = 'interview', language = 'en-US') {
     const deepgramApiKey = localStorage.getItem('deepgramApiKey')?.trim();
     const openaiApiKey = localStorage.getItem('openaiApiKey')?.trim();
-    const openaiModel = (localStorage.getItem('openaiModel') || 'gpt-4o-mini').trim();
+    const storedOpenaiModel = (localStorage.getItem('openaiModel') || '').trim();
     const webSearchEnabledRaw =
         localStorage.getItem('webSearchEnabled') ??
         localStorage.getItem('googleSearchEnabled') ??
         'true';
     const webSearchEnabled = String(webSearchEnabledRaw) === 'true';
-
-    const allowedOpenAiModels = ['gpt-4o-mini', 'gpt-4.1-mini'];
-    const normalizedOpenaiModel = allowedOpenAiModels.includes(openaiModel) ? openaiModel : 'gpt-4o-mini';
+    let normalizedOpenaiModel = 'gpt-4o-mini';
+    let webSearchSupported = true;
+    try {
+        const { getModelConfig, normalizeModelId } = await import('./llm/modelConfigs.mjs');
+        normalizedOpenaiModel = normalizeModelId(storedOpenaiModel, { provider: 'openai' });
+        const cfg = getModelConfig(normalizedOpenaiModel, { provider: 'openai' });
+        webSearchSupported = cfg?.capabilities?.webSearch !== false;
+    } catch (_) {
+        normalizedOpenaiModel = (storedOpenaiModel || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
+        webSearchSupported = true;
+    }
+    const effectiveWebSearchEnabled = webSearchSupported ? webSearchEnabled : false;
 
     if (deepgramApiKey && openaiApiKey) {
         // Determine active custom prompt content from the prompt library.
@@ -185,7 +194,7 @@ async function initializeAi(profile = 'interview', language = 'en-US') {
             customPrompt: activeCustomPrompt,
             profile,
             language,
-            webSearchEnabled,
+            webSearchEnabled: effectiveWebSearchEnabled,
         });
         if (result && result.success) {
             cheddar.e().setStatus('Live');
