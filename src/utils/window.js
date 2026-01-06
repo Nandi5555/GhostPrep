@@ -31,10 +31,13 @@ function migrateKeybindsForPlatform(keybinds) {
     const next = { ...(keybinds || {}) };
     let changed = false;
 
-    const allowedKeys = Object.keys(getDefaultKeybinds());
+    const defaults = getDefaultKeybinds();
+    const allowedKeys = Object.keys(defaults);
     for (const key of allowedKeys) {
         const v = next[key];
         if (typeof v !== 'string' || !v) continue;
+        const defaultValue = defaults[key];
+        if (typeof defaultValue === 'string' && defaultValue.includes('Alt+')) continue;
         if (v.includes('Alt+')) {
             next[key] = v.replace(/Alt\+/g, `${modifier}+`);
             changed = true;
@@ -230,6 +233,8 @@ function getDefaultKeybinds() {
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
         scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
+        transparencyAdjustDown: 'Alt+Left',
+        transparencyAdjustUp: 'Alt+Right',
     };
 }
 
@@ -398,6 +403,33 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
             // Registered scrollDown
         } catch (error) {
             console.error(`Failed to register scrollDown (${keybinds.scrollDown}):`, error);
+        }
+    }
+
+    if (keybinds.transparencyAdjustDown) {
+        try {
+            const accel = toElectronAccelerator(keybinds.transparencyAdjustDown);
+            const ok = globalShortcut.register(accel, () => {
+                sendToRenderer('adjust-background-transparency', -1);
+            });
+            if (!ok) console.warn('Shortcut not registered (transparencyAdjustDown):', accel);
+        } catch (error) {
+            console.error(
+                `Failed to register transparencyAdjustDown (${keybinds.transparencyAdjustDown}):`,
+                error
+            );
+        }
+    }
+
+    if (keybinds.transparencyAdjustUp) {
+        try {
+            const accel = toElectronAccelerator(keybinds.transparencyAdjustUp);
+            const ok = globalShortcut.register(accel, () => {
+                sendToRenderer('adjust-background-transparency', 1);
+            });
+            if (!ok) console.warn('Shortcut not registered (transparencyAdjustUp):', accel);
+        } catch (error) {
+            console.error(`Failed to register transparencyAdjustUp (${keybinds.transparencyAdjustUp}):`, error);
         }
     }
 }

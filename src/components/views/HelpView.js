@@ -273,6 +273,8 @@ export class HelpView extends LitElement {
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
             scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
+            transparencyAdjustDown: 'Alt+Left',
+            transparencyAdjustUp: 'Alt+Right',
         };
     }
 
@@ -358,6 +360,18 @@ export class HelpView extends LitElement {
                             <div class="shortcut-item">
                                 <span class="shortcut-description">Scroll response down</span>
                                 <div class="shortcut-keys">${this.formatKeybind(this.keybinds.scrollDown)}</div>
+                            </div>
+                        </div>
+
+                        <div class="keyboard-group">
+                            <div class="keyboard-group-title">Appearance</div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-description">Decrease background transparency</span>
+                                <div class="shortcut-keys">${this.formatKeybind(this.keybinds.transparencyAdjustDown)}</div>
+                            </div>
+                            <div class="shortcut-item">
+                                <span class="shortcut-description">Increase background transparency</span>
+                                <div class="shortcut-keys">${this.formatKeybind(this.keybinds.transparencyAdjustUp)}</div>
                             </div>
                         </div>
 

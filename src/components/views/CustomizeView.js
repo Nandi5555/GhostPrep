@@ -1159,6 +1159,8 @@ export class CustomizeView extends LitElement {
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
             scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
+            transparencyAdjustDown: 'Alt+Left',
+            transparencyAdjustUp: 'Alt+Right',
         };
     }
 
@@ -1245,6 +1247,16 @@ export class CustomizeView extends LitElement {
                 key: 'scrollDown',
                 name: 'Scroll Response Down',
                 description: 'Scroll the AI response content down',
+            },
+            {
+                key: 'transparencyAdjustDown',
+                name: 'Decrease Transparency',
+                description: 'Decrease background transparency by 1%',
+            },
+            {
+                key: 'transparencyAdjustUp',
+                name: 'Increase Transparency',
+                description: 'Increase background transparency by 1%',
             },
         ];
     }

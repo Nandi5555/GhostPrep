@@ -105,7 +105,7 @@ export class AppHeader extends LitElement {
         }
 
         .assistant-slider {
-            width: 140px;
+            width: 190px;
             display: flex;
             align-items: center;
         }
@@ -236,6 +236,11 @@ export class AppHeader extends LitElement {
             outline: none;
             border: 1px solid var(--input-border, rgba(255, 255, 255, 0.15));
             cursor: default;
+        }
+
+        .slider-container .slider-input {
+            flex: 1;
+            width: auto;
         }
 
         .slider-input::-webkit-slider-thumb {
@@ -605,15 +610,18 @@ export class AppHeader extends LitElement {
                     ${this.currentView === 'assistant'
                         ? html`
                               <div class="assistant-slider">
-                                  <input
-                                      type="range"
-                                      class="slider-input"
-                                      min="0"
-                                      max="1"
-                                      step="0.01"
+                                  <div class="slider-container">
+                                      <input
+                                          type="range"
+                                          class="slider-input"
+                                          min="0"
+                                          max="1"
+                                          step="0.01"
                                       .value=${this.backgroundTransparency}
                                       @input=${this.handleBackgroundTransparencyChange}
                                   />
+                                      <span class="slider-value">${Math.round((Number.isFinite(this.backgroundTransparency) ? this.backgroundTransparency : 0.8) * 100)}%</span>
+                                  </div>
                               </div>
                               <button @click=${this.onCloseClick} class="icon-button window-close">
                                   <?xml version="1.0" encoding="UTF-8"?><svg

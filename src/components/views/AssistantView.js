@@ -1298,6 +1298,7 @@ scrollToTop() {
                 ipcRenderer.removeListener('prefill-text-input', this.handlePrefillTextInput);
             }
         }
+
     }
 
     async handleSendText() {

@@ -221,6 +221,11 @@ export class GhostPrepApp extends LitElement {
                     this.showToast(isEnabled ? 'Click-through enabled' : 'Click-through disabled', 'info');
                 } catch (_) {}
             });
+            ipcRenderer.on('adjust-background-transparency', (_event, deltaPercent) => {
+                try {
+                    this.applyBackgroundTransparencyDeltaPercent(deltaPercent);
+                } catch (_) {}
+            });
             ipcRenderer.on('ui-error', (_, payload) => {
                 try {
                     const msg = String(payload?.message || 'Unknown error');
@@ -272,6 +277,38 @@ export class GhostPrepApp extends LitElement {
         this.setupCheddarCallbacks();
     }
 
+    applyBackgroundTransparencyDeltaPercent(deltaPercent) {
+        const appHeader = this.shadowRoot ? this.shadowRoot.querySelector('app-header') : null;
+        const cur = Number.isFinite(appHeader?.backgroundTransparency)
+            ? appHeader.backgroundTransparency
+            : parseFloat(localStorage.getItem('backgroundTransparency') || '0.8') || 0.8;
+        const curPct = Math.round(cur * 100);
+        const nextPct = Math.max(0, Math.min(100, curPct + Number(deltaPercent || 0)));
+        const next = nextPct / 100;
+
+        try {
+            localStorage.setItem('backgroundTransparency', String(next));
+        } catch (_) {}
+
+        const applyTo = el => {
+            if (!el) return;
+            try {
+                el.backgroundTransparency = next;
+            } catch (_) {}
+            try {
+                if (typeof el.updateBackgroundTransparency === 'function') el.updateBackgroundTransparency();
+            } catch (_) {}
+            try {
+                if (typeof el.requestUpdate === 'function') el.requestUpdate();
+            } catch (_) {}
+        };
+
+        applyTo(appHeader);
+
+        const customizeView = this.shadowRoot ? this.shadowRoot.querySelector('customize-view') : null;
+        applyTo(customizeView);
+    }
+
     firstUpdated() {
         try {
             if (window.require) {
@@ -313,6 +350,7 @@ export class GhostPrepApp extends LitElement {
             ipcRenderer.removeAllListeners('update-response-citations');
             ipcRenderer.removeAllListeners('update-status');
             ipcRenderer.removeAllListeners('click-through-toggled');
+            ipcRenderer.removeAllListeners('adjust-background-transparency');
             ipcRenderer.removeAllListeners('update-transcript');
             ipcRenderer.removeAllListeners('chat-user-turn');
             ipcRenderer.removeAllListeners('ui-error');
