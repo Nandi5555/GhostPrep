@@ -28,7 +28,7 @@ export class AppHeader extends LitElement {
             border-radius: 999px;
             backdrop-filter: blur(8px);
             box-shadow: none;
-            width: 450px;
+            width: 380px;
             max-width: calc(100% - 16px);
             margin: 0 auto;
             transition: padding 0.2s ease, background-color var(--theme-transition) ease, border-color var(--theme-transition) ease, color var(--theme-transition) ease;
