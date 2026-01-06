@@ -552,21 +552,45 @@ export class GhostPrepApp extends LitElement {
         this.requestUpdate();
     }
 
+    async stopSession({ goToMain = true, cancelInitialize = false } = {}) {
+        this.isConnecting = false;
+        this._connectCancelToken = null;
+        if (this._connectRetryTimer) {
+            try { clearTimeout(this._connectRetryTimer); } catch (_) {}
+            this._connectRetryTimer = null;
+        }
+
+        try {
+            if (window.cheddar && typeof window.cheddar.stopCapture === 'function') {
+                window.cheddar.stopCapture();
+            }
+        } catch (_) {}
+
+        if (window.require) {
+            try {
+                const { ipcRenderer } = window.require('electron');
+                if (cancelInitialize) {
+                    try { await ipcRenderer.invoke('cancel-ai-initialize'); } catch (_) {}
+                }
+                try { await ipcRenderer.invoke('close-ai-session'); } catch (_) {}
+            } catch (_) {}
+        }
+
+        this.sessionActive = false;
+        this.startTime = null;
+        this.transcriptText = '';
+
+        if (goToMain) {
+            this.currentView = 'main';
+        }
+        this.requestUpdate();
+    }
+
     async handleClose() {
         if (this.currentView === 'customize' || this.currentView === 'help' || this.currentView === 'history') {
             this.currentView = 'main';
         } else if (this.currentView === 'assistant') {
-            if (window.cheddar) {
-                window.cheddar.stopCapture();
-            }
-
-            // Close the session
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('close-ai-session');
-            }
-            this.sessionActive = false;
-            this.currentView = 'main';
+            await this.stopSession({ goToMain: true, cancelInitialize: false });
         } else {
             // Quit the entire application
             if (window.require) {
@@ -653,25 +677,7 @@ export class GhostPrepApp extends LitElement {
     }
 
     async handleCancelConnecting() {
-        this.isConnecting = false;
-        this._connectCancelToken = null;
-        if (this._connectRetryTimer) {
-            try { clearTimeout(this._connectRetryTimer); } catch (_) {}
-            this._connectRetryTimer = null;
-        }
-        try {
-            if (window.cheddar && typeof window.cheddar.stopCapture === 'function') {
-                window.cheddar.stopCapture();
-            }
-        } catch (_) {}
-        if (window.require) {
-            try {
-                const { ipcRenderer } = window.require('electron');
-                ipcRenderer.invoke('cancel-ai-initialize').catch(() => {});
-                ipcRenderer.invoke('close-ai-session').catch(() => {});
-            } catch (_) {}
-        }
-        this.sessionActive = false;
+        await this.stopSession({ goToMain: false, cancelInitialize: true });
     }
 
     async handleAPIKeyHelp() {

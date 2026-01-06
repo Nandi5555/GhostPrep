@@ -5,6 +5,7 @@ let mediaStream = null;
 let screenshotInterval = null;
 let audioContext = null;
 let audioProcessor = null;
+let micCaptureStream = null;
   let audioBuffer = [];
   const SAMPLE_RATE = 24000;
   // Smaller chunks reduce end-to-end latency for very short questions (more IPC overhead, but still light).
@@ -398,13 +399,30 @@ try {
     window.cheddar = window.cheddar || {};
     window.cheddar.initializeAi = initializeAi;
     window.cheddar.startCapture = startCapture;
+    window.cheddar.stopCapture = stopCapture;
 } catch (_) {}
 
-function setupLinuxMicProcessing(micStream) {
+function setupLinuxMicProcessing(stream) {
     // Setup microphone audio processing for Linux
-    const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
-    const micSource = micAudioContext.createMediaStreamSource(micStream);
-    const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+    try {
+        if (audioProcessor) {
+            try { audioProcessor.disconnect(); } catch (_) {}
+            audioProcessor = null;
+        }
+        if (audioContext) {
+            try { audioContext.close(); } catch (_) {}
+            audioContext = null;
+        }
+        if (micCaptureStream) {
+            try { micCaptureStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+            micCaptureStream = null;
+        }
+    } catch (_) {}
+
+    micCaptureStream = stream;
+    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
+    const micSource = audioContext.createMediaStreamSource(micCaptureStream);
+    const micProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
     audioBuffer = [];
     const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
@@ -457,7 +475,7 @@ function setupLinuxMicProcessing(micStream) {
     };
 
     micSource.connect(micProcessor);
-    micProcessor.connect(micAudioContext.destination);
+    micProcessor.connect(audioContext.destination);
 
     // Store processor reference for cleanup
     audioProcessor = micProcessor;
@@ -532,15 +550,15 @@ function startAudioHealthMonitor() {
             if (audioContext && audioContext.state === 'suspended') {
                 audioContext.resume().catch(() => {});
             }
-            if (lastAudioProcessTs && Date.now() - lastAudioProcessTs > 800) {
-                if (audioContext) {
-                    audioContext.resume().catch(() => {});
+                if (lastAudioProcessTs && Date.now() - lastAudioProcessTs > 800) {
+                    if (audioContext) {
+                        audioContext.resume().catch(() => {});
+                    }
+                    if (!isLinux && !isMacOS && mediaStream) {
+                        setupWindowsLoopbackProcessing();
+                    }
                 }
-                if (!isLinux && mediaStream) {
-                    setupWindowsLoopbackProcessing();
-                }
-            }
-        } catch (_) {}
+            } catch (_) {}
     }, 1000);
 }
 
@@ -718,48 +736,73 @@ window.__popNextChatScreenshotPreview = () => {
 };
 
 function stopCapture() {
-    if (screenshotInterval) {
-        clearInterval(screenshotInterval);
-        screenshotInterval = null;
-    }
+    try {
+        if (audioHealthInterval) {
+            try { clearInterval(audioHealthInterval); } catch (_) {}
+            audioHealthInterval = null;
+        }
+    } catch (_) {}
 
-    if (audioProcessor) {
-        audioProcessor.disconnect();
-        audioProcessor = null;
-    }
+    try {
+        if (screenshotInterval) {
+            try { clearInterval(screenshotInterval); } catch (_) {}
+            screenshotInterval = null;
+        }
+    } catch (_) {}
 
-    if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-    }
+    try {
+        if (isMacOS) {
+            try { ipcRenderer.invoke('stop-macos-system-audio').catch(() => {}); } catch (_) {}
+        }
+    } catch (_) {}
 
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-    }
+    try {
+        if (audioProcessor) {
+            try { audioProcessor.disconnect(); } catch (_) {}
+            audioProcessor = null;
+        }
+    } catch (_) {}
 
-    // Stop macOS audio capture if running
-    if (isMacOS) {
-        ipcRenderer.invoke('stop-macos-system-audio').catch(err => {
-            console.error('Error stopping macOS audio:', err);
-        });
-    }
+    try {
+        if (audioContext) {
+            try { audioContext.close?.().catch?.(() => {}); } catch (_) {}
+            audioContext = null;
+        }
+    } catch (_) {}
 
-    // Clean up hidden elements
-    if (hiddenVideo) {
-        hiddenVideo.pause();
-        hiddenVideo.srcObject = null;
-        hiddenVideo = null;
-    }
-    offscreenCanvas = null;
-    offscreenContext = null;
+    try {
+        if (micCaptureStream) {
+            try { micCaptureStream.getTracks().forEach(track => track.stop()); } catch (_) {}
+            micCaptureStream = null;
+        }
+    } catch (_) {}
 
-    if (audioHealthInterval) {
-        try { clearInterval(audioHealthInterval); } catch (_) {}
-        audioHealthInterval = null;
-    }
+    try {
+        if (mediaStream) {
+            try { mediaStream.getTracks().forEach(track => track.stop()); } catch (_) {}
+            mediaStream = null;
+        }
+    } catch (_) {}
 
-    // End capture-only exclusion (Undetectable may still keep protection enabled).
+    try {
+        if (hiddenVideo) {
+            try { hiddenVideo.pause(); } catch (_) {}
+            try { hiddenVideo.srcObject = null; } catch (_) {}
+            hiddenVideo = null;
+        }
+        offscreenCanvas = null;
+        offscreenContext = null;
+    } catch (_) {}
+
+    try {
+        audioBuffer = [];
+        vadSpeaking = false;
+        vadLastVoiceAt = 0;
+        vadLastEndAt = 0;
+        lastAudioProcessTs = 0;
+    } catch (_) {}
+
+    try { ipcRenderer.invoke('set-use-screen-enabled', false).catch(() => {}); } catch (_) {}
     try { ipcRenderer.invoke('set-ai-capture-exclusion', false).catch(() => {}); } catch (_) {}
 }
 
