@@ -752,7 +752,11 @@ export class GhostPrepApp extends LitElement {
     }
 
     handleBackClick() {
-        this.currentView = 'main';
+        if (this.currentView === 'help' || this.currentView === 'history' || this.currentView === 'advanced') {
+            this.currentView = 'customize';
+        } else {
+            this.currentView = 'main';
+        }
         this.requestUpdate();
     }
 
