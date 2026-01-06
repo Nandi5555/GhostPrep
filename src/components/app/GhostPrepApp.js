@@ -117,8 +117,6 @@ export class GhostPrepApp extends LitElement {
         questions: { type: Array },
         advancedMode: { type: Boolean },
         _isClickThrough: { state: true },
-        // New: prompt configuration panel open state
-        promptPanelOpen: { type: Boolean },
         transcriptText: { type: String },
         activeAssistantTab: { type: String },
         isInitializing: { type: Boolean },
@@ -146,7 +144,6 @@ export class GhostPrepApp extends LitElement {
         this.currentResponseIndex = -1;
         this.questions = [];
         this._isClickThrough = false;
-        this.promptPanelOpen = false;
         this.transcriptText = '';
         this.activeAssistantTab = 'chat';
         this.isInitializing = false;
@@ -911,9 +908,7 @@ export class GhostPrepApp extends LitElement {
                         .activeTab=${this.activeAssistantTab}
                         .transcriptText=${this.transcriptText}
                         .onSendText=${(message, opts) => this.handleSendText(message, opts)}
-                        .promptPanelOpen=${this.promptPanelOpen}
                         .onTabChange=${tab => this.handleAssistantTabChange(tab)}
-                        @close-prompt-panel=${() => this.handleClosePromptPanel()}
                         @stream-finished=${() => this.handleStreamFinished()}
                         @response-index-changed=${this.handleResponseIndexChanged}
                     ></assistant-view>
@@ -954,7 +949,6 @@ export class GhostPrepApp extends LitElement {
                         .onCloseClick=${() => this.handleClose()}
                         .onBackClick=${() => this.handleBackClick()}
                         .onHideToggleClick=${() => this.handleHideToggle()}
-                        .onDocumentClick=${() => this.handlePromptConfigOpen()}
                         .onCancelConnect=${() => this.handleCancelConnecting()}
                         ?isClickThrough=${this._isClickThrough}
                     ></app-header>
@@ -971,17 +965,6 @@ export class GhostPrepApp extends LitElement {
     }
 
     // Layout mode switching removed: compact is always-on.
-
-    // Prompt configuration panel controls (must be inside class)
-    handlePromptConfigOpen() {
-        this.promptPanelOpen = true;
-        this.requestUpdate();
-    }
-
-    handleClosePromptPanel() {
-        this.promptPanelOpen = false;
-        this.requestUpdate();
-    }
 
     handleAssistantTabChange(tab) {
         this.activeAssistantTab = tab === 'transcript' ? 'transcript' : 'chat';

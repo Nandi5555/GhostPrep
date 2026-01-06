@@ -791,125 +791,6 @@ export class AssistantView extends LitElement {
             box-shadow: 0 0 0 2px var(--focus-border-color, #007aff); /* blue outline on click */
         }
 
-        /* Right-side sliding modal for prompt configuration */
-        .prompt-panel-overlay {
-            position: fixed;
-            inset: 0;
-            background: var(--overlay-bg, rgba(0, 0, 0, 0.35));
-            backdrop-filter: blur(2px);
-            display: flex;
-            justify-content: flex-end;
-            align-items: stretch;
-            z-index: 9998;
-        }
-        .prompt-panel {
-            width: 340px;
-            max-width: 92vw;
-            height: 100%;
-            background: var(--main-content-background);
-            border-left: 1px solid var(--border-color);
-            border-radius: 8px 0 0 8px;
-            transform: translateX(100%);
-            transition: transform 0.2s ease-out;
-            display: flex;
-            flex-direction: column;
-        }
-        .prompt-panel.open {
-            transform: translateX(0);
-        }
-        .prompt-panel-header {
-            padding: 10px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .prompt-panel-title {
-            font-weight: 600;
-            font-size: 14px;
-            color: var(--text-color);
-        }
-        .prompt-panel-body {
-            flex: 1;
-            overflow: auto;
-            padding: 10px;
-        }
-        .prompt-row {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            padding: 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--card-background, var(--glass-bg));
-            margin-bottom: 10px;
-        }
-        .prompt-row input,
-        .prompt-row textarea {
-            background: var(--input-background);
-            color: var(--text-color);
-            border: 1px solid var(--button-border);
-            border-radius: 8px;
-            padding: 8px 10px;
-            font-size: 12px;
-        }
-        .prompt-row textarea {
-            min-height: 64px;
-            resize: vertical;
-        }
-        /* Thin rounded scrollbars inside prompt editor textareas */
-        .prompt-row textarea {
-            scrollbar-width: thin;
-            scrollbar-color: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35)) var(--scrollbar-track, transparent);
-        }
-        .prompt-row textarea::-webkit-scrollbar { width: 6px; height: 6px; }
-        .prompt-row textarea::-webkit-scrollbar-track { background: var(--scrollbar-track, transparent); border-radius: 8px; }
-        .prompt-row textarea::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, rgba(255, 255, 255, 0.35)); border-radius: 8px; }
-        .prompt-row textarea::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, rgba(255, 255, 255, 0.5)); }
-        .prompt-row textarea::-webkit-scrollbar-thumb:active { background: var(--scrollbar-thumb-active, rgba(255, 255, 255, 0.6)); }
-        .prompt-panel-actions {
-            padding: 10px;
-            border-top: 1px solid var(--border-color);
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
-        }
-        .prompt-action-button {
-            background: var(--button-background);
-            color: var(--text-color);
-            border: 1px solid var(--button-border);
-            border-radius: 999px;
-            padding: 6px 12px;
-            font-size: 12px;
-            cursor: default;
-        }
-        .prompt-action-button:hover {
-            background: var(--hover-background);
-        }
-        .add-prompt-button:disabled {
-            opacity: 0.4;
-            cursor: default;
-        }
-        /* Modal scrollbar styling */
-        .prompt-panel-body::-webkit-scrollbar {
-            width: 5px;
-            height: 5px;
-        }
-        .prompt-panel-body::-webkit-scrollbar-track {
-            background: var(--scrollbar-track);
-            border-radius: 6px;
-        }
-        .prompt-panel-body::-webkit-scrollbar-thumb {
-            background: var(--scrollbar-thumb);
-            border-radius: 6px;
-            border: 1px solid transparent;
-            background-clip: padding-box;
-            transition: background-color 0.2s ease;
-        }
-        .prompt-panel-body::-webkit-scrollbar-thumb:hover {
-            background: var(--scrollbar-thumb-hover);
-        }
-
         /* Resize handles overlay */
         .resize-overlay {
             position: fixed;
@@ -950,7 +831,6 @@ export class AssistantView extends LitElement {
         onSendText: { type: Function },
         isStreaming: { type: Boolean },
         autoScrollEnabled: { type: Boolean },
-        promptPanelOpen: { type: Boolean },
         // Streaming inputs from parent component
         streamDelta: { type: String },
         streamSession: { type: Number },
@@ -979,10 +859,7 @@ export class AssistantView extends LitElement {
         this.hljs = null;
         // Load toggles from localStorage
         this.autoScrollEnabled = localStorage.getItem('assistantAutoScroll') !== 'false';
-        // Prompt panel and buttons state
-        this.promptPanelOpen = false;
         this.promptButtons = [];
-        this.editablePrompts = [];
         this._lastPromptClickTs = 0;
         this.activeTab = 'chat';
         this.transcriptText = '';
@@ -2152,56 +2029,6 @@ if (changedProperties.has('currentResponseIndex')) {
         } catch (_) {}
     }
 
-    openPromptPanel() {
-        this.editablePrompts = [...this.loadPromptButtons()];
-        this.requestUpdate();
-    }
-
-    closePromptPanel() {
-        this.dispatchEvent(new CustomEvent('close-prompt-panel', { bubbles: true, composed: true }));
-    }
-
-    addPromptRow() {
-        if ((this.editablePrompts || []).length >= 5) return;
-        this.editablePrompts = [...(this.editablePrompts || []), { name: '', text: '' }];
-        this.requestUpdate();
-    }
-
-    deletePromptRow(idx) {
-        const list = [...(this.editablePrompts || [])];
-        if (idx >= 0 && idx < list.length) {
-            list.splice(idx, 1);
-            this.editablePrompts = list;
-            this.requestUpdate();
-        }
-    }
-
-    updatePromptName(idx, e) {
-        const val = (e?.target?.value || '').slice(0, 60);
-        const list = [...(this.editablePrompts || [])];
-        if (list[idx]) list[idx].name = val;
-        this.editablePrompts = list;
-        this.requestUpdate();
-    }
-
-    updatePromptText(idx, e) {
-        const val = (e?.target?.value || '');
-        const list = [...(this.editablePrompts || [])];
-        if (list[idx]) list[idx].text = val;
-        this.editablePrompts = list;
-        this.requestUpdate();
-    }
-
-    saveEditablePrompts() {
-        const cleaned = (this.editablePrompts || [])
-            .map(p => ({ name: (p.name || '').trim(), text: (p.text || '').trim() }))
-            .filter(p => p.name && p.text)
-            .slice(0, 5);
-        this.savePromptButtons(cleaned);
-        this.promptButtons = cleaned;
-        this.closePromptPanel();
-    }
-
     async submitBufferedTranscriptAction(actionName, actionPrompt) {
         try {
             if (!window.require) return;
@@ -2309,48 +2136,14 @@ if (changedProperties.has('currentResponseIndex')) {
                     <input type="checkbox" class="assistant-toggle-input" .checked=${this.autoScrollEnabled} @change=${this.handleAutoScrollChange} />
                     <span>Auto-scroll</span>
                 </label>
-                ${this.promptButtons && this.promptButtons.length > 0
-                    ? html`<div class="prompt-buttons">
-                          ${this.promptButtons.map(
-                              (p, i) => html`<button class="prompt-button" @click=${e => this.handlePromptButtonClick(e, i)}>${p.name}</button>`
-                          )}
-                      </div>`
-                    : ''}
-            </div>
-
-            ${this.promptPanelOpen
-                ? html`
-                      <div class="prompt-panel-overlay" @click=${e => {
-                          if (e.target.classList.contains('prompt-panel-overlay')) this.closePromptPanel();
-                      }}>
-                          <div class="prompt-panel open" @click=${e => e.stopPropagation()}>
-                              <div class="prompt-panel-header">
-                                  <span class="prompt-panel-title">Configurable Prompt Buttons</span>
-                                  <button class="prompt-action-button" @click=${() => this.closePromptPanel()}>Close</button>
-                              </div>
-                              <div class="prompt-panel-body">
-                                    ${(this.editablePrompts || []).map(
-                                        (p, idx) => html`
-                                            <div class="prompt-row">
-                                                <input type="text" placeholder="Name" .value=${p.name} @input=${e => this.updatePromptName(idx, e)} />
-                                                <textarea placeholder="Prompt text" .value=${p.text} @input=${e => this.updatePromptText(idx, e)}></textarea>
-                                                <div style="display:flex; justify-content:flex-end; gap:8px;">
-                                                    <button class="prompt-action-button" @click=${() => this.deletePromptRow(idx)}>Delete</button>
-                                                </div>
-                                            </div>
-                                        `
-                                    )}
-                                  <button class="prompt-action-button add-prompt-button" @click=${() => this.addPromptRow()} ?disabled=${(this.editablePrompts || []).length >= 5}>
-                                      Add prompt
-                                  </button>
-                              </div>
-                              <div class="prompt-panel-actions">
-                                  <button class="prompt-action-button" @click=${() => this.saveEditablePrompts()}>Save</button>
-                              </div>
-                          </div>
-                      </div>
-                  `
+            ${this.promptButtons && this.promptButtons.length > 0
+                ? html`<div class="prompt-buttons">
+                      ${this.promptButtons.map(
+                          (p, i) => html`<button class="prompt-button" @click=${e => this.handlePromptButtonClick(e, i)}>${p.name}</button>`
+                      )}
+                  </div>`
                 : ''}
+            </div>
 
             <div class="resize-overlay">
                 <div class="resize-handle bottom" @pointerdown=${e => this._startResize(e, 'bottom')}></div>

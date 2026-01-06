@@ -323,8 +323,6 @@ export class AppHeader extends LitElement {
         isClickThrough: { type: Boolean, reflect: true },
         advancedMode: { type: Boolean },
         onAdvancedClick: { type: Function },
-        // New: handler for opening prompt configuration panel
-        onDocumentClick: { type: Function },
         backgroundTransparency: { type: Number },
     };
 
@@ -346,7 +344,6 @@ export class AppHeader extends LitElement {
         this.isClickThrough = false;
         this.advancedMode = false;
         this.onAdvancedClick = () => {};
-        this.onDocumentClick = () => {};
         this._timerInterval = null;
         this.backgroundTransparency = 0.8;
         this._jiggleActive = false;
@@ -607,23 +604,6 @@ export class AppHeader extends LitElement {
                 <div class="header-actions">
                     ${this.currentView === 'assistant'
                         ? html`
-                              <button class="icon-button" @click=${this.onDocumentClick} title="Configure Prompts">
-                                  <?xml version="1.0" encoding="UTF-8"?>
-                                  <svg
-                                      width="24px"
-                                      height="24px"
-                                      stroke-width="1.7"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      color="currentColor"
-                                  >
-                                      <path d="M6 2.6C6 2.26863 6.26863 2 6.6 2H13.8C13.9341 2 14.0637 2.05268 14.159 2.14645L19.8536 7.84106C19.9473 7.93635 20 8.06585 20 8.2V21.4C20 21.7314 19.7314 22 19.4 22H6.6C6.26863 22 6 21.7314 6 21.4V2.6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path>
-                                      <path d="M14 2V7.4C14 7.73137 14.2686 8 14.6 8H20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
-                                      <path d="M8 12H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
-                                      <path d="M8 16H17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
-                                  </svg>
-                              </button>
                               <div class="assistant-slider">
                                   <input
                                       type="range"
