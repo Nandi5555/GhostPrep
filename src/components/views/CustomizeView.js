@@ -1150,15 +1150,13 @@ export class CustomizeView extends LitElement {
     getDefaultKeybinds() {
         const isMac = window.cheddar?.isMacOS || navigator.platform.includes('Mac');
         return {
-            moveUp: isMac ? 'Alt+Up' : 'Ctrl+Up',
-            moveDown: isMac ? 'Alt+Down' : 'Ctrl+Down',
-            moveLeft: isMac ? 'Alt+Left' : 'Ctrl+Left',
-            moveRight: isMac ? 'Alt+Right' : 'Ctrl+Right',
+            moveUp: isMac ? 'Cmd+Up' : 'Ctrl+Up',
+            moveDown: isMac ? 'Cmd+Down' : 'Ctrl+Down',
+            moveLeft: isMac ? 'Cmd+Left' : 'Ctrl+Left',
+            moveRight: isMac ? 'Cmd+Right' : 'Ctrl+Right',
             toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
-            previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
-            nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
             scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
         };
@@ -1237,16 +1235,6 @@ export class CustomizeView extends LitElement {
                 key: 'nextStep',
                 name: 'Send / Submit',
                 description: 'Submit the current buffered transcript (and screenshot if enabled)',
-            },
-            {
-                key: 'previousResponse',
-                name: 'Previous Response',
-                description: 'Navigate to the previous AI response',
-            },
-            {
-                key: 'nextResponse',
-                name: 'Next Response',
-                description: 'Navigate to the next AI response',
             },
             {
                 key: 'scrollUp',

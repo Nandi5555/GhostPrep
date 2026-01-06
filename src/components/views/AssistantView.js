@@ -1175,30 +1175,6 @@ scrollToTop() {
         return this.responses.length > 0 ? `${this.currentResponseIndex + 1}/${this.responses.length}` : '';
     }
 
-    navigateToPreviousResponse() {
-        if (this.currentResponseIndex > 0) {
-            this.currentResponseIndex--;
-            this.dispatchEvent(
-                new CustomEvent('response-index-changed', {
-                    detail: { index: this.currentResponseIndex },
-                })
-            );
-            this.requestUpdate();
-        }
-    }
-
-    navigateToNextResponse() {
-        if (this.currentResponseIndex < this.responses.length - 1) {
-            this.currentResponseIndex++;
-            this.dispatchEvent(
-                new CustomEvent('response-index-changed', {
-                    detail: { index: this.currentResponseIndex },
-                })
-            );
-            this.requestUpdate();
-        }
-    }
-
     scrollResponseUp() {
         const container = this.shadowRoot.querySelector('.response-container');
         if (container) {
@@ -1262,14 +1238,6 @@ scrollToTop() {
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
 
-            this.handlePreviousResponse = () => {
-                this.navigateToPreviousResponse();
-            };
-
-            this.handleNextResponse = () => {
-                this.navigateToNextResponse();
-            };
-
             this.handleScrollUp = () => {
                 this.scrollResponseUp();
             };
@@ -1285,8 +1253,6 @@ scrollToTop() {
                 } catch (_) {}
             };
 
-            ipcRenderer.on('navigate-previous-response', this.handlePreviousResponse);
-            ipcRenderer.on('navigate-next-response', this.handleNextResponse);
             ipcRenderer.on('scroll-response-up', this.handleScrollUp);
             ipcRenderer.on('scroll-response-down', this.handleScrollDown);
             ipcRenderer.on('prefill-text-input', this.handlePrefillTextInput);
@@ -1321,12 +1287,6 @@ scrollToTop() {
         // Clean up IPC listeners
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
-            if (this.handlePreviousResponse) {
-                ipcRenderer.removeListener('navigate-previous-response', this.handlePreviousResponse);
-            }
-            if (this.handleNextResponse) {
-                ipcRenderer.removeListener('navigate-next-response', this.handleNextResponse);
-            }
             if (this.handleScrollUp) {
                 ipcRenderer.removeListener('scroll-response-up', this.handleScrollUp);
             }
@@ -1565,9 +1525,6 @@ if (changedProperties.has('currentResponseIndex')) {
         }
         if (changedProperties.has('isStreaming')) {
             this._handleStreamingStateChange();
-        }
-        if (changedProperties.has('promptPanelOpen') && this.promptPanelOpen) {
-            this.openPromptPanel();
         }
         if (changedProperties.has('transcriptText')) {
             this.updateTranscriptContent();
