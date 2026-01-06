@@ -217,6 +217,9 @@ export class GhostPrepApp extends LitElement {
             });
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
+                try {
+                    this.showToast(isEnabled ? 'Click-through enabled' : 'Click-through disabled', 'info');
+                } catch (_) {}
             });
             ipcRenderer.on('ui-error', (_, payload) => {
                 try {

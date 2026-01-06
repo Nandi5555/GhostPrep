@@ -18,6 +18,32 @@ const MAX_ASSISTANT_H = 635;
 let undetectableEnabledRuntime = false;
 let aiCaptureExclusionRuntime = false;
 
+function toElectronAccelerator(accelerator) {
+    if (!accelerator) return accelerator;
+    return String(accelerator)
+        .replace(/\bCmd\b/g, 'Command')
+        .replace(/\bCtrl\b/g, 'Control');
+}
+
+function migrateKeybindsForPlatform(keybinds) {
+    const isMac = process.platform === 'darwin';
+    const modifier = isMac ? 'Cmd' : 'Ctrl';
+    const next = { ...(keybinds || {}) };
+    let changed = false;
+
+    const allowedKeys = Object.keys(getDefaultKeybinds());
+    for (const key of allowedKeys) {
+        const v = next[key];
+        if (typeof v !== 'string' || !v) continue;
+        if (v.includes('Alt+')) {
+            next[key] = v.replace(/Alt\+/g, `${modifier}+`);
+            changed = true;
+        }
+    }
+
+    return { keybinds: next, changed };
+}
+
 function applyContentProtectionState(mainWindow) {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     const next =
@@ -148,8 +174,19 @@ function createWindow(sendToRenderer) {
             `
                 )
                 .then(async savedSettings => {
+                    const hadSaved = !!savedSettings.keybinds;
                     if (savedSettings.keybinds) {
                         keybinds = { ...defaultKeybinds, ...savedSettings.keybinds };
+                    }
+
+                    const migrated = migrateKeybindsForPlatform(keybinds);
+                    keybinds = migrated.keybinds;
+                    if (hadSaved && migrated.changed) {
+                        try {
+                            await mainWindow.webContents.executeJavaScript(
+                                `(() => { try { localStorage.setItem('customKeybinds', '${JSON.stringify(keybinds)}'); return true; } catch(e) { return false; } })()`
+                            );
+                        } catch (_) {}
                     }
 
                     await applyUndetectableSetting();
@@ -231,10 +268,11 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
 
     // Register each movement shortcut
     Object.keys(movementActions).forEach(action => {
-        const keybind = keybinds[action];
+        const keybind = toElectronAccelerator(keybinds[action]);
         if (keybind) {
             try {
-                globalShortcut.register(keybind, movementActions[action]);
+                const ok = globalShortcut.register(keybind, movementActions[action]);
+                if (!ok) console.warn(`Shortcut not registered (${action}):`, keybind);
             } catch (error) {
                 console.error(`Failed to register ${action} (${keybind}):`, error);
             }
@@ -244,13 +282,15 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     // Register toggle visibility shortcut
     if (keybinds.toggleVisibility) {
         try {
-            globalShortcut.register(keybinds.toggleVisibility, () => {
+            const accel = toElectronAccelerator(keybinds.toggleVisibility);
+            const ok = globalShortcut.register(accel, () => {
                 if (mainWindow.isVisible()) {
                     mainWindow.hide();
                 } else {
                     mainWindow.showInactive();
                 }
             });
+            if (!ok) console.warn('Shortcut not registered (toggleVisibility):', accel);
         } catch (error) {
             console.error(`Failed to register toggleVisibility (${keybinds.toggleVisibility}):`, error);
         }
@@ -259,11 +299,21 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     // Register toggle click-through shortcut
     if (keybinds.toggleClickThrough) {
         try {
-            globalShortcut.register(keybinds.toggleClickThrough, () => {
+            const primary = toElectronAccelerator(keybinds.toggleClickThrough);
+            const handler = () => {
                 mouseEventsIgnored = !mouseEventsIgnored;
                 applyMouseEventsPolicy(mainWindow);
                 mainWindow.webContents.send('click-through-toggled', mouseEventsIgnored);
-            });
+                try { console.log('[WINDOW] Click-through toggled:', mouseEventsIgnored); } catch (_) {}
+            };
+
+            let ok = globalShortcut.register(primary, handler);
+            if (!ok) {
+                const isMac = process.platform === 'darwin';
+                const fallback = isMac ? 'Command+Shift+M' : 'Control+Shift+M';
+                if (fallback !== primary) ok = globalShortcut.register(fallback, handler);
+            }
+            if (!ok) console.error('Failed to register toggleClickThrough:', keybinds.toggleClickThrough);
             // Registered toggleClickThrough
         } catch (error) {
             console.error(`Failed to register toggleClickThrough (${keybinds.toggleClickThrough}):`, error);
@@ -273,7 +323,8 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     // Register next step shortcut (either starts session or takes screenshot based on view)
     if (keybinds.nextStep) {
         try {
-            globalShortcut.register(keybinds.nextStep, async () => {
+            const accel = toElectronAccelerator(keybinds.nextStep);
+            const ok = globalShortcut.register(accel, async () => {
                 try {
                     // Debug visibility: confirm the OS-level shortcut fired (Cluely-style "instant submit" depends on this).
                     try { console.log('[AI][SUBMIT] Global shortcut triggered:', keybinds.nextStep); } catch (_) {}
@@ -313,6 +364,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
                     console.error('Error handling next step shortcut:', error);
                 }
             });
+            if (!ok) console.warn('Shortcut not registered (nextStep):', accel);
             // Registered nextStep
         } catch (error) {
             console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
@@ -324,9 +376,11 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     // Register scroll up shortcut
     if (keybinds.scrollUp) {
         try {
-            globalShortcut.register(keybinds.scrollUp, () => {
+            const accel = toElectronAccelerator(keybinds.scrollUp);
+            const ok = globalShortcut.register(accel, () => {
                 sendToRenderer('scroll-response-up');
             });
+            if (!ok) console.warn('Shortcut not registered (scrollUp):', accel);
             // Registered scrollUp
         } catch (error) {
             console.error(`Failed to register scrollUp (${keybinds.scrollUp}):`, error);
@@ -336,9 +390,11 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer) {
     // Register scroll down shortcut
     if (keybinds.scrollDown) {
         try {
-            globalShortcut.register(keybinds.scrollDown, () => {
+            const accel = toElectronAccelerator(keybinds.scrollDown);
+            const ok = globalShortcut.register(accel, () => {
                 sendToRenderer('scroll-response-down');
             });
+            if (!ok) console.warn('Shortcut not registered (scrollDown):', accel);
             // Registered scrollDown
         } catch (error) {
             console.error(`Failed to register scrollDown (${keybinds.scrollDown}):`, error);
