@@ -6,10 +6,10 @@ let smartMouseEventsIgnored = true;
 let windowResizing = false;
 let resizeAnimation = null;
 const RESIZE_ANIMATION_DURATION = 500; // milliseconds
-const MIN_ASSISTANT_W = 730;
-const MIN_ASSISTANT_H = 500;
-const MAX_ASSISTANT_W = 730;
-const MAX_ASSISTANT_H = 750;
+const MIN_ASSISTANT_W = 700;
+const MIN_ASSISTANT_H = 385;
+const MAX_ASSISTANT_W = 700;
+const MAX_ASSISTANT_H = 635;
 
 // Runtime content protection state:
 // - undetectableEnabledRuntime: driven by the user's Undetectable toggle
@@ -878,7 +878,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer) {
                     break;
                 case 'assistant':
                     // Always open Assistant in expanded default size, regardless of compact setting
-                    targetWidth = 635;
+                    targetWidth = baseWidth;
                     targetHeight = 500;
                     break;
                 case 'main':

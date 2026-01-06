@@ -209,7 +209,7 @@ export class AssistantView extends LitElement {
         }
 
         .answer-block.placeholder {
-            min-height: var(--answer-placeholder-height, 120px);
+            min-height: 0;
         }
 
         /* Loader: Cluely-style 3 dots (no container, no spinner) */
@@ -989,6 +989,7 @@ export class AssistantView extends LitElement {
         this.onTabChange = () => {};
         this.hasTypedText = false;
         this.audioMode = (localStorage.getItem('selectedAudioMode') || 'speaker');
+        this.smartEnabled = false;
 
         // Internal streaming state (typewriter engine)
         this._streamTypedText = '';
@@ -1181,6 +1182,34 @@ scrollToTop() {
             } catch (_) {}
 
             try {
+                root.querySelectorAll('li > p').forEach((p) => {
+                    try {
+                        if (!p.querySelector('br')) return;
+                        const nodes = Array.from(p.childNodes || []);
+                        if (!nodes.length) return;
+                        const onlyTextAndBr = nodes.every(
+                            (n) => n.nodeType === Node.TEXT_NODE || (n.nodeType === Node.ELEMENT_NODE && n.nodeName === 'BR')
+                        );
+                        if (!onlyTextAndBr) return;
+                        let text = '';
+                        for (const n of nodes) {
+                            if (n.nodeType === Node.TEXT_NODE) {
+                                text += String(n.nodeValue || '');
+                            } else if (n.nodeType === Node.ELEMENT_NODE && n.nodeName === 'BR') {
+                                text += '\n';
+                            }
+                        }
+                        if (!text.trim()) return;
+                        const pre = document.createElement('pre');
+                        const code = document.createElement('code');
+                        code.innerHTML = this._escapeHtml(text);
+                        pre.appendChild(code);
+                        p.replaceWith(pre);
+                    } catch (_) {}
+                });
+            } catch (_) {}
+
+            try {
                 root.querySelectorAll('a[href]').forEach((a) => {
                     const href = String(a.getAttribute('href') || '').trim();
                     if (!this._isHttpUrl(href)) return;
@@ -1237,19 +1266,20 @@ scrollToTop() {
 
                     return `<pre class="${blockClass}"><code class="${langClass} ${codeClass}">${highlighted}</code></pre>`;
                 };
+                renderer.html = (html) => {
+                    return `<pre class="output-block"><code>${escapeHtml(String(html || ''))}</code></pre>`;
+                };
 
                 // Configure marked for better security and formatting
                 window.marked.setOptions({
                     breaks: true,
                     gfm: true,
-                    sanitize: false, // We trust the AI responses
+                    sanitize: false,
+                    mangle: false,
+                    headerIds: false,
                 });
 
-                const tokenizer = {
-                    code: () => undefined,
-                };
-
-                window.marked.use({ renderer, tokenizer });
+                window.marked.use({ renderer });
 
                 // Do not "fix" or restructure model output here.
                 // Formatting is the model's responsibility via system/custom prompts.
@@ -1455,7 +1485,7 @@ scrollToTop() {
                 }
             } catch (_) {}
 
-            await this.onSendText(message, { screenshotPreviewDataUrl });
+            await this.onSendText(message, { screenshotPreviewDataUrl, smartReasoning: false });
         }
     }
 
@@ -2014,17 +2044,10 @@ if (changedProperties.has('currentResponseIndex')) {
                 try {
                     const txt = String(el.dataset.streamText || '');
                     if (!txt) return;
-                    // Apply the same formatting rules during streaming as we do for the final render:
-                    // - wraps detected code blocks into fenced blocks
-                    // - ensures consistent labels + global structure rules
-                    // This prevents the "no highlighting while streaming, then sudden highlighting at the end" jump.
                     const idx = this.currentResponseIndex >= 0 ? this.currentResponseIndex : ((this.responses || []).length - 1);
                     const q = (this.questions || [])[idx] || '';
                     const formatted = formatAnswer(txt, q, null);
                     el.innerHTML = this.renderMarkdown(formatted, false);
-                    // NOTE: renderMarkdown already highlights fenced code using hljs.highlight(),
-                    // so we do not call highlightElement() per-update (too expensive).
-                    // IMPORTANT: Do NOT auto-scroll during streaming. Keep viewport anchored near the top of the active answer.
                 } catch (_) {}
             }, wait);
         } catch (_) {}

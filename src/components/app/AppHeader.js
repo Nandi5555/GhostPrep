@@ -12,6 +12,11 @@ export class AppHeader extends LitElement {
             user-select: none;
         }
 
+        :host {
+            display: block;
+            width: 100%;
+        }
+
         .header {
             -webkit-app-region: drag;
             display: flex;
@@ -23,6 +28,9 @@ export class AppHeader extends LitElement {
             border-radius: 999px;
             backdrop-filter: blur(8px);
             box-shadow: none;
+            width: 450px;
+            max-width: calc(100% - 16px);
+            margin: 0 auto;
             transition: padding 0.2s ease, background-color var(--theme-transition) ease, border-color var(--theme-transition) ease, color var(--theme-transition) ease;
         }
 
