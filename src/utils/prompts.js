@@ -199,8 +199,21 @@ function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled =
 }
 
 function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true) {
+    // IMPORTANT:
+    // If the user provided a custom/personalized system prompt (from "Custom AI Instructions"),
+    // we must treat it as the highest-priority system instruction.
+    //
+    // Previously we wrapped it inside our base prompts (which include "Keep responses SHORT..."),
+    // causing conflicts and making the model ignore the user's required structure/length.
+    const trimmedCustom = String(customPrompt || '').trim();
+    if (trimmedCustom) {
+        // When a custom prompt exists, use it as-is (no wrapper, no suffix).
+        // This matches the "personalized prompt is the highest priority" requirement and avoids hidden instructions.
+        return trimmedCustom;
+    }
+
     const promptParts = profilePrompts[profile] || profilePrompts.interview;
-    return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled);
+    return buildSystemPrompt(promptParts, '', googleSearchEnabled);
 }
 
 module.exports = {
